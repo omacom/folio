@@ -154,7 +154,8 @@ QImage Thumbnails::load(const QString &path, const QString &mime, int size) cons
     const QString mtime = mtimeOf(path);
     // QImageReader::text() splits keys at ':', so "Thumb::MTime" is only
     // readable from the decoded image.
-    if (const QImage image(cached); !image.isNull() && image.text("Thumb::MTime") == mtime)
+    if (const QImage image(cached); !image.isNull()
+        && image.text("Thumb::URI") == fileUri(path) && image.text("Thumb::MTime") == mtime)
         return image;
     if (failedBefore(path))
         return {};
