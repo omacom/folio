@@ -35,6 +35,18 @@ ApplicationWindow {
     LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
     LayoutMirroring.childrenInherit: true
 
+    // Hyprland sizes a new window only once it's on screen: the first frames
+    // are drawn at the size asked for above (or the compositor's first
+    // guess), then the real size arrives and everything moves. The contents
+    // stay hidden until that size is in, or until it's clear none is coming,
+    // so they first appear where they'll stay.
+    property bool settled: false
+    property bool drawn: false
+    onFrameSwapped: if (!drawn) { drawn = true; settleTimer.start() }
+    onWidthChanged: if (drawn) settled = true
+    onHeightChanged: if (drawn) settled = true
+    Timer { id: settleTimer; interval: 150; onTriggered: win.settled = true }
+
     property bool helpVisible: false
     // The shortcuts take the keyboard while they're shown, and give it back
     // to the files.
@@ -118,6 +130,8 @@ ApplicationWindow {
 
     Item {
         anchors.fill: parent
+        opacity: win.settled ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 100 } }
 
         // The bar across the top; the panes' path bars draw over it.
         readonly property int barHeight: 60
