@@ -283,3 +283,8 @@ QColor Theme::accentText() const {
         ink = ensureRatio(ink, ground, textFloor);
     return ink;
 }
+
+// Yellow as words (a plugin mark's "warning" tone), raised to 4.5:1 on the background.
+QColor Theme::yellowText() const {
+    return ensureRatio(yellow(), background(), textFloor);
+}

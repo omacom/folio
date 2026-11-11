@@ -6745,6 +6745,21 @@ private slots:
         QCOMPARE(passing.accentText(), QColor("#89b4fa"));
     }
 
+    void themeFloorsYellowText()
+    {
+        // Rose Pine Dawn's gold is 2.1:1 on its background; Catppuccin Mocha's yellow already reads.
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("theme");
+        write(dir.filePath("theme/colors.toml"), QByteArray(roseDawn) + "yellow = \"#ea9d34\"\n");
+        Theme low(dir.path());
+        QVERIFY(contrast(low.yellowText(), low.background()) >= 4.5);
+        QVERIFY(snug(low.yellowText(), {low.background()}, 4.5));
+        QCOMPARE(low.yellow(), QColor("#ea9d34"));
+        write(dir.filePath("theme/colors.toml"), QByteArray(mocha) + "yellow = \"#f9e2af\"\n");
+        Theme passing(dir.path());
+        QCOMPARE(passing.yellowText(), QColor("#f9e2af"));
+    }
+
 private:
     // Packs `items`, from `folder`, into `archive`, its kind from its name.
     static void pack(const QString &archive, const QString &folder, const QStringList &items)
