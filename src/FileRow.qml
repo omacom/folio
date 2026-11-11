@@ -133,7 +133,7 @@ Item {
             Layout.fillWidth: true
             Layout.minimumWidth: 120
             text: row.name
-            color: row.current ? theme.accent : theme.foreground
+            color: row.current ? theme.brightForeground : theme.foreground
             elide: Text.ElideMiddle
         }
         Text {
@@ -141,7 +141,7 @@ Item {
             Layout.preferredWidth: row.sizeWidth
             horizontalAlignment: Text.AlignRight
             text: row.isDir ? (row.itemCount === 0 ? qsTr("Empty") : row.itemCount > 0 ? qsTr("%n items", "", row.itemCount) : "") : row.formatSize(row.size)
-            color: theme.secondaryForeground
+            color: row.current ? theme.foreground : theme.secondaryForeground
             font.pixelSize: 12
         }
         Text {
@@ -149,7 +149,7 @@ Item {
             Layout.preferredWidth: row.dateWidth
             Layout.leftMargin: 12
             text: row.when(row.modified)
-            color: theme.secondaryForeground
+            color: row.current ? theme.foreground : theme.secondaryForeground
             font.pixelSize: 12
             elide: Text.ElideRight
         }
