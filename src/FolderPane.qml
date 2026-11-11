@@ -12,6 +12,7 @@ FocusScope {
 
     // The window this pane is in, for the state the panes share.
     readonly property var host: ApplicationWindow.window
+    readonly property Item dialogLayer: host ? host.dialogLayer : pane
     readonly property bool active: !!host && host.activePane === pane
     readonly property var paneBackend: backend
     readonly property var paneFileOps: fileOps
@@ -50,7 +51,8 @@ FocusScope {
     property bool cursorLetGo: false
     // While a text field has the keyboard (renaming, a password), single-key
     // and clipboard shortcuts stand aside so typing works.
-    readonly property bool typing: rename.visible || confirm.visible || clash.visible || formatDialog.visible || backend.mounter.asking || pathBar.editing || pathBar.searchFocused || (!!host && host.helpVisible)
+    readonly property bool typing: dialogShowing || pathBar.editing || pathBar.searchFocused || (!!host && (host.dialogOpen || host.helpVisible))
+    readonly property bool dialogShowing: rename.visible || confirm.visible || clash.visible || formatDialog.visible || backend.mounter.asking
     // Keys for the pane as a whole (undo, a new window, typing a path) work
     // wherever the keyboard is; keys for its files only while the files
     // have it, not while Tab has put it in the sidebar or the details, where
@@ -122,6 +124,14 @@ FocusScope {
     // details pane follow.
     onActiveFocusChanged: if (activeFocus && host) host.activePane = pane
     function focusView() { if (view.item) view.item.focusView() }
+    // A dialog sits outside this scope, so it makes this pane active, and the last one to close hands the keys back.
+    function dialogShown(shown) {
+        if (shown && host)
+            host.activePane = pane
+        else if (!shown)
+            Qt.callLater(pane.handBack)
+    }
+    function handBack() { if (!(host && host.dialogOpen)) focusView() }
 
     // Pins a folder to the sidebar, or unpins it when it's pinned already.
     function togglePin(target) {
@@ -456,31 +466,36 @@ FocusScope {
     // A dialog takes the keyboard while it's open; closing only hides it,
     // so the keyboard is handed back to the files.
     MountPrompt {
+        parent: pane.dialogLayer
         anchors.fill: parent
-        onVisibleChanged: if (!visible) pane.focusView()
+        onVisibleChanged: pane.dialogShown(visible)
     }
 
     RenameDialog {
         id: rename
+        parent: pane.dialogLayer
         anchors.fill: parent
-        onVisibleChanged: if (!visible) pane.focusView()
+        onVisibleChanged: pane.dialogShown(visible)
     }
 
     ConfirmDialog {
         id: confirm
+        parent: pane.dialogLayer
         anchors.fill: parent
-        onVisibleChanged: if (!visible) pane.focusView()
+        onVisibleChanged: pane.dialogShown(visible)
     }
 
     FormatDialog {
         id: formatDialog
+        parent: pane.dialogLayer
         anchors.fill: parent
-        onVisibleChanged: if (!visible) pane.focusView()
+        onVisibleChanged: pane.dialogShown(visible)
     }
 
     ClashDialog {
         id: clash
+        parent: pane.dialogLayer
         anchors.fill: parent
-        onVisibleChanged: if (!visible) pane.focusView()
+        onVisibleChanged: pane.dialogShown(visible)
     }
 }
