@@ -124,6 +124,7 @@ Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 text: backend.path.startsWith("plugin:") ? qsTr("Search %1").arg(here)
                     : !settled ? qsTr("Search %1 and below").arg(here)
+                    : backend.folder.count === 0 ? qsTr("Searched %1 and below").arg(here)
                     : backend.folder.count >= backend.folder.searchLimit ? qsTr("%Ln or more found in %1 and below", "", backend.folder.count).arg(here)
                     : qsTr("%Ln found in %1 and below", "", backend.folder.count).arg(here)
                 color: theme.secondaryForeground
