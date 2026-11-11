@@ -11,13 +11,19 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QFutureWatcher>
+#include <QTimer>
 #include <QMimeDatabase>
 #include <QVarLengthArray>
 #include <QtConcurrent>
 #include <algorithm>
 #include <numeric>
+#include <optional>
 #include <vector>
+#include <sys/inotify.h>
 #include <sys/stat.h>
+#include <cerrno>
+#include <climits>
+#include <unistd.h>
 
 FolderModel::FolderModel(QObject *parent) : QAbstractListModel(parent) {
     // Copies, saves and downloads change a folder in bursts; wait for the
@@ -55,7 +61,93 @@ static QCache<QString, QVector<FolderModel::Entry>> &recentListings() {
 
 // The language is part of it: names sort by its alphabet.
 QString FolderModel::cacheKey() const {
-    return m_path + '\n' + (m_showHidden ? "h" : "") + '\n' + m_sort + '\n' + QLocale().name();
+    return cacheKey(m_path, m_showHidden, m_sort);
+}
+
+QString FolderModel::cacheKey(const QString &path, bool showHidden, const QString &sort) {
+    return path + '\n' + (showHidden ? "h" : "") + '\n' + sort + '\n' + QLocale().name();
+}
+
+namespace {
+
+// A folder read before its window exists, and whether it was watched from before the reading began.
+struct Read {
+    QVector<FolderModel::Entry> entries;
+    QString error;
+    bool watched = false;
+};
+
+// Asked by a reading made ahead, before it begins and at each name: it stops once it's dropped untaken, or once the reload that took it is overtaken.
+struct Wanted {
+    std::atomic<bool> dropped{false}, taken{false};
+    std::shared_ptr<std::atomic<quint64>> latest;
+    quint64 generation = 0;
+    bool over() const { return dropped || (taken && *latest != generation); }
+};
+
+struct Ahead {
+    QString key;
+    QFuture<Read> listing;
+    std::shared_ptr<const int> changes;
+    std::shared_ptr<Wanted> wanted;
+};
+
+Ahead &ahead() {
+    static Ahead early;
+    return early;
+}
+
+// The reading made ahead, waited for here on the pool, when nothing in the folder changed since it began.
+std::optional<QVector<FolderModel::Entry>> taken(Ahead &early, QString *error, const std::function<bool()> &overtaken) {
+    if (!early.changes)
+        return std::nullopt;
+    // Taken out of the future, not copied: the reload that took the reading is its one owner, and reading a size into a row copies nothing.
+    Read read = early.listing.takeResult();
+    // Overtaken while it waited: the reading stopped, and nothing is read in its place.
+    if (overtaken())
+        return QVector<FolderModel::Entry>();
+    char event[sizeof(inotify_event) + NAME_MAX + 1];
+    if (!read.watched || ::read(*early.changes, event, sizeof event) >= 0 || errno != EAGAIN)
+        return std::nullopt;
+    *error = read.error;
+    return std::move(read.entries);
+}
+
+} // namespace
+
+void FolderModel::readAhead(const QString &path) {
+    const QString clean = QDir::cleanPath(path);
+    std::shared_ptr<const int> changes(new int(inotify_init1(IN_NONBLOCK | IN_CLOEXEC)), [](const int *fd) {
+        if (*fd >= 0)
+            ::close(*fd);
+        delete fd;
+    });
+    if (*changes < 0)
+        return;
+    // As a new model lists: hidden files left out, by name, in the language set now.
+    const QLocale locale;
+    const auto wanted = std::make_shared<Wanted>();
+    ahead() = {cacheKey(clean, false, "name"), QtConcurrent::run([clean, locale, changes, wanted] {
+                   constexpr uint32_t anyChange = IN_ATTRIB | IN_CREATE | IN_DELETE | IN_DELETE_SELF | IN_MODIFY
+                                                  | IN_MOVE | IN_MOVE_SELF | IN_CLOSE_WRITE;
+                   Read read;
+                   // Asked before the folder is touched: a reading nobody wants any more opens nothing.
+                   if (wanted->over())
+                       return read;
+                   // Watched before the reading begins, so no change is missed; added on this thread, since the kernel marks every name it holds.
+                   read.watched = inotify_add_watch(*changes, QFile::encodeName(clean).constData(), anyChange) >= 0;
+                   if (read.watched)
+                       read.entries = list(clean, false, "name", &read.error, [&] { return wanted->over(); }, locale, false);
+                   return read;
+               }), changes, wanted};
+    // Only the first window's model takes it; still untaken once the event loop runs, it's dropped and stops.
+    QTimer::singleShot(0, [wanted] {
+        if (wanted->taken)
+            return;
+        wanted->dropped = true;
+        if (ahead().wanted == wanted)
+            ahead() = {};
+    });
 }
 
 void FolderModel::remember() {
@@ -713,6 +805,10 @@ void FolderModel::reload() {
     const QString query = m_query;
     const QLocale locale;
     const QVariantList items = m_items;
+    // The reading made ahead for this folder, if any, is taken once, in place of reading it again.
+    Ahead early;
+    if (query.isEmpty() && ahead().key == cacheKey())
+        early = std::exchange(ahead(), {});
     // Rows read or asked for are read again, so a change shows and nothing asked is lost (a search, or by date or size, reads all).
     QSet<QString> read;
     if (query.isEmpty() && !sortsByDateOrSize(sort))
@@ -725,6 +821,12 @@ void FolderModel::reload() {
     m_asked.clear();
     *m_latest = generation;
     const auto latest = m_latest;
+    // From here the reading taken stops when this reload is overtaken, as a reading of its own would.
+    if (early.wanted) {
+        early.wanted->latest = latest;
+        early.wanted->generation = generation;
+        early.wanted->taken = true;
+    }
     auto *watcher = new QFutureWatcher<QPair<QVector<Entry>, QString>>(this);
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation] {
         watcher->deleteLater();
@@ -759,10 +861,12 @@ void FolderModel::reload() {
             remember();
         countFolders(generation);
     });
-    watcher->setFuture(QtConcurrent::run([path, showHidden, sort, query, items, latest, generation, locale, read] {
+    watcher->setFuture(QtConcurrent::run([path, showHidden, sort, query, items, latest, generation, locale, read, early = std::move(early)]() mutable {
         QString error;
         const auto overtaken = [&] { return *latest != generation; };
-        auto entries = isPluginView(path) ? listItems(items, query)
+        std::optional<QVector<Entry>> before = taken(early, &error, overtaken);
+        auto entries = before ? std::move(*before)
+                     : isPluginView(path) ? listItems(items, query)
                      : query.isEmpty() || path == recentPath() ? list(path, showHidden, sort, &error, overtaken, locale, false)
                      : search(path, query, showHidden, sort, overtaken, 1000, locale);
         for (Entry &e : entries) {

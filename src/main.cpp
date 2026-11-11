@@ -127,6 +127,10 @@ int main(int argc, char *argv[]) {
     // re-evaluated when the Omarchy language changes.
     Translator translator;
     app.installTranslator(&translator);
+    QString select;
+    const QString start = startPath(app.arguments(), &select);
+    // Read while the window is made, sorted in the language just set.
+    FolderModel::readAhead(start);
 
     Theme theme;
     Places places;
@@ -134,9 +138,6 @@ int main(int argc, char *argv[]) {
     // Plugins' text follows the language too.
     Plugins plugins(translator.language());
     QObject::connect(&translator, &Translator::changed, &plugins, [&] { plugins.setLanguage(translator.language()); });
-
-    QString select;
-    const QString start = startPath(app.arguments(), &select);
 
     QQmlEngine engine;
     QObject::connect(&translator, &Translator::changed, &engine, &QQmlEngine::retranslate);

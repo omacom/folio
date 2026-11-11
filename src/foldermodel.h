@@ -123,6 +123,8 @@ public:
     static QVector<Entry> list(const QString &path, bool showHidden, const QString &sort, QString *error,
                                const std::function<bool()> &stop = {}, const QLocale &locale = QLocale(),
                                bool whole = true);
+    // Starts reading a folder before its window exists; the first model to list it the same way takes that reading, unless the folder changed since.
+    static void readAhead(const QString &path);
     static Entry entryFor(const QFileInfo &info, const QMimeDatabase &mimes);
     // The entry with its kind, MIME type and extension, read from its name when it was listed untyped.
     static Entry typed(const Entry &entry);
@@ -174,6 +176,7 @@ private:
     void setEntries(const QVector<Entry> &entries);
     void clearEntries();
     QString cacheKey() const;
+    static QString cacheKey(const QString &path, bool showHidden, const QString &sort);
     void remember();
     static bool sameListing(const QVector<Entry> &a, const QVector<Entry> &b);
     void takeSizesAndDates(QVector<Entry> entries);

@@ -26,6 +26,7 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QSettings>
+#include <QSemaphore>
 #include <QSignalSpy>
 #include <QSocketNotifier>
 #include <QStandardPaths>
@@ -35,11 +36,14 @@
 #include <QtTest>
 #include <fcntl.h>
 #include <malloc.h>
+#include <cerrno>
+#include <climits>
 #include <cstring>
 #include <random>
 #include <linux/sockios.h>
 #include <poll.h>
 #include <signal.h>
+#include <sys/inotify.h>
 #include <sys/ioctl.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
@@ -532,6 +536,106 @@ private slots:
         QCOMPARE(entries.at(2).extension, QString("JPG"));
 
         QCOMPARE(FolderModel::list(dir.path(), true, "name", &error).size(), 5);
+    }
+
+    void folderReadAheadIsTheFolderAsItIsNow()
+    {
+        if (!inotifyInstanceFree())
+            QSKIP("No inotify instance is free.");
+        QTemporaryDir dir;
+        write(dir.filePath("a.txt"), "a");
+        FolderModel::readAhead(dir.path());
+        QVERIFY(QThreadPool::globalInstance()->waitForDone(5000));
+        // Changed after the reading was whole: the model shows the folder as it is, not as it was read.
+        write(dir.filePath("b.txt"), "b");
+        QFile::remove(dir.filePath("a.txt"));
+        FolderModel model;
+        model.setPath(dir.path());
+        QTRY_VERIFY(!model.loading());
+        QCOMPARE(model.count(), 1);
+        QCOMPARE(model.get(0).value("name").toString(), QString("b.txt"));
+
+        // Left alone, the reading is what the model shows: a file grown through a link elsewhere, which no watch of its folder reports, keeps the size read ahead.
+        QTemporaryDir kept, elsewhere;
+        write(kept.filePath("c.txt"), "cc");
+        QCOMPARE(::link(QFile::encodeName(kept.filePath("c.txt")).constData(), QFile::encodeName(elsewhere.filePath("c.txt")).constData()), 0);
+        FolderModel::readAhead(kept.path());
+        QVERIFY(QThreadPool::globalInstance()->waitForDone(5000));
+        QFile grown(elsewhere.filePath("c.txt"));
+        QVERIFY(grown.open(QIODevice::Append) && grown.write("ccc") == 3);
+        grown.close();
+        FolderModel second, third;
+        second.setPath(kept.path());
+        // Taken once: a model made in the same turn of the event loop reads the folder itself.
+        third.setPath(kept.path());
+        QTRY_VERIFY(!second.loading());
+        QCOMPARE(second.count(), 1);
+        QCOMPARE(second.get(0).value("size").toLongLong(), 2);
+        QTRY_COMPARE(third.get(0).value("size").toLongLong(), 5);
+    }
+
+    void folderReadAheadNobodyWantsOpensNothing()
+    {
+        QTemporaryDir untaken, left, other;
+        write(untaken.filePath("a.txt"), "a");
+        write(left.filePath("a.txt"), "a");
+        write(other.filePath("b.txt"), "b");
+        // Every opening of either folder, as a listing of it begins with, is counted here.
+        const int opened = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+        const auto closed = qScopeGuard([&] { ::close(opened); });
+        if (opened < 0 || !inotifyInstanceFree())
+            QSKIP("No inotify instance is free.");
+        for (const QTemporaryDir *dir : {&untaken, &left})
+            QVERIFY(inotify_add_watch(opened, QFile::encodeName(dir->path()).constData(), IN_OPEN) >= 0);
+        // One thread, held: what is read ahead waits in the pool until it is let go.
+        QThreadPool *pool = QThreadPool::globalInstance();
+        pool->waitForDone();
+        const int threads = pool->maxThreadCount();
+        pool->setMaxThreadCount(1);
+        const auto restore = qScopeGuard([&] { pool->setMaxThreadCount(threads); });
+        QSemaphore go;
+        const auto hold = [&] { return QtConcurrent::run([&] { go.acquire(); }); };
+
+        // Untaken once the event loop has run, it's dropped before it began.
+        QFuture<void> held = hold();
+        FolderModel::readAhead(untaken.path());
+        QCoreApplication::processEvents();
+        go.release();
+        QVERIFY(pool->waitForDone(5000));
+
+        // Taken by a model that left for another folder before it began.
+        held = hold();
+        FolderModel::readAhead(left.path());
+        FolderModel model;
+        model.setPath(left.path());
+        model.setPath(other.path());
+        go.release();
+        // Asked once the pool has run dry and before the event loop turns, so only the model leaving can have stopped that reading.
+        QVERIFY(pool->waitForDone(5000));
+        char event[sizeof(inotify_event) + NAME_MAX + 1];
+        QVERIFY2(::read(opened, event, sizeof event) < 0 && errno == EAGAIN, "a folder nobody wanted read was opened");
+        QTRY_VERIFY(!model.loading());
+        QVERIFY(pool->waitForDone(5000));
+        QCOMPARE(model.get(0).value("name").toString(), QString("b.txt"));
+    }
+
+    void folderReadAheadOfAFolderItCantWatchIsLeft()
+    {
+        // A folder that can't be watched can't be known unchanged: what was read ahead of it is left, and the model reads the folder as it is now.
+        if (geteuid() == 0)
+            QSKIP("Root can watch every folder.");
+        QTemporaryDir dir;
+        write(dir.filePath("a.txt"), "a");
+        const QFile::Permissions open = QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner;
+        QVERIFY(QFile::setPermissions(dir.path(), {}));
+        const auto restore = qScopeGuard([&] { QFile::setPermissions(dir.path(), open); });
+        FolderModel::readAhead(dir.path());
+        QVERIFY(QThreadPool::globalInstance()->waitForDone(5000));
+        QVERIFY(QFile::setPermissions(dir.path(), open));
+        FolderModel model;
+        model.setPath(dir.path());
+        QTRY_VERIFY(!model.loading());
+        QCOMPARE(model.count(), 1);
     }
 
     void folderSortsByTheGivenLanguagesAlphabet()
@@ -7559,6 +7663,14 @@ private:
         QTRY_COMPARE(model.index(last).data(FolderModel::ItemCountRole).toInt(), 1);
     }
 
+    // Whether one more inotify instance can be had: a reading ahead takes one of its own, and makes no reading without it.
+    static bool inotifyInstanceFree()
+    {
+        const int instance = inotify_init1(IN_CLOEXEC);
+        if (instance >= 0)
+            ::close(instance);
+        return instance >= 0;
+    }
     // A hyprctl that notes each run and prints the response file.
     static QString standInHyprctl(const QTemporaryDir &dir, const QString &response, const QString &runs)
     {
