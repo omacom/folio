@@ -82,7 +82,7 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         width: parent.width - 28
         text: lit || tile.fileName
-        textFormat: lit ? Text.StyledText : Text.AutoText
+        textFormat: lit ? Text.StyledText : Text.PlainText
         color: tile.current ? theme.brightForeground : theme.foreground
         font.pixelSize: 12
         horizontalAlignment: Text.AlignHCenter
@@ -114,6 +114,7 @@ Item {
             // Both in one arg() call, so a "%2" in a folder's name stays as written.
             return tile.folder && rest ? qsTr("%1 · %2").arg(tile.folder, rest) : tile.folder || rest
         }
+        textFormat: Text.PlainText
         color: tile.current ? theme.foreground : theme.secondaryForeground
         font.pixelSize: 10
         horizontalAlignment: Text.AlignHCenter
@@ -346,6 +347,7 @@ Item {
                     id: badge
                     anchors.centerIn: parent
                     text: tile.extension.slice(0, 4)
+                    textFormat: Text.PlainText
                     font.pixelSize: 9
                     font.bold: true
                     color: {
@@ -383,7 +385,7 @@ Item {
                     }
                 }
             }
-            Text { anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: 5; text: tile.extension; font.pixelSize: 9; color: theme.secondaryForeground }
+            Text { anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: 5; text: tile.extension; textFormat: Text.PlainText; font.pixelSize: 9; color: theme.secondaryForeground }
         }
     }
 

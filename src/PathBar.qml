@@ -122,6 +122,7 @@ Rectangle {
                 anchors.right: parent.right
                 anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
+                textFormat: Text.PlainText
                 text: backend.path.startsWith("plugin:") ? qsTr("Search %1").arg(here)
                     : !settled ? qsTr("Search %1 and below").arg(here)
                     : backend.folder.count === 0 ? qsTr("Searched %1 and below").arg(here)
@@ -246,6 +247,7 @@ Rectangle {
                                                                      - (trail.first > 0 ? more.implicitWidth + crumbs.spacing : 0))) : implicitWidth
                             elide: Text.ElideRight
                             text: crumb.modelData.name
+                            textFormat: Text.PlainText
                             color: crumb.last ? theme.brightForeground : crumbMouse.containsMouse ? theme.foreground : theme.secondaryForeground
                             font.pixelSize: 14
                             font.weight: crumb.last ? Font.DemiBold : Font.Normal

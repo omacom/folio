@@ -360,6 +360,7 @@ FocusScope {
                     id: bannerText
                     Layout.fillWidth: true
                     text: backend.message || backend.folder.error || (slowWork.shown ? slowWork.working : "") || backend.notice
+                    textFormat: Text.PlainText
                     color: theme.brightForeground
                     elide: Text.ElideMiddle
                 }

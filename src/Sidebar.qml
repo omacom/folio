@@ -225,6 +225,7 @@ Rectangle {
                     Layout.fillWidth: true
                     horizontalAlignment: Text.AlignLeft
                     text: row.text
+                    textFormat: Text.PlainText
                     elide: Text.ElideRight
                     color: row.active ? theme.brightForeground : theme.foreground
                 }

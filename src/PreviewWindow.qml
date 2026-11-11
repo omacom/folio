@@ -94,6 +94,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             horizontalAlignment: Text.AlignLeft
                             text: win.item.name || ""
+                            textFormat: Text.PlainText
                             color: theme.brightForeground
                             font.pixelSize: 15
                             font.weight: Font.DemiBold
@@ -383,6 +384,7 @@ ApplicationWindow {
                 Text {
                     Layout.alignment: Qt.AlignHCenter
                     text: win.item.extension || ""
+                    textFormat: Text.PlainText
                     color: theme.accentText
                     font.weight: Font.DemiBold
                 }

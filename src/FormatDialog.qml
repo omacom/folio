@@ -54,12 +54,14 @@ FolioDialog {
                 Layout.fillWidth: true
                 visible: !!dialog.drive && dialog.drive.label.length > 0
                 text: dialog.drive ? dialog.drive.label : ""
+                textFormat: Text.PlainText
                 color: theme.brightForeground
                 elide: Text.ElideRight
             }
             Text {
                 Layout.fillWidth: true
                 text: dialog.drive ? dialog.drive.title : ""
+                textFormat: Text.PlainText
                 color: dialog.drive && dialog.drive.label.length > 0 ? theme.secondaryForeground : theme.brightForeground
                 elide: Text.ElideRight
             }

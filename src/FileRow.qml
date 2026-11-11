@@ -127,7 +127,7 @@ Item {
             Layout.minimumWidth: 120
             horizontalAlignment: Text.AlignLeft
             text: lit || row.fileName
-            textFormat: lit ? Text.StyledText : Text.AutoText
+            textFormat: lit ? Text.StyledText : Text.PlainText
             color: row.current ? theme.brightForeground : theme.foreground
             elide: Text.ElideMiddle
         }
@@ -136,6 +136,7 @@ Item {
             Layout.maximumWidth: Math.round(row.width / 3)
             horizontalAlignment: Text.AlignLeft
             text: row.folder
+            textFormat: Text.PlainText
             color: theme.secondaryForeground
             font.pixelSize: 12
             elide: Text.ElideMiddle
