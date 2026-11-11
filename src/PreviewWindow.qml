@@ -143,7 +143,7 @@ ApplicationWindow {
                     anchors.fill: parent
                     active: !win.external
                     sourceComponent: win.viewer === "image" || win.viewer === "animated" ? imageView
-                                   : win.viewer === "text" || win.viewer === "markdown" ? textView
+                                   : win.viewer === "text" || win.viewer === "markdown" || win.viewer === "archive" ? textView
                                    : win.viewer === "folder" ? folderView
                                    : otherView
                 }
@@ -166,6 +166,13 @@ ApplicationWindow {
                     text: win.viewer === "pdf" ? qsTr("Previewing PDFs needs Qt PDF, from the qt6-webengine package.")
                                                : qsTr("Playing video and audio needs Qt Multimedia, from the qt6-multimedia package.")
                     color: theme.foreground
+                }
+
+                // An archive's names are read as bsdtar prints them.
+                Sentence {
+                    visible: win.viewer === "archive" && !previewer.text
+                    text: previewer.sentence || qsTr("Reading the archive…")
+                    color: previewer.sentence ? theme.foreground : theme.secondaryForeground
                 }
             }
         }
@@ -270,7 +277,7 @@ ApplicationWindow {
         }
     }
 
-    // Text to read, Markdown rendered; selectable, never editable.
+    // Text to read, Markdown rendered, an archive's names; selectable, never editable.
     Component {
         id: textView
 
@@ -284,11 +291,7 @@ ApplicationWindow {
             function scroll(direction) { contentY = Math.max(0, Math.min(contentHeight - height, contentY + direction * 60)) }
             function page(direction) { contentY = Math.max(0, Math.min(contentHeight - height, contentY + direction * (height - 60))) }
 
-            Connections {
-                target: previewer
-                function onChanged() { flick.contentY = 0 }
-            }
-
+            // Never sent to the top when the text changes: an archive's names keep arriving, and another file empties the text first, which brings the view back by itself, even one still gliding.
             TextEdit {
                 id: body
                 width: Math.min(flick.width - 96, win.viewer === "markdown" ? 820 : 1200)

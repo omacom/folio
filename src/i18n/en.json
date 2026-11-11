@@ -40,11 +40,23 @@
     "one": "%Ln item will be deleted permanently. This can't be undone.",
     "other": "%Ln items will be deleted permanently. This can't be undone."
   },
+  "%Ln more": {
+    "one": "%Ln more",
+    "other": "%Ln more"
+  },
   "A folder, or a server's address like sftp://host/": "A folder, or a server's address like sftp://host/",
   "A name can't contain \"/\".": "A name can't contain \"/\".",
   "Add or remove one from the selection": "Add or remove one from the selection",
   "Alt+click": "Alt+click",
   "Archive": "Archive",
+  "At least %Ln items": {
+    "one": "At least %Ln item",
+    "other": "At least %Ln items"
+  },
+  "At least %Ln more": {
+    "one": "At least %Ln more",
+    "other": "At least %Ln more"
+  },
   "Back / ahead 5 seconds": "Back / ahead 5 seconds",
   "Back / forward (or the mouse's thumb buttons)": "Back / forward (or the mouse's thumb buttons)",
   "Bigger, smaller or normal tiles (or Ctrl+scroll)": "Bigger, smaller or normal tiles (or Ctrl+scroll)",
@@ -118,6 +130,7 @@
   "Couldn't open this PDF: %1": "Couldn't open this PDF: %1",
   "Couldn't play this file: %1": "Couldn't play this file: %1",
   "Couldn't read %1.": "Couldn't read %1.",
+  "Couldn't read this archive.": "Couldn't read this archive.",
   "Couldn't read this picture.": "Couldn't read this picture.",
   "Couldn't recreate %1.": "Couldn't recreate %1.",
   "Couldn't remove %1.": "Couldn't remove %1.",
@@ -159,6 +172,7 @@
     "one": "Emptied the trash: %Ln item deleted.",
     "other": "Emptied the trash: %Ln items deleted."
   },
+  "Empty": "Empty",
   "Empty Trash": "Empty Trash",
   "Empty Trash…": "Empty Trash…",
   "Empty the trash?": "Empty the trash?",
@@ -214,6 +228,8 @@
   "Keep Both": "Keep Both",
   "Keyboard shortcuts": "Keyboard shortcuts",
   "Kind": "Kind",
+  "Listing archives needs bsdtar, from the libarchive package.": "Listing archives needs bsdtar, from the libarchive package.",
+  "Listing this archive took too long.": "Listing this archive took too long.",
   "Making a preview…": "Making a preview…",
   "Merge": "Merge",
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.",
@@ -286,6 +302,7 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "Previewing PDFs needs Qt PDF, from the qt6-webengine package.",
   "Previous (%1)": "Previous (%1)",
   "Previous / next file": "Previous / next file",
+  "Reading the archive…": "Reading the archive…",
   "Recents": "Recents",
   "Redid compressing into %1.": "Redid compressing into %1.",
   "Redid copying %Ln items.": {
@@ -386,6 +403,7 @@
   "The drive is gone.": "The drive is gone.",
   "The drive stopped taking data (%1).": "The drive stopped taking data (%1).",
   "The drive was changed or removed.": "The drive was changed or removed.",
+  "The names in this archive are encrypted.": "The names in this archive are encrypted.",
   "The preview closed unexpectedly on %1.": "The preview closed unexpectedly on %1.",
   "There's nothing in %1 to extract.": "There's nothing in %1 to extract.",
   "There's nothing to redo.": "There's nothing to redo.",

@@ -43,6 +43,9 @@ Rectangle {
     // A picture's size or a text's opening lines once they've been read off
     // the UI thread.
     readonly property var info: backend.details
+    // Text files show their opening lines in a frame, archives bsdtar can list the names inside.
+    readonly property bool archive: hasItem && backend.listsArchive(item.mime)
+    readonly property bool listed: hasItem && (item.kind === "text" || archive)
     // Described once the folder's loaded has put the cursor back on its
     // item: a re-read leaves another item on the cursor's row for a moment,
     // and describing that would drop what's been read of this one.
@@ -68,14 +71,14 @@ Rectangle {
                 anchors.fill: parent
                 asynchronous: true
                 fillMode: Image.PreserveAspectFit
-                source: pane.hasItem && !pane.item.isDir && pane.item.kind !== "text" && !pane.pluginItem ? Format.thumb(pane.item.path, pane.item.mime, 512, pane.item.modified) : ""
+                source: pane.hasItem && !pane.item.isDir && !pane.listed && !pane.pluginItem ? Format.thumb(pane.item.path, pane.item.mime, 512, pane.item.modified) : ""
                 visible: status === Image.Ready
             }
 
-            // Text files show their opening lines instead of a picture.
+            // Text files show their opening lines instead of a picture, archives the names inside.
             Rectangle {
                 anchors.fill: parent
-                visible: pane.hasItem && pane.item.kind === "text"
+                visible: pane.listed
                 color: theme.background
                 border.width: 1
                 border.color: Qt.alpha(theme.foreground, 0.12)
@@ -90,11 +93,18 @@ Rectangle {
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
                 }
+                Sentence {
+                    visible: pane.archive && !pane.info.text
+                    margin: 14
+                    text: pane.info.sentence || qsTr("Reading the archive…")
+                    color: theme.secondaryForeground
+                    font.pixelSize: 12
+                }
             }
 
             Glyph {
                 anchors.centerIn: parent
-                visible: !big.visible && pane.hasItem && pane.item.kind !== "text"
+                visible: !big.visible && pane.hasItem && !pane.listed
                 name: pane.pluginItem ? pane.item.icon : pane.hasItem && pane.item.isDir ? "folder" : "file"
                 size: 72
                 stroke: 1.2

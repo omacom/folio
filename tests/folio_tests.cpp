@@ -29,6 +29,7 @@
 #include <QUrl>
 #include <QtConcurrent>
 #include <QtTest>
+#include <csignal>
 #include <fcntl.h>
 #include <signal.h>
 #include <sys/resource.h>
@@ -5552,7 +5553,15 @@ private slots:
         QCOMPARE(Previewer::viewerFor("text/markdown", false), QString("markdown"));
         QCOMPARE(Previewer::viewerFor("text/x-c++src", false), QString("text"));
         QCOMPARE(Previewer::viewerFor("application/x-shellscript", false), QString("text"));
-        QCOMPARE(Previewer::viewerFor("application/zip", false), QString("other"));
+        QCOMPARE(Previewer::viewerFor("application/zip", false), QString("archive"));
+        QCOMPARE(Previewer::viewerFor("application/x-compressed-tar", false), QString("archive"));
+        QCOMPARE(Previewer::viewerFor("application/x-xz-compressed-tar", false), QString("archive"));
+        QCOMPARE(Previewer::viewerFor("application/x-cpio", false), QString("archive"));
+        QCOMPARE(Previewer::viewerFor("application/x-iso9660-image", false), QString("archive"));
+        // bsdtar can't list a lone compressed file, so it stays as 0.2.0 showed it.
+        QCOMPARE(Previewer::viewerFor("application/gzip", false), QString("other"));
+        QCOMPARE(Previewer::viewerFor("application/zstd", false), QString("other"));
+        QCOMPARE(Previewer::viewerFor("application/x-sharedlib", false), QString("other"));
         QCOMPARE(Previewer::viewerFor("inode/directory", true), QString("folder"));
     }
 
@@ -5791,6 +5800,240 @@ private slots:
             };
             QTRY_COMPARE(misplaced(), QString("7"));
         }
+    }
+
+    void archiveNamesAreReadAsTheyArrive()
+    {
+        // bsdtar's output comes in parts that can end inside a line; a name
+        // is taken once its line is whole, decoded from bsdtar's escapes.
+        ArchiveNames names;
+        QVERIFY(names.add(".\n./\n./sub dir/\n./sub dir/caf\\303\\251 \\\\ two\\nlines.txt\n./ze"));
+        QVERIFY(!names.add("b"));
+        QVERIFY(names.add("ra.txt\n"));
+        QCOMPARE(names.text(false), QString::fromUtf8("At least 3 items\n\nsub dir/\nsub dir/café \\ two\\nlines.txt\nzebra.txt"));
+        QCOMPARE(names.text(true), QString::fromUtf8("3 items\n\nsub dir/\nsub dir/café \\ two\\nlines.txt\nzebra.txt"));
+
+        // Past the names shown, the rest are only counted.
+        ArchiveNames many;
+        QByteArray output;
+        for (int i = 0; i < ArchiveNames::shown + 3; ++i)
+            output += QByteArray::number(i) + ".txt\n";
+        QVERIFY(many.add(output));
+        QVERIFY(!many.add("more.txt\n"));
+        const QStringList lines = many.text(true).split('\n');
+        QCOMPARE(lines.size(), ArchiveNames::shown + 3);
+        QCOMPARE(lines.first(), QString("%1 items").arg(ArchiveNames::shown + 4));
+        QCOMPARE(lines.last(), QString("4 more"));
+        QCOMPARE(many.text(false).section('\n', -1), QString("At least 4 more"));
+
+        // Past the size shown too, however few the names are; a short one after a long one isn't shown out of its place.
+        ArchiveNames longOnes;
+        const QByteArray longName(int(ArchiveNames::shownBytes) * 2 / 5, 'n');
+        QVERIFY(longOnes.add(longName + "1\n" + longName + "2\n"));
+        QVERIFY(!longOnes.add(longName + "3\nshort.txt\n"));
+        const QStringList few = longOnes.text(true).split('\n');
+        QCOMPARE(few.size(), 5);
+        QCOMPARE(few.first(), QString("4 items"));
+        QCOMPARE(few.at(3), QString::fromLatin1(longName + "2"));
+        QCOMPARE(few.last(), QString("2 more"));
+
+        // A name that comes in many parts is one name, whatever part its line ends in.
+        ArchiveNames parts;
+        QVERIFY(!parts.add("one"));
+        QVERIFY(!parts.add(" long"));
+        QVERIFY(parts.add(" name\ntwo"));
+        QVERIFY(parts.add("\n"));
+        QCOMPARE(parts.text(true), QString("2 items\n\none long name\ntwo"));
+    }
+
+    void archivesListTheirNamesOffTheUiThread()
+    {
+        // The details pane and the preview window list an archive with
+        // bsdtar, and say so when there's nothing to list.
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("files/sub dir");
+        write(dir.filePath("files/sub dir/a b.txt"), "x");
+        write(dir.filePath("files/-n.txt"), "x");
+        QCOMPARE(QProcess::execute("bsdtar", {"-cf", dir.filePath("-files.tar"), "-C", dir.filePath("files"), "--", "sub dir", "-n.txt"}), 0);
+        QCOMPARE(QProcess::execute("bsdtar", {"-cf", dir.filePath("empty.tar"), "-T", "/dev/null"}), 0);
+        write(dir.filePath("notes.zip"), "hello\n");
+        const QString listing = "3 items\n\nsub dir/\nsub dir/a b.txt\n-n.txt";
+
+        Backend backend(dir.path());
+        auto describe = [&](const QString &name) {
+            backend.describe({{"path", dir.filePath(name)}, {"kind", "archive"}, {"mime", "application/x-tar"}});
+        };
+        describe("-files.tar");
+        QVERIFY(!backend.details().contains("text"));
+        QTRY_COMPARE(backend.details().value("text").toString(), listing);
+        describe("empty.tar");
+        QTRY_COMPARE(backend.details().value("sentence").toString(), QString("Empty"));
+        QVERIFY(backend.details().value("text").toString().isEmpty());
+        // bsdtar takes a text file for a list of names, then fails.
+        describe("notes.zip");
+        QTRY_COMPARE(backend.details().value("sentence").toString(), QString("Couldn't read this archive."));
+        QVERIFY(backend.details().value("text").toString().isEmpty());
+
+        Previewer previewer;
+        previewer.start(dir.filePath("-files.tar"), false, "name");
+        QCOMPARE(previewer.viewer(), QString("archive"));
+        QTRY_COMPARE(previewer.text(), listing);
+        QVERIFY(previewer.sentence().isEmpty());
+        // The commonest tarball, named by its extension as the folder lists it.
+        QCOMPARE(QProcess::execute("bsdtar", {"-J", "-cf", dir.filePath("-files.tar.xz"), "-C", dir.filePath("files"), "--", "sub dir", "-n.txt"}), 0);
+        previewer.show(dir.filePath("-files.tar.xz"));
+        QCOMPARE(previewer.viewer(), QString("archive"));
+        QTRY_COMPARE(previewer.text(), listing);
+
+        {
+            const auto restore = pathAt(dir.filePath("files"));
+            describe("-files.tar");
+            QTRY_COMPARE(backend.details().value("sentence").toString(),
+                         QString("Listing archives needs bsdtar, from the libarchive package."));
+        }
+    }
+
+    void archivePreviewKeepsItsPlaceWhileNamesArrive()
+    {
+        // A stand-in bsdtar that lists half of a.tar's names, and the rest once `go` is there.
+        QTemporaryDir tools, dir, home;
+        QCOMPARE(QProcess::execute("bsdtar", {"-cf", dir.filePath("a.tar"), "-T", "/dev/null"}), 0);
+        QCOMPARE(QProcess::execute("bsdtar", {"-cf", dir.filePath("b.tar"), "-T", "/dev/null"}), 0);
+        QCOMPARE(QProcess::execute("bsdtar", {"-cf", dir.filePath("c.tar"), "-T", "/dev/null"}), 0);
+        const QByteArray go = QFile::encodeName(tools.filePath("go"));
+        write(tools.filePath("bsdtar"), "#!/bin/sh\nPATH=/usr/bin:/bin\ncase \"$2\" in\n"
+                                        "*/a.tar) seq -f name-%g 1 200; while [ ! -e '" + go + "' ]; do sleep 0.05; done; seq -f name-%g 201 400 ;;\n"
+                                        "*) seq -f name-%g 1 400 ;;\n"
+                                        "esac\n");
+        QVERIFY(QFile::setPermissions(tools.filePath("bsdtar"), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+        const auto restore = pathAt(tools.path());
+
+        Theme theme(home.filePath("theme"));
+        Previewer previewer;
+        previewer.start(dir.filePath("a.tar"), false, "name");
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("previewer", &previewer);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        QQmlComponent component(&engine, QUrl::fromLocalFile(sourceFolder() + "/PreviewWindow.qml"));
+        std::unique_ptr<QObject> window(component.create());
+        QVERIFY2(window, qPrintable(component.errorString()));
+        const auto view = [&] { return window->property("view").value<QObject *>(); };
+        const auto place = [&] { return view()->property("contentY").toReal(); };
+
+        // Scrolled down while the rest is still to come: the place is kept when it comes.
+        QTRY_VERIFY(previewer.text().contains("name-200"));
+        QTRY_VERIFY(view() && view()->property("contentHeight").toReal() > view()->property("height").toReal() + 300);
+        QVERIFY(view()->setProperty("contentY", 300));
+        write(tools.filePath("go"), "x");
+        QTRY_VERIFY(previewer.text().contains("name-400"));
+        QCOMPARE(place(), 300.0);
+
+        // Another file starts at its top.
+        previewer.next();
+        QCOMPARE(previewer.item().value("name").toString(), QString("b.tar"));
+        QTRY_VERIFY(previewer.text().contains("name-400"));
+        QCOMPARE(place(), 0.0);
+
+        // And does so while the last one still glides.
+        const qreal glide = 3000;
+        QVERIFY(view()->setProperty("contentY", 300));
+        QVERIFY(QMetaObject::invokeMethod(view(), "flick", Q_ARG(qreal, 0), Q_ARG(qreal, -glide)));
+        QTRY_VERIFY(view()->property("moving").toBool());
+        previewer.next();
+        QCOMPARE(previewer.item().value("name").toString(), QString("c.tar"));
+        QTRY_VERIFY(previewer.text().contains("name-400"));
+        QTRY_VERIFY(!view()->property("moving").toBool());
+        QCOMPARE(place(), 0.0);
+    }
+
+    void helperKeepsOnlyTheStartOfWhatItsProgramComplainsOf()
+    {
+        // A program that fails with far more on stderr than a run keeps.
+        const qint64 printed = 64 * Helper::errorsKept;
+        Helper helper;
+        int ended = 0;
+        QByteArray errors;
+        helper.run("sh", {"-c", QString("echo first-line >&2; head -c %1 /dev/zero >&2; exit 3").arg(printed)}, 1024,
+                   [](const QByteArray &) {}, [&](int code, const QByteArray &said) { ended = code; errors = said; });
+        QTRY_COMPARE(ended, 3);
+        QCOMPARE(qint64(errors.size()), Helper::errorsKept);
+        QVERIFY(errors.startsWith("first-line\n"));
+    }
+
+    void helperStopsReadingForWhatsNoLongerShown()
+    {
+        // A stand-in bsdtar that never finishes on stuck.tar, says the
+        // names are encrypted on locked.7z, and lists one name otherwise.
+        QTemporaryDir dir;
+        const QString pid = dir.filePath("pid");
+        const QString kid = dir.filePath("kid");
+        write(dir.filePath("bsdtar"), "#!/bin/sh\nPATH=/usr/bin:/bin\ncase \"$2\" in\n"
+                                      "*/stuck.tar) echo $$ > '" + pid.toUtf8() + "'; exec sleep 30 ;;\n"
+                                      "*/family.tar) sleep 30 & echo $! > '" + kid.toUtf8() + "'; echo $$ > '" + pid.toUtf8() + "'; wait ;;\n"
+                                      "*/locked.7z) echo 'Encrypted file is unsupported' >&2; exit 1 ;;\n"
+                                      "esac\necho one.txt\n");
+        QVERIFY(QFile::setPermissions(dir.filePath("bsdtar"), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+        const auto restore = pathAt(dir.path());
+        auto stuckPid = [&] {
+            QFile file(pid);
+            return file.open(QIODevice::ReadOnly) ? pid_t(file.readAll().trimmed().toInt()) : pid_t(0);
+        };
+
+        // Moving on stops it at once, and what it said is never shown.
+        Backend backend(dir.path());
+        backend.describe({{"path", dir.filePath("stuck.tar")}, {"kind", "archive"}, {"mime", "application/x-tar"}});
+        QTRY_VERIFY(stuckPid() > 0);
+        const pid_t stuck = stuckPid();
+        backend.describe({{"path", dir.filePath("other.tar")}, {"kind", "archive"}, {"mime", "application/x-tar"}});
+        QTRY_VERIFY_WITH_TIMEOUT(::kill(stuck, 0) != 0, 2000);
+        QTRY_COMPARE(backend.details().value("text").toString(), QString("1 items\n\none.txt"));
+        backend.describe({{"path", dir.filePath("locked.7z")}, {"kind", "archive"}, {"mime", "application/x-7z-compressed"}});
+        QTRY_COMPARE(backend.details().value("sentence").toString(), QString("The names in this archive are encrypted."));
+
+        // What the program started (as bsdtar starts a program to unpack with) is stopped with it.
+        QFile::remove(pid);
+        backend.describe({{"path", dir.filePath("family.tar")}, {"kind", "archive"}, {"mime", "application/x-tar"}});
+        QTRY_VERIFY(stuckPid() > 0);
+        QFile started(kid);
+        QVERIFY(started.open(QIODevice::ReadOnly));
+        const pid_t child = pid_t(started.readAll().trimmed().toInt());
+        QVERIFY(child > 0 && !ended(child));
+        backend.describe({{"path", dir.filePath("other.tar")}, {"kind", "archive"}, {"mime", "application/x-tar"}});
+        QTRY_VERIFY_WITH_TIMEOUT(ended(child), 2000);
+
+        // A plugin's own item is no file on the disk: no program is asked about it.
+        QFile::remove(pid);
+        backend.describe({{"path", "notes:/stuck.tar"}, {"kind", "archive"}, {"mime", "application/x-tar"}});
+        QTest::qWait(200);
+        QCOMPARE(stuckPid(), pid_t(0));
+        QVERIFY(!backend.details().contains("sentence"));
+
+        // An archive that gives no name in its time took too long: it isn't called damaged.
+        {
+            Helper slow(nullptr, 300);
+            QString sentence;
+            Previewer::listArchive(slow, dir.filePath("stuck.tar"), [&](const QString &, const QString &said) { sentence = said; });
+            QTRY_COMPARE(sentence, QString("Listing this archive took too long."));
+        }
+
+        // Past its time it's stopped too, and so is one whose view goes.
+        QFile::remove(pid);
+        Helper helper(nullptr, 300);
+        int ended = 0;
+        helper.run("bsdtar", {"-tf", dir.filePath("stuck.tar")}, 1024, [](const QByteArray &) {},
+                   [&](int code, const QByteArray &) { ended = code; });
+        QTRY_VERIFY(stuckPid() > 0);
+        QTRY_COMPARE(ended, Helper::stopped);
+        QTRY_VERIFY_WITH_TIMEOUT(::kill(stuckPid(), 0) != 0, 2000);
+        QFile::remove(pid);
+        {
+            Helper going;
+            going.run("bsdtar", {"-tf", dir.filePath("stuck.tar")}, 1024, [](const QByteArray &) {},
+                      [](int, const QByteArray &) {});
+            QTRY_VERIFY(stuckPid() > 0);
+        }
+        QTRY_VERIFY_WITH_TIMEOUT(::kill(stuckPid(), 0) != 0, 2000);
     }
 
     void themeFallsBack()

@@ -9,6 +9,7 @@
 #include "foldermodel.h"
 #include "mounter.h"
 #include "plugins.h"
+#include "previewer.h"
 
 // Where the window is and how it got there: the current folder, its
 // breadcrumbs, back/forward history, and the actions that leave the folder
@@ -29,9 +30,10 @@ class Backend : public QObject {
     Q_PROPERTY(bool previewing READ previewing NOTIFY previewingChanged)
     // What the details pane shows beyond the listing, for the item last
     // given to describe(), once they've been read in the background: a
-    // picture's dimensions, a text's opening lines, or a trashed item's
-    // origin and deletion time; and under `plugins`, plugins' rows about a
-    // file or folder, [[label, value]...].
+    // picture's dimensions, a text's opening lines, an archive's names (or
+    // a sentence in their place), or a trashed item's origin and deletion
+    // time; and under `plugins`, plugins' rows about a file or folder,
+    // [[label, value]...].
     Q_PROPERTY(QVariantMap details READ details NOTIFY detailsChanged)
 
 public:
@@ -76,6 +78,8 @@ public:
     // The system's own name for a type ("JPEG image"), in the language of
     // the moment.
     Q_INVOKABLE static QString typeName(const QString &mime);
+    // Whether the details list an archive of this type's names.
+    Q_INVOKABLE static bool listsArchive(const QString &mime) { return Previewer::listsArchive(mime); }
     // The item to select once the folder has loaded (where we came from, or
     // what "Show in folder" asked for); empty means the first item.
     Q_INVOKABLE QString takeSelection();
@@ -185,4 +189,6 @@ private:
     // The pane the working directory follows: the one used last.
     static inline Backend *s_working = nullptr;
     void moveWorkingDirectory();
+    // Reads what only a helper program can, for the item described last.
+    Helper m_helper{this};
 };
