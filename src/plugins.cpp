@@ -795,11 +795,11 @@ bool Plugins::describe(const QString &path, const QString &mime, const QDateTime
 void Plugins::ask(const Manifest &plugin, const QString &path, const QString &key) {
     auto *watcher = new QFutureWatcher<std::optional<Run>>(this);
     connect(watcher, &QFutureWatcherBase::finished, this,
-            [this, watcher, id = plugin.id, path, key, generation = m_detailsGeneration] {
+            [this, watcher, id = plugin.id, path, key, generation = m_detailsGeneration[plugin.id]] {
         watcher->deleteLater();
         // What was said is forgotten meanwhile, so this answer may be
         // older than the one that replaces it.
-        if (generation != m_detailsGeneration)
+        if (generation != m_detailsGeneration.value(id))
             return;
         const std::optional<Run> run = watcher->result();
         if (!run) {
@@ -844,14 +844,20 @@ void Plugins::ask(const Manifest &plugin, const QString &path, const QString &ke
 }
 
 void Plugins::forgetDetails(const QString &plugin) {
-    if (plugin.isEmpty())
-        m_details.clear();
-    else
-        m_details.removeIf([&](const auto &it) { return it.key().startsWith(plugin + '\n'); });
     // Answers on their way are dropped too, and their callers asked to ask
-    // again (detailsChanged), so nothing waits on them.
-    m_asking.clear();
-    ++m_detailsGeneration;
+    // again (detailsChanged), so nothing waits on them. Only the plugin's
+    // own: another's still running answer is as good as it was.
+    if (plugin.isEmpty()) {
+        m_details.clear();
+        m_asking.clear();
+        for (quint64 &generation : m_detailsGeneration)
+            ++generation;
+        return;
+    }
+    const auto its = [&](const auto &it) { return it.key().startsWith(plugin + '\n'); };
+    m_details.removeIf(its);
+    m_asking.removeIf(its);
+    ++m_detailsGeneration[plugin];
 }
 
 void Plugins::run(const QString &itemPath, const Done &done) {

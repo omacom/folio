@@ -4126,6 +4126,36 @@ private slots:
         QVERIFY(plugins.details(files.filePath("late.txt"), when).isEmpty());
     }
 
+    void pluginDetailsOfOthersSurviveAPollChange()
+    {
+        // A plugin whose poll says something new is asked again about the
+        // file; another's answer on its way still counts, and isn't asked
+        // for twice.
+        QTemporaryDir folder, files;
+        write(files.filePath("late.txt"), "x");
+        writePlugin(folder.path(), "notes", R"({"folio": 1, "details": {"command": ["./describe"]}})",
+                    {{"describe", "#!/bin/sh\necho \"$1\" >> asked\nsleep 1\necho '[[\"Late\", \"yes\"]]'\n"}});
+        writePlugin(folder.path(), "pulse",
+                    R"({"folio": 1, "poll": {"command": ["./poll"]}, "details": {"command": ["./describe"]},
+                        "actions": [{"id": "bump", "label": "Bump", "command": ["./bump"]}]})",
+                    {{"poll", "#!/bin/sh\nprintf '{\"actions\": [\"bump\"], \"items\": [{\"id\": \"n\", \"name\": \"%s\"}]}' \"$(cat count 2>/dev/null || echo 0)\"\n"},
+                     {"bump", "#!/bin/sh\necho $(( $(cat count 2>/dev/null || echo 0) + 1 )) > count\n"},
+                     {"describe", "#!/bin/sh\necho '[]'\n"}});
+        Plugins plugins("en", {folder.path()}, files.filePath("folio.conf"));
+        QSignalSpy changed(&plugins, &Plugins::detailsChanged);
+        QVERIFY(changed.wait(5000));
+        const QString path = files.filePath("late.txt");
+        const QDateTime when = QFileInfo(path).lastModified();
+        plugins.describe(path, "text/plain", when, [] { return true; }, [] {});
+        changed.clear();
+        plugins.perform("pulse", "bump", {path}, {}, [](const Plugins::Result &) {});
+        QVERIFY(changed.wait(3000));
+        QTRY_COMPARE(plugins.details(path, when), QVariantList({QVariantList{"Late", "yes"}}));
+        QFile asked(folder.filePath("notes/asked"));
+        QVERIFY(asked.open(QIODevice::ReadOnly));
+        QCOMPARE(asked.readAll().count('\n'), 1);
+    }
+
     void backendShowsPluginDetailsForTheSelectedItem()
     {
         QTemporaryDir folder, home;
