@@ -59,7 +59,14 @@ ApplicationWindow {
 
     // The process works in the folder the window used last shows, in the
     // pane used last, for Omarchy's terminal key to open there.
-    onActiveChanged: if (active && activePane) activePane.paneBackend.keepWorkingDirectory()
+    // Back from elsewhere (a commit in a terminal), the plugins' marks and
+    // what they say in details are asked for again too.
+    onActiveChanged: {
+        if (active && activePane)
+            activePane.paneBackend.keepWorkingDirectory()
+        if (active)
+            plugins.recheck()
+    }
     onActivePaneChanged: if (active && activePane) activePane.paneBackend.keepWorkingDirectory()
 
     // Remembers the view between launches (~/.config/folio/folio.conf).
@@ -100,20 +107,28 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+Alt+N"; enabled: !win.typing; onActivated: win.openSplit() }
     Shortcut { sequence: "Ctrl+W"; enabled: win.split; onActivated: win.closeSplit() }
     Shortcut { sequence: "Ctrl+I"; onActivated: win.previewVisible = !win.previewVisible }
-    // Tab moves the keyboard: sidebar, left pane, right pane, the details
-    // (while there's an app to pick there), and around. Shift+Tab goes back.
+    // Tab moves the keyboard: sidebar, each pane's folder chip (while it
+    // does something) and its files, the details' controls (while there
+    // are any), and around. Shift+Tab goes back.
     Shortcut { sequence: "Tab"; enabled: !win.typing; onActivated: win.moveKeyboard(1) }
     Shortcut { sequence: "Shift+Backtab"; enabled: !win.typing; onActivated: win.moveKeyboard(-1) }
     function moveKeyboard(step) {
-        const stops = [sidebar, leftPane].concat(split ? [rightPane] : [], details.takesKeyboard ? [details] : [])
-        const here = sidebar.activeFocus ? sidebar : details.hasKeyboard ? details : activePane
-        const next = stops[(stops.indexOf(here) + step + stops.length) % stops.length]
-        if (next === sidebar)
-            sidebar.focusSidebar()
-        else if (next === details)
-            details.focusKeyboard()
-        else
-            next.focusView()
+        // Each stop: whether it has the keyboard, and how it takes it.
+        const stops = [{ has: () => sidebar.activeFocus, take: () => sidebar.focusSidebar() }]
+        for (const pane of [leftPane].concat(split ? [rightPane] : [])) {
+            if (pane.chipActs)
+                stops.push({ has: () => pane.chipFocused, take: () => pane.focusChip() })
+            stops.push({ pane: pane, has: () => pane.activeFocus && !pane.chipFocused, take: () => pane.focusView() })
+        }
+        if (details.takesKeyboard())
+            stops.push({ has: () => details.hasKeyboard(), take: () => details.focusKeyboard(step), within: () => details.moveKeyboard(step) })
+        let here = stops.findIndex(stop => stop.has())
+        if (here < 0)
+            here = stops.findIndex(stop => stop.pane === activePane)
+        // The details' controls are stepped through before leaving them.
+        if (stops[here].within && stops[here].within())
+            return
+        stops[(here + step + stops.length) % stops.length].take()
     }
 
     Item {

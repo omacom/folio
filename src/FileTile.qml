@@ -23,6 +23,9 @@ Item {
     required property var size
     required property var modified
     required property bool selected
+    // A plugin's mark on it: a letter on a file (M for modified in Git), a
+    // dot on a folder with something marked inside.
+    required property var mark
 
     property bool current: false
 
@@ -64,6 +67,13 @@ Item {
                 sourceComponent: tile.isDir ? folderArt : tile.kind === "item" ? itemArt : fileArt
             }
 
+            // Inside the folder's card, at its top right corner.
+            Mark {
+                x: 123.5 - width - 6
+                y: 6.5 + 6
+                of: tile.isDir ? tile.mark : undefined
+                dot: true
+            }
         }
     }
 
@@ -255,6 +265,13 @@ Item {
                 if (tile.kind === "audio" || tile.kind === "video")
                     return Qt.rect(0, 0, w, h)
                 return Qt.rect((w - 66) / 2, 0, 66, h)
+            }
+            // Over the top right corner of what's drawn.
+            Mark {
+                z: 1
+                x: parent.shown.x + parent.shown.width - width + 5
+                y: parent.shown.y - 5
+                of: tile.mark
             }
             Rectangle {
                 visible: tile.current || hover.hovered

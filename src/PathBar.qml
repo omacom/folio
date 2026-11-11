@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 
 // The breadcrumb path from the left edge; view buttons on the right. Back and
@@ -29,6 +30,12 @@ Rectangle {
         editing = false
         editDone()
     }
+
+    // Tab reaches the folder's chip while it does something; Escape hands
+    // the keyboard back to the files.
+    readonly property bool chipActs: chip.visible && chip.acts
+    readonly property bool chipFocused: chip.activeFocus
+    function focusChip() { chip.forceActiveFocus(Qt.TabFocusReason) }
 
     // /: search this folder and every folder below it, as you type. The
     // results replace the folder until Escape, or until going elsewhere.
@@ -159,6 +166,8 @@ Rectangle {
                         required property var modelData
                         required property int index
                         readonly property bool last: index === backend.crumbs.length - 1
+                        // Centred on the row, which a folder's chip makes taller.
+                        anchors.verticalCenter: parent.verticalCenter
                         spacing: 10
                         Text {
                             // No separator after / itself: "/ run", not "/ / run".
@@ -180,6 +189,89 @@ Rectangle {
                                 // The folder you're in opens the path for typing, as Ctrl+L does.
                                 cursorShape: crumb.last ? Qt.IBeamCursor : Qt.PointingHandCursor
                                 onClicked: crumb.last ? bar.editPath() : backend.navigate(crumb.modelData.path)
+                            }
+                        }
+                    }
+                }
+
+                // What a plugin says about the folder as a whole (the Git
+                // branch it's on, and how much has changed), after where it
+                // is. A button when the plugin gives it something to do.
+                AbstractButton {
+                    id: chip
+                    readonly property var info: backend.chip
+                    readonly property bool acts: !!info.action
+                    visible: !!info.text
+                    anchors.verticalCenter: parent.verticalCenter
+                    implicitHeight: 24
+                    implicitWidth: chipContent.implicitWidth + 20
+                    focusPolicy: Qt.NoFocus
+                    hoverEnabled: acts
+                    text: [info.text, info.detail, info.note].filter(part => !!part).join(" · ")
+                    Accessible.role: acts ? Accessible.Button : Accessible.StaticText
+                    Accessible.name: text
+                    Accessible.description: info.actionLabel || ""
+                    ToolTip.visible: hovered && acts
+                    ToolTip.text: info.actionLabel || ""
+                    ToolTip.delay: 600
+                    onClicked: if (acts) backend.perform(info.plugin, info.action, [backend.path])
+                    // Return and Space press it, as they do a dialog's buttons.
+                    Keys.onShortcutOverride: (event) => event.accepted = !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier))
+                                                                         && [Qt.Key_Space, Qt.Key_Return, Qt.Key_Enter, Qt.Key_Escape].includes(event.key)
+                    Keys.onReturnPressed: clicked()
+                    Keys.onEnterPressed: clicked()
+                    Keys.onEscapePressed: bar.editDone()
+                    // Gone with the keyboard on it (another folder), it
+                    // hands the keyboard back.
+                    onActsChanged: if (!acts && activeFocus) bar.editDone()
+                    onVisibleChanged: if (!visible && activeFocus) bar.editDone()
+
+                    background: Rectangle {
+                        radius: theme.radius > 0 ? height / 2 : 0
+                        color: Qt.alpha(theme.foreground, chip.hovered ? 0.12 : 0.06)
+                        // The ring of the control with the keyboard.
+                        Rectangle {
+                            visible: chip.activeFocus
+                            anchors.fill: parent
+                            anchors.margins: -3
+                            radius: parent.radius > 0 ? parent.radius + 3 : 0
+                            color: "transparent"
+                            border.width: 2
+                            border.color: theme.accent
+                        }
+                    }
+                    contentItem: Item {
+                        Row {
+                            id: chipContent
+                            anchors.centerIn: parent
+                            spacing: 6
+                            Glyph {
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: !!chip.info.icon
+                                name: chip.info.icon || "file"
+                                size: 14
+                                color: theme.secondaryForeground
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: chip.info.text || ""
+                                color: theme.foreground
+                                font.family: "monospace"
+                                font.pixelSize: 12
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: !!chip.info.detail
+                                text: chip.info.detail || ""
+                                color: theme.secondaryForeground
+                                font.pixelSize: 12
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: !!chip.info.note
+                                text: "· " + (chip.info.note || "")
+                                color: (chip.info.tone && theme.tones[chip.info.tone]) || theme.secondaryForeground
+                                font.pixelSize: 12
                             }
                         }
                     }

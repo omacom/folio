@@ -1,0 +1,20 @@
+{
+  "folio": 1,
+  "requires": ["git", "jq"],
+  "marks": { "command": ["./marks"] },
+  "details": { "command": ["./details"] },
+  "actions": [
+    { "id": "open", "label": "Open on GitHub", "submenu": "GitHub", "single": true,
+      "command": ["./github", "open"] },
+    { "id": "copy", "label": "Copy GitHub Link", "submenu": "GitHub", "single": true,
+      "command": ["./github", "copy"] },
+    { "id": "pin", "label": "Copy Link to This Version", "submenu": "GitHub", "single": true, "files": true,
+      "command": ["./github", "pin"] },
+    { "id": "history", "label": "History on GitHub", "submenu": "GitHub", "single": true,
+      "command": ["./github", "history"] },
+    { "id": "blame", "label": "Blame on GitHub", "submenu": "GitHub", "single": true, "files": true,
+      "command": ["./github", "blame"] },
+    { "id": "repo", "label": "Open Repository on GitHub", "menu": "none",
+      "command": ["./github", "repo"] }
+  ]
+}

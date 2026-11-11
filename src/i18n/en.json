@@ -32,6 +32,14 @@
   "%1 · %2": "%1 · %2",
   "%1 × %2": "%1 × %2",
   "%1: %2": "%1: %2",
+  "%Ln days ago": {
+    "one": "%Ln day ago",
+    "other": "%Ln days ago"
+  },
+  "%Ln hours ago": {
+    "one": "%Ln hour ago",
+    "other": "%Ln hours ago"
+  },
   "%Ln items": {
     "one": "%Ln item",
     "other": "%Ln items"
@@ -39,6 +47,18 @@
   "%Ln items will be deleted permanently. This can't be undone.": {
     "one": "%Ln item will be deleted permanently. This can't be undone.",
     "other": "%Ln items will be deleted permanently. This can't be undone."
+  },
+  "%Ln minutes ago": {
+    "one": "%Ln minute ago",
+    "other": "%Ln minutes ago"
+  },
+  "%Ln months ago": {
+    "one": "%Ln month ago",
+    "other": "%Ln months ago"
+  },
+  "%Ln years ago": {
+    "one": "%Ln year ago",
+    "other": "%Ln years ago"
   },
   "A folder, or a server's address like sftp://host/": "A folder, or a server's address like sftp://host/",
   "A name can't contain \"/\".": "A name can't contain \"/\".",
@@ -115,6 +135,7 @@
   "Couldn't move %1 to the trash: %2": "Couldn't move %1 to the trash: %2",
   "Couldn't move to the trash: %1": "Couldn't move to the trash: %1",
   "Couldn't open %1 with %2: %3": "Couldn't open %1 with %2: %3",
+  "Couldn't open %1.": "Couldn't open %1.",
   "Couldn't open this PDF: %1": "Couldn't open this PDF: %1",
   "Couldn't play this file: %1": "Couldn't play this file: %1",
   "Couldn't read %1.": "Couldn't read %1.",
@@ -447,6 +468,7 @@
   "file not found": "file not found",
   "incorrect password": "incorrect password",
   "invalid file format": "invalid file format",
+  "just now": "just now",
   "unknown error": "unknown error",
   "unsupported security scheme": "unsupported security scheme",
   "“%1” already exists in %2.": "“%1” already exists in %2."

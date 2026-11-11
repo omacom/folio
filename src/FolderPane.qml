@@ -53,10 +53,11 @@ FocusScope {
     readonly property bool typing: rename.visible || confirm.visible || clash.visible || formatDialog.visible || backend.mounter.asking || pathBar.editing || pathBar.searchFocused || (!!host && host.helpVisible)
     // Keys for the pane as a whole (undo, a new window, typing a path) work
     // wherever the keyboard is; keys for its files only while the files
-    // have it, not while Tab has put it in the sidebar or the details, where
-    // Delete or Space would act on files out of the keyboard's sight.
+    // have it, not while Tab has put it in the sidebar, the folder's chip
+    // or the details, where Delete or Space would act on files out of the
+    // keyboard's sight.
     readonly property bool paneKeys: active && !typing
-    readonly property bool keys: paneKeys && activeFocus
+    readonly property bool keys: paneKeys && activeFocus && !pathBar.chipFocused
     // What file actions act on: everything selected, or the item under
     // the cursor when nothing is.
     function selectedPaths() {
@@ -122,6 +123,11 @@ FocusScope {
     // details pane follow.
     onActiveFocusChanged: if (activeFocus && host) host.activePane = pane
     function focusView() { if (view.item) view.item.focusView() }
+    // The folder's chip in the path bar, a stop for Tab while it does
+    // something.
+    readonly property bool chipActs: pathBar.chipActs
+    readonly property bool chipFocused: pathBar.chipFocused
+    function focusChip() { pathBar.focusChip() }
 
     // Pins a folder to the sidebar, or unpins it when it's pinned already.
     function togglePin(target) {

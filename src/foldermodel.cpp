@@ -109,6 +109,7 @@ QVariant FolderModel::data(const QModelIndex &index, int role) const {
     case ItemCountRole: return e.itemCount;
     case SelectedRole: return m_selected.contains(e.path);
     case IconRole: return e.icon;
+    case MarkRole: return m_marks.value(e.name);
     }
     return {};
 }
@@ -118,7 +119,7 @@ QHash<int, QByteArray> FolderModel::roleNames() const {
         {NameRole, "name"}, {PathRole, "path"}, {IsDirRole, "isDir"}, {SizeRole, "size"},
         {ModifiedRole, "modified"}, {KindRole, "kind"}, {MimeRole, "mime"},
         {ExtensionRole, "extension"}, {ItemCountRole, "itemCount"}, {SelectedRole, "selected"},
-        {IconRole, "icon"},
+        {IconRole, "icon"}, {MarkRole, "mark"},
     };
 }
 
@@ -160,6 +161,14 @@ void FolderModel::setItems(const QVariantList &items) {
     // A plugin's view follows its polls.
     if (isPluginView(m_path))
         reload();
+}
+
+void FolderModel::setMarks(const QVariantMap &marks) {
+    if (marks == m_marks)
+        return;
+    m_marks = marks;
+    if (!m_entries.isEmpty())
+        emit dataChanged(index(0), index(m_entries.size() - 1), {MarkRole});
 }
 
 void FolderModel::setPath(const QString &path) {

@@ -220,8 +220,9 @@ FolioMenu {
     }
     // What plugins offer for these, as it stands when the menu opens: their
     // own actions here, and under Share (a Dropbox link, Taildrop,
-    // LocalSend). Each comes plain entries first, then submenus of a
-    // plugin's items. With nothing to share, there's no Share.
+    // LocalSend). Each comes plain entries first, then submenus (of a
+    // plugin's items, or of its actions that name one, like GitHub). With
+    // nothing to share, there's no Share.
     property var actions: []
     readonly property bool canShare: actions.some(action => action.menu === "share")
     // Menu's entries are numbered; plugins' actions go after Burn's.
@@ -233,7 +234,7 @@ FolioMenu {
     }
     Instantiator {
         id: mainActions
-        model: fileMenu.actions.filter(action => action.menu === "main" && !action.targets)
+        model: fileMenu.actions.filter(action => action.menu === "main" && !action.entries)
         delegate: FolioMenuItem {
             required property var modelData
             text: modelData.label
@@ -242,21 +243,27 @@ FolioMenu {
         onObjectAdded: (index, object) => fileMenu.insertItem(fileMenu.afterBurn() + index, object)
         onObjectRemoved: (index, object) => fileMenu.removeItem(object)
     }
-    Instantiator {
-        model: fileMenu.actions.filter(action => action.menu === "main" && !!action.targets)
-        delegate: FolioMenu {
-            id: mainTargets
+    // A plugin's submenu, in the menu itself or under Share: its items for
+    // one action, or its actions that name it.
+    Component {
+        id: submenu
+        FolioMenu {
+            id: entries
             required property var modelData
             title: modelData.label
             Repeater {
-                model: mainTargets.modelData.targets
+                model: entries.modelData.entries
                 FolioMenuItem {
                     required property var modelData
-                    text: modelData.name
-                    onTriggered: backend.perform(mainTargets.modelData.plugin, mainTargets.modelData.id, fileMenu.paths, modelData.id)
+                    text: modelData.label
+                    onTriggered: backend.perform(modelData.plugin, modelData.id, fileMenu.paths, modelData.target)
                 }
             }
         }
+    }
+    Instantiator {
+        model: fileMenu.actions.filter(action => action.menu === "main" && !!action.entries)
+        delegate: submenu
         // Submenus go after the plain entries, whichever are made first.
         onObjectAdded: (index, object) => fileMenu.insertMenu(fileMenu.afterBurn() + mainActions.count + index, object)
         onObjectRemoved: (index, object) => fileMenu.removeMenu(object)
@@ -269,7 +276,7 @@ FolioMenu {
         id: shareMenu
         title: qsTr("Share")
         Repeater {
-            model: fileMenu.actions.filter(action => action.menu === "share" && !action.targets)
+            model: fileMenu.actions.filter(action => action.menu === "share" && !action.entries)
             FolioMenuItem {
                 required property var modelData
                 text: modelData.label
@@ -278,20 +285,8 @@ FolioMenu {
         }
     }
     Instantiator {
-        model: fileMenu.actions.filter(action => action.menu === "share" && !!action.targets)
-        delegate: FolioMenu {
-            id: targets
-            required property var modelData
-            title: modelData.label
-            Repeater {
-                model: targets.modelData.targets
-                FolioMenuItem {
-                    required property var modelData
-                    text: modelData.name
-                    onTriggered: backend.perform(targets.modelData.plugin, targets.modelData.id, fileMenu.paths, modelData.id)
-                }
-            }
-        }
+        model: fileMenu.actions.filter(action => action.menu === "share" && !!action.entries)
+        delegate: submenu
         onObjectAdded: (index, object) => shareMenu.addMenu(object)
         onObjectRemoved: (index, object) => shareMenu.removeMenu(object)
     }

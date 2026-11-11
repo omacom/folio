@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QCache>
 #include <QDateTime>
 #include <QHash>
 #include <QJsonArray>
@@ -28,7 +29,8 @@ class QTimer;
 // What the sidebar, the views and the right-click menu show comes from the
 // latest output kept here, translated with the plugin's own catalog, so
 // drawing them never runs a command. The details pane's rows about a file
-// come from a command run for that file, kept here once it has answered.
+// come from a command run for that file, and the marks on a folder's files
+// from a command run for the folder, each kept here once it has answered.
 class Plugins : public QObject {
     Q_OBJECT
     // Each plugin's sidebar section, in plugin id order, while it has
@@ -45,11 +47,13 @@ class Plugins : public QObject {
     Q_PROPERTY(QVariantMap views READ views NOTIFY changed)
 
 public:
-    // An entry in the right-click menu: at its top level, or under Share.
+    // An entry in the right-click menu: at its top level, or under Share,
+    // either in a submenu of its own when it names one; or in no menu,
+    // for a folder's chip and the details pane's buttons only.
     struct Action {
-        QString id, label, busy;
+        QString id, label, busy, submenu;
         QStringList command, under, types;
-        bool share = false, toItems = false, files = false, single = false, detach = false;
+        bool share = false, listed = true, toItems = false, files = false, single = false, detach = false;
     };
     struct Manifest {
         QString id, dir;
@@ -64,6 +68,9 @@ public:
         // The command giving rows for the details pane, and the files and
         // folders it's run for.
         QStringList details, detailsUnder, detailsTypes;
+        // The command giving marks for a folder's files, and the folders
+        // it's run for.
+        QStringList marks, marksUnder;
         // The plugin's catalog for the language Folio shows.
         QHash<QString, QPair<QString, QJsonValue>> strings;
     };
@@ -98,7 +105,7 @@ public:
     };
     // What a finished action or run command asks the window to do.
     struct Result {
-        QString error, notice, copy, path;
+        QString error, notice, copy, path, url;
     };
     using Done = std::function<void(const Result &)>;
 
@@ -120,9 +127,11 @@ public:
     void setLanguage(const QString &language);
 
     // The actions that apply to these paths: plain entries first, then
-    // submenus, each in plugin id order. Each is {plugin, id, label, menu},
-    // `menu` being "main" or "share", and a submenu has `targets`:
-    // [{id, name}...].
+    // submenus, each in plugin id order. A plain entry is {plugin, id,
+    // label, menu, target}, `menu` being "main" or "share" and `target`
+    // empty; a submenu is {plugin,
+    // label, menu, entries: [{plugin, id, label, target}...]}, its entries
+    // being a plugin's items for one action, or the actions naming it.
     Q_INVOKABLE QVariantList actionsFor(const QStringList &paths) const;
     // Runs an action on the paths (sent to the item `target` for a
     // submenu), then hands `done` what it asks for. Returns what the status
@@ -130,10 +139,12 @@ public:
     QString perform(const QString &plugin, const QString &action, const QStringList &paths, const QString &target,
                     const Done &done);
 
-    // The rows plugins' details commands gave for the file or folder at
-    // `path` as it was at `modified`, translated: [[label, value]...], in
-    // plugin id order. Only what's known; describe() asks for the rest.
-    QVariantList details(const QString &path, const QDateTime &modified) const;
+    // What plugins' details commands said about the file or folder at
+    // `path` as it was at `modified`, translated, in plugin id order: one
+    // {title, rows, actions} each, a row being {label, value, tone, detail}
+    // and an action {plugin, id, label}. Only what's known; describe() asks
+    // for the rest.
+    QVariantList details(const QString &path, const QString &mime, const QDateTime &modified) const;
     // Runs the details commands that apply to `path` and haven't answered
     // for it as it was at `modified`, then calls `done` as each answers.
     // One whose turn comes once `wanted` (asked off the UI thread) says
@@ -143,6 +154,25 @@ public:
                   const std::function<bool()> &wanted, const std::function<void()> &done);
     // Runs an item's run command, the same way.
     void run(const QString &itemPath, const Done &done);
+
+    // The marks plugins' marks commands gave for the files in `folder`,
+    // translated: {items: {name: {tone, badge, label}}, chip: {plugin, text,
+    // detail, note, tone, icon, action, actionLabel}}, the first plugin by
+    // id winning a name or the chip. Only what's known; markFolder() asks.
+    QVariantMap folderMarks(const QString &folder) const;
+    // Runs the marks commands that apply to `folder`, then calls `done` as
+    // each answers. Unlike details, they're run again every time (the
+    // folder was read again, so its files may stand otherwise), and what
+    // they said last is kept meanwhile. One already running for the folder
+    // runs once more when it's done, rather than twice at once. One whose
+    // turn comes once `wanted` (asked off the UI thread) says the folder
+    // has been left isn't run.
+    void markFolder(const QString &folder, const std::function<bool()> &wanted, const std::function<void()> &done);
+    // Coming back to Folio, files may stand otherwise for what was done
+    // elsewhere (a commit in a terminal, which changes no file a folder
+    // watch sees): marks are asked for again, and what the marks plugins
+    // said in details is forgotten.
+    Q_INVOKABLE void recheck();
 
     // The item a plugin:<id>/<item> path names, if its plugin lists it.
     std::optional<Item> item(const QString &itemPath) const;
@@ -165,19 +195,28 @@ public:
     // `language`. What's skipped is said on standard error.
     static QList<Manifest> read(const QStringList &folders, const QString &language);
     static std::optional<Output> parseOutput(const QByteArray &json);
+    // A marks command's output, or nothing when it isn't one.
+    static std::optional<QJsonObject> parseMarks(const QByteArray &json);
     // Runs a command of the plugin's, with `timeout` milliseconds (or none
-    // when negative), stopping early once `stop` is set.
+    // when negative), stopping early once `stop` is set or `wanted` (if
+    // any) says it no longer is.
     static Run execute(const Manifest &plugin, const QStringList &command, const QProcessEnvironment &environment,
-                       int timeout, const std::atomic<bool> *stop = nullptr);
+                       int timeout, const std::atomic<bool> *stop = nullptr, const std::function<bool()> &wanted = {});
     // A plugin's text in Folio's language: a string, or [template, values...].
+    // A value {"date": ISO 8601} is said as how long ago it was.
     static QString text(const Manifest &plugin, const QJsonValue &value);
+    // A value as it's shown: a string or a number as it is, a date as how
+    // long ago it was, and [template, values...] as text.
+    static QString value(const Manifest &plugin, const QJsonValue &value);
+    // How long ago `when` was, as "3 days ago", from `now`.
+    static QString ago(const QDateTime &when, const QDateTime &now = QDateTime::currentDateTime());
     // ~ and ~/… as the home folder.
     static QString expand(const QString &path);
     // A plugin:<id>/<item> path, split into the plugin and the item.
     static std::pair<QString, QString> split(const QString &itemPath);
 
-    // Longest a poll may take, and a details command, which the details
-    // pane waits on; and most a command may print.
+    // Longest a poll may take, and a details or marks command, which the
+    // window waits on; and most a command may print.
     static constexpr int pollTimeout = 10000;
     static constexpr int detailsTimeout = 2000;
     static constexpr int maxOutput = 1 << 20;
@@ -194,6 +233,9 @@ signals:
     // or a plugin's poll saying something new), so the details pane asks
     // again.
     void detailsChanged();
+    // Folders' marks should be asked for again (the plugins read anew, or
+    // recheck()).
+    void marksStale();
 
 private:
     void reload(bool pollAll);
@@ -201,7 +243,10 @@ private:
     void poll(const QString &plugin);
     void rebuild();
     const Manifest *manifest(const QString &plugin) const;
-    bool available(const Manifest &plugin, const QString &action) const;
+    // Whether an action is offered for these paths, of these types.
+    bool offers(const Manifest &plugin, const Action &action, const QStringList &paths, const QStringList &mimes) const;
+    // Runs a plugin's marks command for `folder`, for those waiting on `key`.
+    void askMarks(const Manifest &plugin, const QString &folder, const QString &key);
     QProcessEnvironment environment(const Manifest &plugin) const;
     QString icon(const Manifest &plugin, const QString &name) const;
     QVariantMap itemMap(const Manifest &plugin, const Item &item) const;
@@ -227,7 +272,8 @@ private:
     QHash<QString, Output> m_outputs;
     QSet<QString> m_polling;
     QSet<QString> m_failing, m_failingDetails;
-    // What details commands printed, by plugin, path and modification time;
+    // What details commands printed ({title, rows, actions}), by plugin,
+    // path and modification time;
     // who waits for those still running, the first deciding whether its
     // command runs; and how often each plugin's have been forgotten, so
     // forgetting one plugin's leaves the others' answers on their way.
@@ -235,9 +281,22 @@ private:
         std::function<bool()> wanted;
         std::function<void()> done;
     };
-    QHash<QString, QJsonArray> m_details;
+    QHash<QString, QJsonObject> m_details;
     QHash<QString, QList<Asker>> m_asking;
     QHash<QString, quint64> m_detailsGeneration;
+    // What marks commands printed, by plugin and folder, and those still
+    // running: whether to run again once done, whether the folder is still
+    // wanted, and who waits.
+    struct Marking {
+        bool again = false;
+        std::function<bool()> wanted;
+        QList<std::function<void()>> done;
+    };
+    // Enough for the folders gone through lately; those shown are read
+    // often, so they're the last to go.
+    mutable QCache<QString, QJsonObject> m_folderMarks{200};
+    QHash<QString, Marking> m_marking;
+    QSet<QString> m_failingMarks;
     QHash<QString, QTimer *> m_timers;
     QHash<QString, QList<std::function<void()>>> m_queue;
     QVariantList m_sections;

@@ -1,0 +1,29 @@
+#!/bin/sh
+# A file or folder on GitHub, as the first argument asks: open its page,
+# copy a link to it (at the branch, or pinned to the commit checked out),
+# open its history or its blame, or open the repository's page (the
+# folder's chip).
+. ./remote.sh
+what=$1
+path=$2
+if [ -d "$path" ]; then folder=$path; name=; else folder=${path%/*}; name=${path##*/}; fi
+page=$(github "$folder")
+[ -n "$page" ] || { echo '{"error": "Not a GitHub repository."}'; exit 1; }
+# The path from the top of the repository, and the branch checked out, or
+# the commit when none is.
+file=$(git -C "$folder" rev-parse --show-prefix)$name
+commit=$(git -C "$folder" rev-parse HEAD 2>/dev/null)
+branch=$(git -C "$folder" branch --show-current)
+jq -nc --arg what "$what" --arg page "$page" --arg file "$file" --arg branch "${branch:-$commit}" --arg commit "$commit" \
+  --argjson folder "$([ -z "$name" ] && echo true || echo false)" '
+  # Each part of a path or a branch is percent-encoded, so a name like
+  # notes#1.md is not cut short at its # (or ?) by the browser.
+  def encoded: split("/") | map(@uri) | join("/");
+  ($file | rtrimstr("/") | if . == "" then "" else "/" + encoded end) as $at
+  | ($page + (if $folder then "/tree/" else "/blob/" end) + ($branch | encoded) + $at) as $link
+  | {open: {url: $link},
+     copy: {copy: $link, notice: "GitHub link copied."},
+     pin: {copy: ($page + "/blob/" + $commit + $at), notice: "Link to this version copied."},
+     history: {url: ($page + "/commits/" + ($branch | encoded) + $at)},
+     blame: {url: ($page + "/blame/" + ($branch | encoded) + $at)},
+     repo: {url: $page}}[$what]'

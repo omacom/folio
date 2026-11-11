@@ -1,0 +1,59 @@
+#!/bin/sh
+# What Git says of a file or folder, under a Git heading: how it stands,
+# the branch, the last commit that changed it and where the repository is
+# kept, with a button to open it on GitHub when it's there; outside a
+# repository, nothing.
+. ./remote.sh
+path=$1
+# Not on network mounts, where Git would cross the network for long.
+case $path in /run/user/*/gvfs/*) echo '[]'; exit 0 ;; esac
+# The path is a name, not a pattern: "notes[1].md" is only that file.
+export GIT_LITERAL_PATHSPECS=1
+if [ -d "$path" ]; then folder=$path; else folder=${path%/*}; fi
+# Where the folder is from the top, to tell the folder itself not being
+# tracked from something inside it not being tracked; outside a
+# repository, nothing more is asked.
+prefix=$(git -C "$folder" rev-parse --show-prefix 2>/dev/null) || { echo '[]'; exit 0; }
+# The last commit, given a second at most: in a long history, finding one
+# for a file left alone for years can take longer than Folio waits.
+last=$(timeout 1 git -C "$folder" log -1 --format='%s%x1f%an%x1f%aI%x1f%h' -- "$path" 2>/dev/null)
+# How many lines of a file changed since the last commit.
+[ "$folder" = "$path" ] || lines=$(git -C "$folder" diff --numstat HEAD -- "$path" 2>/dev/null | head -1)
+
+git -C "$folder" --no-optional-locks status --porcelain=v2 -z --branch --untracked-files=normal --ignored=matching \
+  -- "$path" 2>/dev/null |
+  jq -Rsc -L . --arg prefix "$prefix" --arg last "$last" --arg lines "$lines" \
+  --arg remote "$(remote "$folder")" --arg github "$(github "$folder")" --argjson folder "$([ "$folder" = "$path" ] && echo true || echo false)" '
+  include "git";
+  # The headers, and the first path changed, which for a file is the file;
+  # for a folder, what is ignored inside it is left out.
+  reduce records as $r ({head: {}};
+    if $r.header then .head[$r.header] = $r.value
+    elif ($folder | not) or $r.xy != "!!" or ($prefix | startswith($r.path)) then .changed //= $r
+    else . end)
+  | .head as $head
+  | .changed as $changed
+  | ($last | split("\u001f")) as $commit
+  | ($lines | split("\t")) as $counts
+  | ($head | branch) as $branch
+  | (if $folder then
+       if $changed == null then {value: ["Unchanged"]}
+       elif $changed.xy == "!!" then null
+       elif $changed.xy == "??" and ($prefix | startswith($changed.path)) then {value: ["Not tracked"], tone: "untracked"}
+       else {value: ["Changes inside"], tone: "changed"} end
+     else ($changed.xy // "" | kind) as $kind
+       | if $changed == null then {value: ["Unchanged"]}
+         elif $kind == "modified" and ($counts[0] // "" | test("^[0-9]+$")) then
+           {value: ["Modified · %1", "+\($counts[0]) −\($counts[1])"], tone: "modified"}
+         elif ($kind | mark) then {value: [$kind | mark | .label], tone: $kind}
+         else null end
+     end) as $state
+  | if $head["branch.oid"] == null then []
+    else {title: "Git",
+          rows: ([$state | select(.) | {label: "Status"} + .]
+                 + [{label: "Branch", value: ([$branch.name, $branch.ab] | map(select(. != "")) | join(" "))}]
+                 + if $last != "" then [{label: "Last commit", value: $commit[0],
+                                        detail: ["%1 · %2 · %3", $commit[1], {date: $commit[2]}, $commit[3]]}] else [] end
+                 + if $remote != "" then [{label: "Remote", value: $remote}] else [] end),
+          actions: (if $github != "" then ["open"] else [] end)}
+    end'

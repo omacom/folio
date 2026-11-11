@@ -64,6 +64,8 @@ Item {
         case "peer": return box(4, 4, 16, 11, r) + "M9 20h6M12 15v5"
         // Machines joined to one another: a network of them.
         case "tailnet": return circle(12, 5, 2.5) + circle(5, 18, 2.5) + circle(19, 18, 2.5) + "M10.8 7.2L6.2 15.8M13.2 7.2l4.6 8.6M7.5 18h9"
+        // A branch leaving a line of commits, as Git draws them.
+        case "branch": return circle(6, 5, 2) + circle(6, 19, 2) + circle(18, 6, 2) + "M6 7v10M18 8Q18 13 12 13Q6 13 6 17"
         case "folder": return folderBox()
         case "back": return "M15 6l-6 6 6 6"
         case "forward": return "M9 6l6 6-6 6"

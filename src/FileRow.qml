@@ -20,6 +20,8 @@ Item {
     required property int itemCount
     required property string icon
     required property bool selected
+    // A plugin's mark on it, shown as a dot after the name.
+    required property var mark
 
     property bool current: false
     // In a column to the left: the folder the next column is showing.
@@ -113,12 +115,25 @@ Item {
         // mirrored: left as they are, they'd follow their own script, and a
         // Latin name would sit at the far end of a right-to-left row.
         Text {
+            id: nameText
             Layout.fillWidth: true
             Layout.minimumWidth: 120
+            // Room for the mark's dot after the name, even when cut short;
+            // padding isn't mirrored, so it's put at the end by hand.
+            readonly property int room: row.mark ? 14 : 0
+            leftPadding: LayoutMirroring.enabled ? room : 0
+            rightPadding: LayoutMirroring.enabled ? 0 : room
             horizontalAlignment: Text.AlignLeft
             text: row.name
             color: row.current ? theme.accent : theme.foreground
             elide: Text.ElideMiddle
+            Mark {
+                anchors.left: parent.left
+                anchors.leftMargin: Math.min(nameText.contentWidth, nameText.width - nameText.room) + 6
+                anchors.verticalCenter: parent.verticalCenter
+                of: row.mark
+                dot: true
+            }
         }
         Text {
             visible: row.showSize

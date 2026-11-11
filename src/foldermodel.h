@@ -46,6 +46,7 @@ public:
         ItemCountRole,
         SelectedRole,
         IconRole,
+        MarkRole,
     };
 
     struct Entry {
@@ -85,6 +86,8 @@ public:
     void setQuery(const QString &query);
     QVariantList items() const { return m_items; }
     void setItems(const QVariantList &items);
+    // Plugins' marks on the files, by name: {tone, badge, label} each.
+    void setMarks(const QVariantMap &marks);
 
     void setPath(const QString &path);
     Q_INVOKABLE void reload();
@@ -175,6 +178,7 @@ private:
     QString m_sort = "name";
     QString m_query;
     QVariantList m_items;
+    QVariantMap m_marks;
     quint64 m_generation = 0;
     // The newest listing's generation, shared with the background listing,
     // search and folder counts, so work that's been overtaken (more typing,

@@ -14,7 +14,7 @@ jobs:
     steps:
       - name: Install the build and test dependencies
         # Arch is rolling, so update first; poppler is for the PDF thumbnail
-        # test, which skips without it, and jq for the Tailscale plugin's.
+        # test, which skips without it, and git and jq for the bundled plugins'.
         run: |
           pacman -Syu --noconfirm --needed \
             base-devel cmake git \

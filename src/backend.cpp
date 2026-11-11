@@ -4,6 +4,7 @@
 
 #include <QClipboard>
 #include <QCoreApplication>
+#include <QDesktopServices>
 #include <QDir>
 #include <QFileInfo>
 #include <QFutureWatcher>
@@ -247,7 +248,48 @@ void Backend::setPlugins(Plugins *plugins) {
     m_plugins = plugins;
     // A view's title and a mount's name come from the plugins.
     connect(plugins, &Plugins::changed, this, &Backend::placeChanged);
-    connect(plugins, &Plugins::detailsChanged, this, [this] { showPluginRows(askPlugins()); });
+    connect(plugins, &Plugins::detailsChanged, this, [this] {
+        showPluginRows(askPlugins());
+        // Read anew (F5, another language), the marks' text may be other.
+        showMarks();
+    });
+    // Each time the folder is read, its files may stand otherwise.
+    connect(&m_folder, &FolderModel::pathChanged, this, [this] {
+        ++*m_marking;
+        showMarks();
+    });
+    connect(&m_folder, &FolderModel::loaded, this, &Backend::askMarks);
+    // The plugins read (they may be read after the folder), or files
+    // changed elsewhere.
+    connect(plugins, &Plugins::marksStale, this, &Backend::askMarks);
+}
+
+void Backend::showMarks() {
+    const QVariantMap marks = m_plugins ? m_plugins->folderMarks(path()) : QVariantMap();
+    m_folder.setMarks(marks.value("items").toMap());
+    if (const QVariantMap chip = marks.value("chip").toMap(); chip != m_chip) {
+        m_chip = chip;
+        emit chipChanged();
+    }
+}
+
+void Backend::askMarks() {
+    // Only a real folder's files; and not again for each search typed,
+    // which changes what's listed, not how the folder's files stand.
+    const QString folder = path();
+    if (!m_plugins || !folder.startsWith('/') || !m_folder.query().isEmpty())
+        return;
+    const quint64 generation = *m_marking;
+    QPointer<Backend> self(this);
+    m_plugins->markFolder(
+        folder, [latest = m_marking, generation] { return *latest == generation; },
+        [self, folder] {
+            if (self && self->path() == folder) {
+                self->showMarks();
+                // What the details offer follows the folder's marks too.
+                self->showPluginRows(true);
+            }
+        });
 }
 
 void Backend::openItem(const QString &path) {
@@ -340,6 +382,8 @@ void Backend::finish(int run, const Plugins::Result &result) {
         showNotice(result.notice);
     if (!result.path.isEmpty())
         navigate(Plugins::expand(result.path));
+    if (!result.url.isEmpty() && !QDesktopServices::openUrl(QUrl(result.url)))
+        setMessage(tr("Couldn't open %1.").arg(result.url));
 }
 
 void Backend::showNotice(const QString &notice) {
@@ -432,6 +476,7 @@ QVariantMap Backend::details() const {
 void Backend::showPluginRows(bool keep) {
     const QVariantList rows = m_plugins && !m_pluginItem.isEmpty()
                                   ? m_plugins->details(m_pluginItem.value("path").toString(),
+                                                       m_pluginItem.value("mime").toString(),
                                                        m_pluginItem.value("modified").toDateTime())
                                   : QVariantList();
     if (rows == m_pluginRows || (keep && rows.isEmpty()))

@@ -131,14 +131,34 @@ QString detailsKey(const QString &plugin, const QString &path, const QDateTime &
     return plugin + '\n' + path + '\n' + QString::number(modified.toMSecsSinceEpoch());
 }
 
-// Rows for the details pane, [label, value] each: the label is the
-// plugin's text, translated; the value is shown as it is.
+// Where a marks command's answer for a folder is kept.
+QString marksKey(const QString &plugin, const QString &folder) {
+    return plugin + '\n' + folder;
+}
+
+// A file's type by its name only: reading its start to tell would wait on
+// its disk while a menu opens.
+QString mimeOf(const QString &path) {
+    return QFileInfo(path).isDir() ? QStringLiteral("inode/directory")
+                                   : QMimeDatabase().mimeTypeForFile(path, QMimeDatabase::MatchExtension).name();
+}
+
+// Rows for the details pane, each [label, value] or {label, value, tone,
+// detail}, as {label, value, tone, detail}: the label is the plugin's text,
+// translated; the value and the detail are shown as Plugins::value says.
 QVariantList rowsOf(const Plugins::Manifest &plugin, const QJsonArray &rows) {
     QVariantList shown;
     for (const QJsonValue &row : rows) {
         const QJsonArray pair = row.toArray();
-        if (pair.size() == 2)
-            shown << QVariant(QVariantList{Plugins::text(plugin, pair.at(0)), pair.at(1).toVariant().toString()});
+        if (row.isArray() && pair.size() != 2)
+            continue;
+        const QJsonObject o = row.isObject() ? row.toObject() : QJsonObject{{"label", pair.at(0)}, {"value", pair.at(1)}};
+        if (!o.contains("label") || !o.contains("value"))
+            continue;
+        shown << QVariantMap{{"label", Plugins::text(plugin, o.value("label"))},
+                             {"value", Plugins::value(plugin, o.value("value"))},
+                             {"tone", o.value("tone").toString()},
+                             {"detail", o.contains("detail") ? Plugins::value(plugin, o.value("detail")) : QString()}};
     }
     return shown;
 }
@@ -253,13 +273,17 @@ std::optional<Plugins::Manifest> Plugins::parseManifest(const QByteArray &json, 
         if (std::any_of(m.actions.begin(), m.actions.end(), [&](const Action &a) { return a.id == action.id; }))
             return fail("two actions are called " + action.id);
         const QString menu = entry.value("menu").toString("main");
-        if (menu != "main" && menu != "share")
-            return fail("an action's menu is \"main\" or \"share\"");
+        if (menu != "main" && menu != "share" && menu != "none")
+            return fail("an action's menu is \"main\", \"share\" or \"none\"");
         action.share = menu == "share";
+        action.listed = menu != "none";
         action.command = *command;
         action.under = *under;
         action.types = *types;
         action.toItems = entry.value("to").toString() == "items";
+        action.submenu = entry.value("submenu").toString();
+        if (action.toItems && !action.submenu.isEmpty())
+            return fail("an action to items is a submenu already, so it can't be in another");
         action.files = entry.value("files").toBool();
         action.single = entry.value("single").toBool();
         action.detach = entry.value("detach").toBool();
@@ -277,6 +301,16 @@ std::optional<Plugins::Manifest> Plugins::parseManifest(const QByteArray &json, 
         m.details = *command;
         m.detailsUnder = *under;
         m.detailsTypes = *types;
+    }
+
+    if (root.contains("marks")) {
+        const QJsonObject marks = root.value("marks").toObject();
+        const auto command = commandOf(marks.value("command"));
+        const auto under = stringList(marks.value("under"));
+        if (!command || !under)
+            return fail("\"marks\" has no command");
+        m.marks = *command;
+        m.marksUnder = *under;
     }
     return m;
 }
@@ -363,8 +397,17 @@ std::optional<Plugins::Output> Plugins::parseOutput(const QByteArray &json) {
     return output;
 }
 
+std::optional<QJsonObject> Plugins::parseMarks(const QByteArray &json) {
+    const QJsonDocument document = QJsonDocument::fromJson(json);
+    const QJsonObject root = document.object();
+    if (!document.isObject() || (root.contains("items") && !root.value("items").isObject())
+        || (root.contains("chip") && !root.value("chip").isObject()))
+        return {};
+    return root;
+}
+
 Plugins::Run Plugins::execute(const Manifest &plugin, const QStringList &command, const QProcessEnvironment &environment,
-                              int timeout, const std::atomic<bool> *stop) {
+                              int timeout, const std::atomic<bool> *stop, const std::function<bool()> &wanted) {
     Run run;
     QProcess process;
     if (!prepare(process, plugin, command, environment))
@@ -426,7 +469,7 @@ Plugins::Run Plugins::execute(const Manifest &plugin, const QStringList &command
     QTimer check;
     QObject::connect(&check, &QTimer::timeout, &loop, [&] {
         run.timedOut = run.timedOut || (timeout >= 0 && clock.elapsed() > timeout);
-        if (run.timedOut || (stop && *stop))
+        if (run.timedOut || (stop && *stop) || (wanted && !wanted()))
             end();
     });
     check.start(50);
@@ -442,8 +485,15 @@ Plugins::Run Plugins::execute(const Manifest &plugin, const QStringList &command
 }
 
 QString Plugins::text(const Manifest &plugin, const QJsonValue &value) {
-    auto translated = [&](const QString &english) {
-        const QJsonValue t = plugin.strings.value(english).second;
+    // A translation can have plural forms, {"one": …, "other": …}, the one
+    // for a template's first value, a count, as Folio's own strings do.
+    auto translated = [&](const QString &english, const QJsonValue &count = {}) {
+        const auto [code, t] = plugin.strings.value(english);
+        if (t.isObject() && count.isDouble()) {
+            const QJsonObject forms = t.toObject();
+            const QString form = forms.value(Translator::pluralCategory(code, count.toInteger())).toString();
+            return form.isEmpty() ? forms.value("other").toString(english) : form;
+        }
         return t.isString() ? t.toString() : english;
     };
     if (value.isString())
@@ -452,7 +502,7 @@ QString Plugins::text(const Manifest &plugin, const QJsonValue &value) {
     if (parts.isEmpty() || !parts.first().isString())
         return {};
     // Filled in one pass, so a value holding "%1" stays as it is.
-    const QString pattern = translated(parts.first().toString());
+    const QString pattern = translated(parts.first().toString(), parts.at(1));
     static const QRegularExpression place("%(\\d+)");
     QString filled;
     qsizetype at = 0;
@@ -460,10 +510,36 @@ QString Plugins::text(const Manifest &plugin, const QJsonValue &value) {
         const auto match = it.next();
         const int n = match.captured(1).toInt();
         filled += pattern.mid(at, match.capturedStart() - at);
-        filled += n >= 1 && n < parts.size() ? parts.at(n).toVariant().toString() : match.captured();
+        filled += n >= 1 && n < parts.size() ? Plugins::value(plugin, parts.at(n)) : match.captured();
         at = match.capturedEnd();
     }
     return filled + pattern.mid(at);
+}
+
+QString Plugins::value(const Manifest &plugin, const QJsonValue &value) {
+    if (value.isArray())
+        return text(plugin, value);
+    if (value.isObject()) {
+        const QDateTime when = QDateTime::fromString(value.toObject().value("date").toString(), Qt::ISODate);
+        return when.isValid() ? ago(when) : QString();
+    }
+    return value.toVariant().toString();
+}
+
+QString Plugins::ago(const QDateTime &when, const QDateTime &now) {
+    // A date ahead of the clock (another machine's) is just now too.
+    const qint64 seconds = when.secsTo(now), days = seconds / 86400;
+    if (seconds < 60)
+        return tr("just now");
+    if (seconds < 3600)
+        return tr("%Ln minutes ago", "", int(seconds / 60));
+    if (seconds < 86400)
+        return tr("%Ln hours ago", "", int(seconds / 3600));
+    if (days < 31)
+        return tr("%Ln days ago", "", int(days));
+    if (days < 365)
+        return tr("%Ln months ago", "", int(days / 30));
+    return tr("%Ln years ago", "", int(days / 365));
 }
 
 QString Plugins::expand(const QString &path) {
@@ -540,6 +616,15 @@ void Plugins::apply(const QList<Manifest> &manifests) {
     rebuild();
     // Read anew, the plugins' details commands and catalogs may be others.
     emit detailsChanged();
+    emit marksStale();
+}
+
+void Plugins::recheck() {
+    for (const Manifest &m : std::as_const(m_manifests))
+        if (!m.marks.isEmpty())
+            forgetDetails(m.id);
+    emit detailsChanged();
+    emit marksStale();
 }
 
 const Plugins::Manifest *Plugins::manifest(const QString &plugin) const {
@@ -692,53 +777,73 @@ QString Plugins::nameForMount(const QString &folder) const {
     return {};
 }
 
-bool Plugins::available(const Manifest &plugin, const QString &action) const {
+bool Plugins::offers(const Manifest &plugin, const Action &action, const QStringList &paths,
+                     const QStringList &mimes) const {
     // A plugin with a poll offers its actions only while the poll works,
     // and then only those it names, if it names any.
-    if (plugin.poll.isEmpty())
-        return true;
-    if (!m_outputs.contains(plugin.id))
+    if (!plugin.poll.isEmpty()) {
+        if (!m_outputs.contains(plugin.id))
+            return false;
+        const auto &named = m_outputs.value(plugin.id).actions;
+        if (named && !named->contains(action.id))
+            return false;
+    }
+    if ((action.single && paths.size() > 1) || (action.files && mimes.contains("inode/directory")))
         return false;
-    const auto &actions = m_outputs.value(plugin.id).actions;
-    return !actions || actions->contains(action);
+    for (qsizetype i = 0; i < paths.size(); ++i)
+        if (!fits(action.under, action.types, paths[i], mimes[i]))
+            return false;
+    // A plugin with marks offers its actions for a file once its marks
+    // command has answered for the file's folder, and then only those it
+    // names, if it names any: what it offers can depend on where the file
+    // is (a repository on GitHub).
+    if (plugin.marks.isEmpty())
+        return true;
+    return std::all_of(paths.begin(), paths.end(), [&](const QString &path) {
+        const QString folder = QFileInfo(path).path();
+        if (!fits(plugin.marksUnder, {}, folder + "/", {}))
+            return true;
+        const QJsonObject *said = m_folderMarks.object(marksKey(plugin.id, folder));
+        return said && (!said->contains("actions") || said->value("actions").toArray().contains(action.id));
+    });
 }
 
 QVariantList Plugins::actionsFor(const QStringList &paths) const {
     if (paths.isEmpty())
         return {};
-    // Types by name only: reading each file's start to tell would wait on
-    // its disk while the menu opens.
     QStringList mimes;
-    QMimeDatabase database;
     for (const QString &path : paths)
-        mimes << (QFileInfo(path).isDir() ? QStringLiteral("inode/directory")
-                                          : database.mimeTypeForFile(path, QMimeDatabase::MatchExtension).name());
-    const bool folders = mimes.contains("inode/directory");
-    auto applies = [&](const Action &action) {
-        for (qsizetype i = 0; i < paths.size(); ++i)
-            if (!fits(action.under, action.types, paths[i], mimes[i]))
-                return false;
-        return true;
-    };
+        mimes << mimeOf(path);
     QVariantList plain, menus;
     for (const Manifest &m : m_manifests) {
+        // Where each of the plugin's named submenus is in `menus`, by its
+        // menu and title, so the actions naming it go in together.
+        QHash<QString, qsizetype> named;
         for (const Action &entry : m.actions) {
-            if (!available(m, entry.id) || (entry.single && paths.size() > 1) || (entry.files && folders)
-                || !applies(entry))
+            if (!entry.listed || !offers(m, entry, paths, mimes))
                 continue;
-            QVariantMap shown{{"plugin", m.id}, {"id", entry.id}, {"label", text(m, entry.label)},
-                              {"menu", entry.share ? "share" : "main"}};
-            if (!entry.toItems) {
+            const QString label = text(m, entry.label), menu = entry.share ? "share" : "main";
+            if (entry.toItems) {
+                QVariantList entries;
+                for (const Item &item : m_outputs.value(m.id).items)
+                    entries << QVariantMap{{"plugin", m.id}, {"id", entry.id}, {"label", item.name}, {"target", item.id}};
+                if (!entries.isEmpty())
+                    menus << QVariantMap{{"plugin", m.id}, {"label", label}, {"menu", menu}, {"entries", entries}};
+                continue;
+            }
+            const QVariantMap shown{{"plugin", m.id}, {"id", entry.id}, {"label", label}, {"menu", menu}, {"target", QString()}};
+            if (entry.submenu.isEmpty()) {
                 plain << shown;
                 continue;
             }
-            QVariantList targets;
-            for (const Item &item : m_outputs.value(m.id).items)
-                targets << QVariantMap{{"id", item.id}, {"name", item.name}};
-            if (targets.isEmpty())
-                continue;
-            shown.insert("targets", targets);
-            menus << shown;
+            const QString key = menu + '\n' + entry.submenu;
+            if (!named.contains(key)) {
+                named.insert(key, menus.size());
+                menus << QVariantMap{{"plugin", m.id}, {"label", text(m, entry.submenu)}, {"menu", menu}, {"entries", QVariantList()}};
+            }
+            QVariantMap submenu = menus.at(named.value(key)).toMap();
+            submenu.insert("entries", submenu.value("entries").toList() << QVariant(shown));
+            menus[named.value(key)] = submenu;
         }
     }
     return plain + menus;
@@ -767,11 +872,26 @@ QString Plugins::perform(const QString &plugin, const QString &action, const QSt
     return picked->busy.isEmpty() ? QString() : text(*m, QJsonArray{picked->busy, name});
 }
 
-QVariantList Plugins::details(const QString &path, const QDateTime &modified) const {
-    QVariantList rows;
-    for (const Manifest &m : m_manifests)
-        rows << rowsOf(m, m_details.value(detailsKey(m.id, path, modified)));
-    return rows;
+QVariantList Plugins::details(const QString &path, const QString &mime, const QDateTime &modified) const {
+    QVariantList sections;
+    for (const Manifest &m : m_manifests) {
+        const auto said = m_details.constFind(detailsKey(m.id, path, modified));
+        if (said == m_details.cend())
+            continue;
+        const QVariantList rows = rowsOf(m, said->value("rows").toArray());
+        // Buttons for the plugin's actions it names, while they apply.
+        QVariantList actions;
+        for (const QJsonValue &id : said->value("actions").toArray())
+            for (const Action &action : m.actions)
+                if (action.id == id.toString() && !action.toItems && offers(m, action, {path}, {mime}))
+                    actions << QVariantMap{{"plugin", m.id}, {"id", action.id}, {"label", text(m, action.label)}};
+        if (rows.isEmpty() && actions.isEmpty())
+            continue;
+        const QJsonValue title = said->value("title");
+        sections << QVariantMap{{"plugin", m.id}, {"title", title.isUndefined() ? QString() : text(m, title)},
+                                {"rows", rows}, {"actions", actions}};
+    }
+    return sections;
 }
 
 bool Plugins::describe(const QString &path, const QString &mime, const QDateTime &modified,
@@ -815,8 +935,10 @@ void Plugins::ask(const Manifest &plugin, const QString &path, const QString &ke
         }
         // One that fails or takes too long has no rows for the file,
         // and says why once each time it goes from working to failing.
+        // Its rows can come alone, or with a title and buttons.
         const QJsonDocument said = run->ok() ? QJsonDocument::fromJson(run->out) : QJsonDocument();
-        if (said.isArray()) {
+        const QJsonObject shown = said.isArray() ? QJsonObject{{"rows", said.array()}} : said.object();
+        if (shown.value("rows").isArray()) {
             m_failingDetails.remove(id);
         } else if (!m_failingDetails.contains(id)) {
             complain(id, "its details command " + whyNot(*run));
@@ -826,7 +948,7 @@ void Plugins::ask(const Manifest &plugin, const QString &path, const QString &ke
         // with every file ever looked at.
         if (m_details.size() >= 5000)
             m_details.clear();
-        m_details.insert(key, said.array());
+        m_details.insert(key, shown.value("rows").isArray() ? shown : QJsonObject());
         for (const Asker &asker : m_asking.take(key))
             asker.done();
     });
@@ -858,6 +980,97 @@ void Plugins::forgetDetails(const QString &plugin) {
     m_details.removeIf(its);
     m_asking.removeIf(its);
     ++m_detailsGeneration[plugin];
+}
+
+QVariantMap Plugins::folderMarks(const QString &folder) const {
+    QVariantMap items, chip;
+    for (const Manifest &m : m_manifests) {
+        const QJsonObject *said = m_folderMarks.object(marksKey(m.id, folder));
+        if (!said)
+            continue;
+        const QJsonObject marks = said->value("items").toObject();
+        for (auto it = marks.begin(); it != marks.end(); ++it) {
+            const QJsonObject mark = it.value().toObject();
+            if (!items.contains(it.key()))
+                items.insert(it.key(), QVariantMap{{"tone", mark.value("tone").toString()},
+                                                   {"badge", mark.value("badge").toString()},
+                                                   {"label", mark.contains("label") ? text(m, mark.value("label")) : QString()}});
+        }
+        const QJsonObject c = said->value("chip").toObject();
+        if (!chip.isEmpty() || value(m, c.value("text")).isEmpty())
+            continue;
+        // The chip is a button only for an action the plugin has.
+        const auto action = std::find_if(m.actions.begin(), m.actions.end(), [&](const Action &a) {
+            return a.id == c.value("action").toString() && !a.toItems;
+        });
+        const bool acts = action != m.actions.end();
+        chip = {{"plugin", m.id}, {"text", value(m, c.value("text"))}, {"detail", value(m, c.value("detail"))},
+                {"note", c.contains("note") ? text(m, c.value("note")) : QString()}, {"tone", c.value("tone").toString()},
+                {"icon", c.contains("icon") ? icon(m, c.value("icon").toString()) : QString()},
+                {"action", acts ? action->id : QString()}, {"actionLabel", acts ? text(m, action->label) : QString()}};
+    }
+    return {{"items", items}, {"chip", chip}};
+}
+
+void Plugins::markFolder(const QString &folder, const std::function<bool()> &wanted, const std::function<void()> &done) {
+    for (const Manifest &m : std::as_const(m_manifests)) {
+        // The folder's files are under the folders it's run for.
+        if (m.marks.isEmpty() || !fits(m.marksUnder, {}, folder + "/", {}))
+            continue;
+        const QString key = marksKey(m.id, folder);
+        const bool running = m_marking.contains(key);
+        Marking &marking = m_marking[key];
+        marking.wanted = wanted;
+        marking.done << done;
+        if (running)
+            marking.again = true;
+        else
+            askMarks(m, folder, key);
+    }
+}
+
+void Plugins::askMarks(const Manifest &plugin, const QString &folder, const QString &key) {
+    // Read in the pool too: a large folder's marks are a lot of JSON.
+    using Marked = std::pair<Run, std::optional<QJsonObject>>;
+    auto *watcher = new QFutureWatcher<std::optional<Marked>>(this);
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, id = plugin.id, folder, key] {
+        watcher->deleteLater();
+        Marking marking = m_marking.take(key);
+        if (const auto marked = watcher->result()) {
+            const auto &[run, marks] = *marked;
+            // One that fails or takes too long marks nothing and offers no
+            // actions, and says why once each time it goes from working to
+            // failing.
+            if (marks) {
+                m_failingMarks.remove(id);
+            } else if (!m_failingMarks.contains(id)) {
+                complain(id, "its marks command " + whyNot(run));
+                m_failingMarks.insert(id);
+            }
+            m_folderMarks.insert(key, new QJsonObject(marks.value_or(QJsonObject{{"actions", QJsonArray()}})));
+        }
+        // Asked again while it ran, it runs once more, for what changed
+        // meanwhile; those waiting hear of both answers.
+        const Manifest *m = manifest(id);
+        if (marking.again && m && !m->marks.isEmpty()) {
+            m_marking.insert(key, Marking{false, marking.wanted, marking.done});
+            askMarks(*m, folder, key);
+        }
+        for (const auto &done : std::as_const(marking.done))
+            done();
+    });
+    watcher->setFuture(QtConcurrent::run(&m_pool, [plugin, command = plugin.marks + QStringList{folder},
+                                                   environment = environment(plugin), wanted = m_marking.value(key).wanted,
+                                                   stop = m_stop]() -> std::optional<Marked> {
+        if (!wanted())
+            return {};
+        // Its folder left while it runs (clicking through a big
+        // repository's folders), it's stopped, and says nothing.
+        const Run run = execute(plugin, command, environment, detailsTimeout, stop.get(), wanted);
+        if (!wanted())
+            return {};
+        return Marked{run, run.ok() ? parseMarks(run.out) : std::nullopt};
+    }));
 }
 
 void Plugins::run(const QString &itemPath, const Done &done) {
@@ -930,6 +1143,14 @@ Plugins::Result Plugins::interpret(const Manifest &plugin, const QString &label,
         result.notice = text(plugin, said.value("notice"));
     result.copy = said.value("copy").toString();
     result.path = said.value("path").toString();
+    // Only a web page is opened: a file:// or another scheme's address
+    // could run something.
+    const QString url = said.value("url").toString();
+    const QUrl address(url, QUrl::StrictMode);
+    if ((address.scheme() == "https" || address.scheme() == "http") && !address.host().isEmpty())
+        result.url = url;
+    else if (!url.isEmpty())
+        complain(plugin.id, "asked to open " + url + ", which isn't a web address");
     if (!run.ok() && result.error.isEmpty()) {
         // %1 is what was picked: a plugin's action, or its item.
         result.error = !run.lastError.isEmpty()
@@ -942,7 +1163,7 @@ Plugins::Result Plugins::interpret(const Manifest &plugin, const QString &label,
     }
     // A failure does nothing else it asks.
     if (!result.error.isEmpty())
-        result = Result{result.error, {}, {}, {}};
+        result = Result{result.error, {}, {}, {}, {}};
     return result;
 }
 

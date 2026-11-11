@@ -30,9 +30,13 @@ class Backend : public QObject {
     // What the details pane shows beyond the listing, for the item last
     // given to describe(), once they've been read in the background: a
     // picture's dimensions, a text's opening lines, or a trashed item's
-    // origin and deletion time; and under `plugins`, plugins' rows about a
-    // file or folder, [[label, value]...].
+    // origin and deletion time; and under `plugins`, what plugins say about
+    // a file or folder, as Plugins::details gives it.
     Q_PROPERTY(QVariantMap details READ details NOTIFY detailsChanged)
+    // What a plugin's marks say about the folder as a whole, for the path
+    // bar, as Plugins::folderMarks gives it; empty when nothing does. Its
+    // marks on the files are the folder model's.
+    Q_PROPERTY(QVariantMap chip READ chip NOTIFY chipChanged)
 
 public:
     explicit Backend(const QString &home = {}, QObject *parent = nullptr);
@@ -53,6 +57,7 @@ public:
     // Mounting, or else the latest plugin action still running.
     QString busy() const { return m_busy.isEmpty() && !m_runs.isEmpty() ? m_runs.last().second : m_busy; }
     bool previewing() const { return m_preview.state() != QProcess::NotRunning; }
+    QVariantMap chip() const { return m_chip; }
 
     Q_INVOKABLE void navigate(const QString &path);
     Q_INVOKABLE void open(const QString &path);
@@ -119,6 +124,7 @@ signals:
     void busyChanged();
     void previewingChanged();
     void detailsChanged();
+    void chipChanged();
     void newWindowRequested(const QString &path);
     void selectRequested(const QString &name);
     void activateRequested();
@@ -148,6 +154,10 @@ private:
     void showPluginRows(bool keep);
     // Asks plugins about the item described; false when nothing's coming.
     bool askPlugins();
+    // Shows what plugins' marks commands said last about the folder, and
+    // asks them again, as each time it's read.
+    void showMarks();
+    void askMarks();
     // A GVfs mount's name on screen: its plugin item's name, or its host.
     QString mountName(const QString &mount) const;
 
@@ -182,6 +192,10 @@ private:
     QVariantMap m_pluginItem;
     QVariantList m_pluginRows;
     std::shared_ptr<std::atomic<quint64>> m_describing = std::make_shared<std::atomic<quint64>>(0);
+    QVariantMap m_chip;
+    // Counts the folders gone to, so marks commands not yet started for
+    // one that's been left aren't run.
+    std::shared_ptr<std::atomic<quint64>> m_marking = std::make_shared<std::atomic<quint64>>(0);
     // The pane the working directory follows: the one used last.
     static inline Backend *s_working = nullptr;
     void moveWorkingDirectory();

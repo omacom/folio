@@ -1,0 +1,80 @@
+#!/bin/sh
+# Marks the files of a folder in a Git repository with how they stand
+# (modified, new, not tracked or in conflict, and folders with changes
+# inside), and puts the branch and how much has changed on the folder's
+# chip; outside a repository, nothing, and none of the GitHub actions.
+. ./remote.sh
+# Not on network mounts, where looking for the repository and its status
+# would cross the network for every folder.
+case $1 in /run/user/*/gvfs/*) echo '{"actions": []}'; exit 0 ;; esac
+# The folder's real path: Git names changed paths by where they really are,
+# so a folder reached through a link would otherwise match none of them.
+# A sentinel after it keeps the newlines a folder's name may end in, which
+# $(...) would strip.
+folder=$(cd "$1" 2>/dev/null && pwd -P && echo .) || { echo '{"actions": []}'; exit 0; }
+folder=${folder%?.}
+
+# The top of the repository, found by looking up for its .git rather than
+# by asking Git, so a folder outside one costs no git at all.
+top=$folder
+until [ -e "$top/.git" ]; do
+  case $top in
+    */*[!/]*) top=${top%/*} ;;
+    *) echo '{"actions": []}'; exit 0 ;;
+  esac
+done
+# Git names changed paths from the top; the folder's files start with this.
+prefix=${folder#"$top"}
+prefix=${prefix#/}
+[ -n "$prefix" ] && prefix=$prefix/
+
+github=$(github "$folder")
+# The folder's untracked files, each as not tracked; for a folder nothing in
+# which is tracked, which status names as itself or a folder above it.
+untracked() {
+  git -C "$folder" ls-files -z --others --exclude-standard -- . |
+    jq -Rsc -L . --argjson marks "$1" '
+      include "git";
+      [split("\u0000")[] | select(. != "") | split("/")[0]] as $names
+      | $marks | del(.untracked)
+      | .items = ($names | unique | .[:5000] | map({key: ., value: ("untracked" | mark)}) | from_entries)'
+}
+# One status for the whole folder, without optional locks so it never
+# holds up the user's own git, and listing a folder that nothing in is
+# tracked as the folder rather than every file in it, which in a big
+# untracked folder would take long.
+marks=$(git -C "$folder" --no-optional-locks status --porcelain=v2 -z --branch --untracked-files=normal 2>/dev/null |
+  jq -Rsc -L . --arg prefix "$prefix" --arg github "$github" '
+    include "git";
+    reduce records as $r ({head: {}, changed: 0, items: {}};
+      if $r.header then .head[$r.header] = $r.value
+      else .changed += 1
+        | ($r.xy | kind) as $kind
+        | if $r.xy == "??" and ($prefix | startswith($r.path)) then .untracked = true
+          elif ($r.path | startswith($prefix) | not) then .
+          else ($r.path[$prefix | length:]) as $rest
+          | ($rest | index("/")) as $slash
+          # A file of the folder, or a folder nothing in which is tracked.
+          | if $slash == null or $slash == ($rest | length) - 1 then
+              if ($kind | mark) then .items[$rest | rtrimstr("/")] = ($kind | mark) else . end
+            # A folder of the folder, something inside which changed.
+            elif .items[$rest[:$slash]] == null then
+              .items[$rest[:$slash]] = {tone: "changed", label: "Changes inside"}
+            else . end
+          end
+      end)
+    # Not a repository after all (inside its .git folder): nothing.
+    | if .head["branch.oid"] == null then {actions: []}
+      else (.head | branch) as $branch
+      | (if .untracked then {untracked: true} else {} end)
+      + {# Enough for any folder a person looks through.
+         items: (.items | to_entries | .[:5000] | from_entries),
+         chip: ({text: $branch.name, detail: $branch.ab, icon: "branch"}
+                + if .changed > 0 then {note: ["%1 changed", .changed], tone: "modified"} else {} end
+                + if $github != "" then {action: "repo"} else {} end),
+         actions: (if $github != "" then ["open", "copy", "pin", "history", "blame", "repo"] else [] end)}
+      end')
+case $marks in
+  '{"untracked":true'*) untracked "$marks" ;;
+  *) printf '%s\n' "$marks" ;;
+esac
