@@ -16,7 +16,9 @@
 //
 // Talks to the Folio window that started it over stdin and stdout, one path
 // per line: Folio writes the item selected in its grid, the preview writes
-// the item it steps to, and each side follows the other.
+// the item it steps to, and each side follows the other. ↑ and ↓ are written
+// as "step -1" and "step 1": rows belong to the folder view, so Folio moves
+// its selection and sends the new item back.
 class Previewer : public QObject {
     Q_OBJECT
     // Listing the folder only changes where the item sits among its
@@ -57,6 +59,9 @@ public:
 
     Q_INVOKABLE void next();
     Q_INVOKABLE void previous();
+    // ↑ or ↓: the item above or below in the Folio window's view, or the
+    // previous or next file when the preview runs on its own.
+    Q_INVOKABLE void stepRow(int direction);
     Q_INVOKABLE void open();
 
     // Which view shows a type: image, animated, thumbnail, video, audio,

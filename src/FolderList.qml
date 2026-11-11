@@ -14,6 +14,8 @@ FileListView {
     signal cursorLetGo()
     function letGo() { selecting.letGo(); cursorLetGo() }
     function focusView() { forceActiveFocus() }
+    // The preview's ↑ and ↓: the row above or below.
+    function stepRow(direction) { direction < 0 ? decrementCurrentIndex() : incrementCurrentIndex() }
     // Where the keyboard's menu (Alt+Return) opens: beside the cursor's item.
     function menuAnchor() { return currentItem }
 

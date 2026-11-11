@@ -201,6 +201,15 @@ void Previewer::previous() {
         setIndex(m_index - 1, true);
 }
 
+void Previewer::stepRow(int direction) {
+    if (!m_reporting) {
+        direction < 0 ? previous() : next();
+        return;
+    }
+    std::fprintf(stdout, "step %d\n", direction < 0 ? -1 : 1);
+    std::fflush(stdout);
+}
+
 void Previewer::open() {
     if (m_index >= 0) {
         // The same lookup as opening from the folder: the type's default

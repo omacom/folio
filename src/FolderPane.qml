@@ -233,6 +233,7 @@ FocusScope {
     Connections {
         target: backend
         function onSelectRequested(name) { if (view.item) view.item.select(backend.folder.indexOf(name), false) }
+        function onStepRequested(direction) { if (view.item) view.item.stepRow(direction) }
         function onActivateRequested() { if (pane.host) { pane.host.raise(); pane.host.requestActivate() } }
     }
 

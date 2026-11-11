@@ -11,6 +11,8 @@ GridView {
     signal cursorLetGo()
     function letGo() { selecting.letGo(); cursorLetGo() }
     function focusView() { forceActiveFocus() }
+    // The preview's ↑ and ↓: the tile above or below, as the arrow keys move here.
+    function stepRow(direction) { direction < 0 ? moveCurrentIndexUp() : moveCurrentIndexDown() }
     // Where the keyboard's menu (Alt+Return) opens: beside the cursor's item.
     function menuAnchor() { return currentItem }
 

@@ -7639,6 +7639,28 @@ private slots:
         QCOMPARE(buffers(), QVariantList(buffers().size(), 0));
     }
 
+    void previewerStepsByRowOnItsOwn()
+    {
+        QTemporaryDir dir;
+        write(dir.filePath("a.png"), "a");
+        write(dir.filePath("b.png"), "b");
+        write(dir.filePath("c.png"), "c");
+
+        // Without a Folio window to ask for the row above or below, ↑ and ↓
+        // fall back to the previous and next file.
+        Previewer previewer;
+        previewer.start(dir.filePath("b.png"), false, "name");
+        QTRY_COMPARE(previewer.count(), 3);
+        QCOMPARE(previewer.index(), 1);
+        previewer.stepRow(1);
+        QCOMPARE(previewer.index(), 2);
+        previewer.stepRow(1);
+        QCOMPARE(previewer.index(), 2);
+        previewer.stepRow(-1);
+        previewer.stepRow(-1);
+        QCOMPARE(previewer.index(), 0);
+    }
+
     void themeFallsBack()
     {
         QTemporaryDir dir;
