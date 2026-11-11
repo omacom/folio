@@ -109,8 +109,12 @@ Theme::Theme(const QString &directory, QObject *parent, const QString &hyprctl)
     if (!m_hyprctl.isEmpty()) {
         // Hyprland names each config reload; a value set any other way is read when Folio is back in use.
         connect(qGuiApp, &QGuiApplication::applicationStateChanged, this, [this](Qt::ApplicationState state) {
-            if (state == Qt::ApplicationActive)
-                refreshRounding();
+            if (state != Qt::ApplicationActive)
+                return;
+            // Hyprland hangs up on a reader that fell behind, so a watch that ended is taken up again here.
+            if (m_hyprlandEvents < 0)
+                watchHyprland();
+            refreshRounding();
         });
         // Subscribed before the first ask, so a reload during that ask isn't missed.
         watchHyprland();

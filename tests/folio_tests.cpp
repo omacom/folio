@@ -26,6 +26,7 @@
 #include <QQuickWindow>
 #include <QSettings>
 #include <QSignalSpy>
+#include <QSocketNotifier>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QUrl>
@@ -6607,6 +6608,39 @@ private slots:
         write(go, "");
         QTRY_COMPARE(theme.radius(), 6);
         QCOMPARE(countRuns(runs), 2);
+    }
+
+    void themeWatchesHyprlandAgainOnceItsEventsStopped()
+    {
+        QTemporaryDir dir, stage;
+        const QString response = stage.filePath("response.json"), runs = stage.filePath("runs");
+        const QString command = standInHyprctl(stage, response, runs);
+        write(response, "{\"int\":2}");
+        const QByteArray runtime = qgetenv("XDG_RUNTIME_DIR");
+        const int hyprland = listenAsHyprland(stage.path());
+        QVERIFY(hyprland >= 0);
+        const auto restore = qScopeGuard([=] { stopHyprland(hyprland, runtime); });
+
+        Theme theme(dir.path(), nullptr, command);
+        const int events = ::accept4(hyprland, nullptr, nullptr, SOCK_CLOEXEC);
+        QVERIFY(events >= 0);
+        QTRY_COMPARE(theme.radius(), 2);
+        QCOMPARE(theme.findChildren<QSocketNotifier *>(Qt::FindDirectChildrenOnly).size(), 1);
+        // Hyprland hangs up, as it does on a reader that fell behind, and the theme lets go of the socket.
+        ::close(events);
+        QTRY_VERIFY(theme.findChildren<QSocketNotifier *>(Qt::FindDirectChildrenOnly).isEmpty());
+        write(response, "{\"int\":4}");
+        emit qGuiApp->applicationStateChanged(Qt::ApplicationActive);
+        const int again = ::accept4(hyprland, nullptr, nullptr, SOCK_CLOEXEC);
+        QVERIFY(again >= 0);
+        const auto hangUp = qScopeGuard([again] { ::close(again); });
+        // Coming back asked once, and that ask is over; the next change is told by the new watch alone.
+        QTRY_COMPARE(theme.radius(), 4);
+        QCOMPARE(countRuns(runs), 2);
+        write(response, "{\"int\":6}");
+        send(again, "configreloaded>>\n");
+        QTRY_COMPARE(theme.radius(), 6);
+        QCOMPARE(countRuns(runs), 3);
     }
 
     void themeAsksHyprlandOnlyWhenSomethingChanges()
