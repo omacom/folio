@@ -278,10 +278,6 @@ Rectangle {
             width: sidebar.width - 24
             spacing: 1
 
-            SectionLabel {
-                Layout.topMargin: 0
-                text: qsTr("Home")
-            }
             PlaceRow {
                 dropPath: places.home
                 onDropHoverChanged: sidebar.dropHovers += dropHover ? 1 : -1
