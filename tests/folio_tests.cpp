@@ -6720,6 +6720,36 @@ private slots:
         QCOMPARE(FolderModel::typeByContent(pipe, unnamed), QString("inode/fifo"));
     }
 
+    void thumbnailsMatchATypeNamedByItsAlias()
+    {
+        QTemporaryDir dir;
+        QImage page(64, 96, QImage::Format_RGB32);
+        page.fill(Qt::green);
+        QVERIFY(page.save(dir.filePath("page.png")));
+        QVERIFY(QDir(dir.path()).mkdir("system") && QDir(dir.path()).mkdir("user"));
+        // Like evince, the user's .thumbnailer file names comic books and icons only by an alias.
+        write(dir.filePath("user/comics.thumbnailer"),
+              "[Thumbnailer Entry]\nExec=/bin/cp \"" + dir.filePath("page.png").toUtf8() + "\" %o\n"
+              "MimeType=application/x-cbz;image/x-icon;application/x-nothing-here;video/x-matroska;audio/vnd.wave;\n");
+        write(dir.filePath("user/media.thumbnailer"), "[Thumbnailer Entry]\nExec=/bin/true %i\nMimeType=video/matroska;audio/x-wav;\n");
+        write(dir.filePath("system/icons.thumbnailer"), "[Thumbnailer Entry]\nExec=/bin/false %i\nMimeType=image/vnd.microsoft.icon;\n");
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.filePath("system"), dir.filePath("user")});
+
+        write(dir.filePath("issue.cbz"), "not really a zip");
+        const QImage thumb = thumbnails.load(dir.filePath("issue.cbz"), "application/vnd.comicbook+zip", 128);
+        QCOMPARE(thumb.pixelColor(0, 0), QColor(Qt::green));
+        // The later directory still wins when its file names the type by an alias.
+        QVERIFY(thumbnails.thumbnailerFor("image/vnd.microsoft.icon").startsWith("/bin/cp"));
+        // Within one directory the file that names the type itself wins, whichever file is read first.
+        QCOMPARE(QMimeDatabase().mimeTypeForName("video/x-matroska").name(), QString("video/matroska"));
+        QCOMPARE(QMimeDatabase().mimeTypeForName("audio/x-wav").name(), QString("audio/vnd.wave"));
+        QVERIFY(thumbnails.thumbnailerFor("video/matroska").startsWith("/bin/true"));
+        QVERIFY(thumbnails.thumbnailerFor("audio/vnd.wave").startsWith("/bin/cp"));
+        // A type the MIME database doesn't know is matched by the name the file gives, and by no other.
+        QVERIFY(thumbnails.thumbnailerFor("application/x-nothing-here").startsWith("/bin/cp"));
+        QVERIFY(thumbnails.thumbnailerFor("").isEmpty());
+    }
+
     void previewerPicksAViewerForEachType()
     {
         QCOMPARE(Previewer::viewerFor("image/png", false), QString("image"));

@@ -98,7 +98,10 @@ Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbna
         for (const QString &base : data)
             directories << base + "/thumbnailers";
     }
+    QMimeDatabase mimes;
     for (const QString &directory : directories) {
+        // A .thumbnailer file may name a type by an alias, as glycin names DDS pictures image/x-dds.
+        QHash<QString, QString> named, aliased;
         QDirIterator it(directory, {"*.thumbnailer"}, QDir::Files);
         while (it.hasNext()) {
             // A tiny desktop-entry reader: QSettings would treat the
@@ -119,9 +122,16 @@ Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbna
             const QString tryExec = fields.value("TryExec");
             if (exec.isEmpty() || (!tryExec.isEmpty() && QStandardPaths::findExecutable(tryExec).isEmpty()))
                 continue;
-            for (const QString &mime : fields.value("MimeType").split(';', Qt::SkipEmptyParts))
-                m_thumbnailers.insert(mime.trimmed(), exec);
+            for (const QString &declared : fields.value("MimeType").split(';', Qt::SkipEmptyParts)) {
+                const QString mime = declared.trimmed();
+                named.insert(mime, exec);
+                if (const QString type = mimes.mimeTypeForName(mime).name(); !type.isEmpty())
+                    aliased.insert(type, exec);
+            }
         }
+        // Within one directory the file that names a type itself wins over one that names an alias of it.
+        m_thumbnailers.insert(aliased);
+        m_thumbnailers.insert(named);
     }
 }
 
