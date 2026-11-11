@@ -319,6 +319,7 @@ Item {
                 border.color: Qt.alpha(theme.foreground, 0.16)
                 radius: tile.iconRadius
                 Column {
+                    visible: tile.kind !== "archive"
                     x: 9; y: 11
                     spacing: 6
                     Rectangle { width: 34; height: 4; color: tile.kindColor }
@@ -327,6 +328,8 @@ Item {
                         Rectangle { required property int modelData; width: modelData; height: 2; color: Qt.alpha(theme.foreground, 0.3) }
                     }
                 }
+                // An archive is the lidded box its row draws, not a page of text.
+                Glyph { anchors.centerIn: parent; visible: tile.kind === "archive"; name: "archive"; size: 32; color: tile.kindColor }
             }
             Rectangle {
                 visible: tile.extension.length > 0
