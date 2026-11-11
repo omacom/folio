@@ -6,10 +6,14 @@
 #include <QFile>
 #include <QImageReader>
 #include <QMap>
+#include <QPainter>
+#include <QPainterPath>
+#include <QRawFont>
 #include <QUrl>
 #include <QXmlStreamReader>
 #include <QtEndian>
 #include <algorithm>
+#include <optional>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -41,6 +45,19 @@ const QString k3mf = QStringLiteral("model/3mf"), kKrita = QStringLiteral("appli
 const QString kOpenRaster = QStringLiteral("image/openraster"), kFreeCad = QStringLiteral("application/x-extension-fcstd");
 // A comic book's pages are its pictures, by the ending of their names.
 const QByteArrayList kPageEndings = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"};
+
+// The fonts drawn from their own bytes: TrueType, OpenType, collections of either, WOFF and Type 1.
+const QStringList kFonts = {"font/ttf", "font/otf", "font/collection", "font/woff", "font/woff2", "application/x-font-type1"};
+// An sfnt opens with "OTTO" for CFF outlines or 00 01 00 00 for TrueType ones.
+constexpr qint64 kSignatureLength = 4;
+const QByteArray kCffSignature("OTTO"), kTrueTypeSignature("\0\1\0\0", kSignatureLength);
+const QString kFormulaTemplate = QStringLiteral("application/vnd.oasis.opendocument.formula-template");
+// A font file past this is held as no font; the largest collections people install are a few tens of MiB.
+constexpr qint64 kMostFontBytes = 64 * 1048576;
+// A font's letters fill this share of their square on their longer side.
+constexpr qreal kFontFill = 0.8;
+// Characters are looked for from "!", the first printable one, to the last code point there is.
+constexpr char32_t kFirstCharacter = 0x21, kLastCharacter = 0x10FFFF;
 
 quint16 rd16(const char *p) { return qFromLittleEndian<quint16>(p); }
 quint32 rd32(const char *p) { return qFromLittleEndian<quint32>(p); }
@@ -231,16 +248,82 @@ QImage picture(QByteArray bytes, int pixels) {
     return reader.read();
 }
 
+// The glyph a font draws `c` with, when it maps it to one that has an outline.
+std::optional<quint32> glyphFor(const QRawFont &font, char32_t c) {
+    const QList<quint32> glyphs = font.supportsCharacter(c) ? font.glyphIndexesForString(QString::fromUcs4(&c, 1)) : QList<quint32>();
+    if (glyphs.size() != 1 || font.pathForGlyph(glyphs.first()).isEmpty())
+        return {};
+    return glyphs.first();
+}
+
+// "Aa" when the font draws both, else its first two letters by code point, else its first two drawable characters.
+QList<quint32> sample(const QRawFont &font) {
+    const std::optional<quint32> upper = glyphFor(font, 'A'), lower = glyphFor(font, 'a');
+    if (upper && lower)
+        return {*upper, *lower};
+    QList<quint32> letters, drawable;
+    // At most a lookup in the font's character map for each letter Unicode has, about 146,000 of them: a few milliseconds, once per file.
+    for (char32_t c = kFirstCharacter; c <= kLastCharacter && letters.size() < 2; ++c) {
+        const bool letter = QChar::isLetter(c);
+        if ((!letter && drawable.size() == 2) || !QChar::isPrint(c) || QChar::isSpace(c))
+            continue;
+        if (const std::optional<quint32> glyph = glyphFor(font, c)) {
+            if (letter)
+                letters << *glyph;
+            if (drawable.size() < 2)
+                drawable << *glyph;
+        }
+    }
+    return letters.size() == 2 ? letters : drawable;
+}
+
+// The font's sample black on a white square of `pixels`, made from the file's bytes and never added to Qt's list of fonts.
+QImage fontSample(QFile &file, int pixels) {
+    if (file.size() > kMostFontBytes)
+        return {};
+    const QRawFont font(at(file, 0, file.size()), pixels, QFont::PreferNoHinting);
+    if (!font.isValid())
+        return {};
+    const QList<quint32> glyphs = sample(font);
+    const QList<QPointF> advances = font.advancesForGlyphIndexes(glyphs);
+    QPainterPath letters;
+    qreal x = 0;
+    for (qsizetype i = 0; i < glyphs.size() && i < advances.size(); ++i) {
+        letters.addPath(font.pathForGlyph(glyphs[i]).translated(x, 0));
+        x += advances[i].x();
+    }
+    const QRectF box = letters.boundingRect();
+    if (box.isEmpty())
+        return {};
+    QImage page(pixels, pixels, QImage::Format_ARGB32_Premultiplied);
+    page.fill(Qt::white);
+    QPainter painter(&page);
+    painter.setRenderHint(QPainter::Antialiasing);
+    const qreal scale = kFontFill * pixels / qMax(box.width(), box.height());
+    painter.translate(pixels / 2.0, pixels / 2.0);
+    painter.scale(scale, scale);
+    painter.translate(-box.center());
+    painter.fillPath(letters, Qt::black);
+    painter.end();
+    return page;
+}
+
 } // namespace
 
 bool Embedded::handles(const QString &mime, const QString &path) {
-    return mime == kEpub || mime == kComic || !fixedNames(mime, path).isEmpty();
+    return mime == kEpub || mime == kComic || kFonts.contains(mime) || !fixedNames(mime, path).isEmpty();
 }
 
 QImage Embedded::thumbnail(const QString &path, const QString &mime, int pixels) {
     QFile file;
+    if (!openRegular(file, path))
+        return {};
+    // ".otf" names an OpenType font and an OpenDocument formula template alike, and the MIME database answers the template.
+    const QByteArray signature = at(file, 0, kSignatureLength);
+    if (kFonts.contains(mime) || (mime == kFormulaTemplate && (signature == kCffSignature || signature == kTrueTypeSignature)))
+        return fontSample(file, pixels);
     QMap<QByteArray, Member> members;
-    if (!openRegular(file, path) || !directory(file, members))
+    if (!directory(file, members))
         return {};
     const auto part = [&](const QByteArray &name) {
         const auto it = members.constFind(name);

@@ -10,6 +10,7 @@
 #include <functional>
 #include <thread>
 #include <QFile>
+#include <QFontDatabase>
 #include <QGuiApplication>
 #include <QImage>
 #include <QJsonArray>
@@ -25,6 +26,7 @@
 #include <QQuickImageProvider>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QRawFont>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QStandardPaths>
@@ -6345,6 +6347,46 @@ private slots:
         QVERIFY(QFile::exists(dir.filePath("cache/normal/" + Thumbnails::cacheKey(dir.filePath("kept.odt")))));
     }
 
+    void thumbnailsDrawAFontInItsOwnLetters()
+    {
+        QTemporaryDir dir;
+        const Thumbnails thumbnails(dir.filePath("cache"), {dir.filePath("none")});
+        const auto drawn = [&](const QString &name, const QString &mime, const QByteArray &bytes) {
+            write(dir.filePath(name), bytes);
+            return thumbnails.load(dir.filePath(name), mime, 128);
+        };
+        // Glyph 1 is a triangle and glyph 2 a square, so which characters were drawn shows in the picture.
+        const auto tables = [](const QList<std::pair<char16_t, quint16>> &characters) {
+            return fontTables("Folio Test Glyphs", characters);
+        };
+        const QList<std::pair<char16_t, quint16>> aa = {{u'0', 2}, {u'A', 1}, {u'B', 1}, {u'a', 2}};
+        QCOMPARE(QRawFont(sfnt(tables(aa)), 12).familyName(), QString("Folio Test Glyphs"));
+        const QImage letters = drawn("glyphs.ttf", "font/ttf", sfnt(tables(aa)));
+        QCOMPARE(letters.size(), QSize(128, 128));
+        QImage blank(letters.size(), letters.format());
+        blank.fill(Qt::white);
+        QVERIFY(letters != blank);
+        // Drawn from its bytes alone: the family never joins the fonts Qt lists for the whole of Folio.
+        QVERIFY(!QFontDatabase::families().contains("Folio Test Glyphs"));
+        // Without "Aa" a font shows its first two letters, past a digit; without two letters, its first two characters.
+        // An .otf is drawn whichever type the MIME database gives it: an OpenDocument formula template shares the ending.
+        const QString otf = QMimeDatabase().mimeTypeForFile(dir.filePath("letters.otf"), QMimeDatabase::MatchExtension).name();
+        QCOMPARE(drawn("letters.otf", otf, sfnt(tables({{u'0', 2}, {u'B', 1}, {u'c', 2}}))), letters);
+        QCOMPARE(drawn("formula.otf", "application/vnd.oasis.opendocument.formula-template",
+                       zipOf({{"Thumbnails/thumbnail.png", jpeg(40, 30)}})).size(), QSize(40, 30));
+        const QImage digits = drawn("digits.ttf", "font/ttf", sfnt(tables({{u'0', 2}, {u'1', 1}})));
+        QVERIFY(digits != blank && digits != letters);
+        // A collection shows its first font, and a WOFF the font it wraps.
+        QCOMPARE(drawn("family.ttc", "font/collection", QByteArray("ttcf\0\1\0\0\0\0\0\1\0\0\0\x10", 16) + sfnt(tables(aa), 16)), letters);
+        QCOMPARE(drawn("web.woff", "font/woff", woff(tables(aa))), letters);
+        // A font with nothing to draw, and bytes that are no font, show the plain icon.
+        QVERIFY(drawn("empty.ttf", "font/ttf", sfnt(tables({}))).isNull());
+        QVERIFY(drawn("broken.ttf", "font/ttf", "not a font").isNull());
+        // A Type 1 font is asked for as a font, never set on a page as the PostScript it is written in.
+        QCOMPARE(FolderModel::kindForMime("application/x-font-type1"), QString("other"));
+        QCOMPARE(Previewer::viewerFor("application/x-font-type1", false), QString("other"));
+    }
+
     void thumbnailsNameThePackageThatWouldDrawAType()
     {
         QTemporaryDir dir;
@@ -6960,6 +7002,96 @@ private:
         }
         return local + central + QByteArray("PK\x05\x06", 4) + QByteArray(4, '\0') + le.word(members.size(), 2)
             + le.word(members.size(), 2) + le.word(central.size(), 4) + le.word(hole + local.size(), 4) + le.word(0, 2);
+    }
+    using FontTables = QList<std::pair<QByteArray, QByteArray>>;
+    // The tables FreeType needs of a TrueType font of one family, each character drawing glyph 1, a triangle, or glyph 2, a square.
+    static FontTables fontTables(const QString &family, const QList<std::pair<char16_t, quint16>> &characters)
+    {
+        const Raw be(false);
+        // A simple glyph: one contour, its box, its last point, no instructions, on-curve flags, then x and y as deltas.
+        const auto glyph = [&](const QList<QPoint> &points) {
+            QByteArray out = be.word(1, 2) + be.word(0, 4) + be.word(1000, 2) + be.word(1000, 2) + be.word(points.size() - 1, 2)
+                + be.word(0, 2) + QByteArray(points.size(), '\x01');
+            for (const bool vertical : {false, true}) {
+                int last = 0;
+                for (const QPoint &point : points) {
+                    const int at = vertical ? point.y() : point.x();
+                    out += be.word(quint16(at - last), 2);
+                    last = at;
+                }
+            }
+            return out + QByteArray(out.size() % 4 ? 4 - out.size() % 4 : 0, '\0');
+        };
+        const QByteArray triangle = glyph({{100, 0}, {500, 700}, {900, 0}}), square = glyph({{100, 0}, {100, 500}, {600, 500}, {600, 0}});
+        // Format 4: a segment of one code per character, then the 0xFFFF one that ends every table.
+        QByteArray ends, deltas;
+        for (const auto &[code, id] : characters) {
+            ends += be.word(code, 2);
+            deltas += be.word(quint16(id - code), 2);
+        }
+        ends += be.word(0xFFFF, 2);
+        deltas += be.word(1, 2);
+        const int segments = characters.size() + 1;
+        int range = 1, selector = 0;
+        while (range * 2 <= segments) {
+            range *= 2;
+            ++selector;
+        }
+        const QByteArray format4 = be.word(4, 2) + be.word(16 + 8 * segments, 2) + be.word(0, 2) + be.word(2 * segments, 2)
+            + be.word(2 * range, 2) + be.word(selector, 2) + be.word(2 * segments - 2 * range, 2) + ends + be.word(0, 2) + ends
+            + deltas + QByteArray(2 * segments, '\0');
+        QByteArray names, strings;
+        const QStringList texts = {family, "Regular"};
+        for (int id = 1; id <= texts.size(); ++id) {
+            QByteArray text;
+            for (const QChar c : texts[id - 1])
+                text += be.word(c.unicode(), 2);
+            names += be.word(3, 2) + be.word(1, 2) + be.word(0x409, 2) + be.word(id, 2) + be.word(text.size(), 2) + be.word(strings.size(), 2);
+            strings += text;
+        }
+        return {{"cmap", be.word(0, 2) + be.word(1, 2) + be.word(3, 2) + be.word(1, 2) + be.word(12, 4) + format4},
+                {"glyf", triangle + square},
+                // Version, revision, checksum adjustment, magic, flags, 1000 units, two dates, box, style, smallest size,
+                // direction, long offsets and glyph format.
+                {"head", be.word(0x10000, 4) + be.word(0x10000, 4) + be.word(0, 4) + be.word(0x5F0F3CF5, 4) + be.word(0, 2)
+                             + be.word(1000, 2) + QByteArray(16, '\0') + be.word(0, 4) + be.word(1000, 2) + be.word(1000, 2)
+                             + be.word(0, 2) + be.word(8, 2) + be.word(2, 2) + be.word(1, 2) + be.word(0, 2)},
+                // Version, ascender, descender, gap, widest advance, bearings and extent, caret, reserved, format, metrics.
+                {"hhea", be.word(0x10000, 4) + be.word(800, 2) + be.word(quint16(-200), 2) + be.word(0, 2) + be.word(1000, 2)
+                             + be.word(0, 4) + be.word(1000, 2) + be.word(1, 2) + QByteArray(14, '\0') + be.word(3, 2)},
+                {"hmtx", (be.word(1000, 2) + be.word(100, 2)).repeated(3)},
+                {"loca", be.word(0, 4) + be.word(0, 4) + be.word(triangle.size(), 4) + be.word(triangle.size() + square.size(), 4)},
+                // Version 1.0: 3 glyphs of at most 4 points and 1 contour, 2 zones, nothing else.
+                {"maxp", be.word(0x10000, 4) + be.word(3, 2) + be.word(4, 2) + be.word(1, 2) + be.word(0, 4) + be.word(2, 2)
+                             + QByteArray(16, '\0')},
+                {"name", be.word(0, 2) + be.word(texts.size(), 2) + be.word(6 + names.size(), 2) + names + strings}};
+    }
+    // The tables as an sfnt, sorted by tag as they come, whose offsets count from `base`.
+    static QByteArray sfnt(const FontTables &tables, quint32 base = 0)
+    {
+        const Raw be(false);
+        // Version 1.0, then the number of tables with the search hints for 8 of them.
+        QByteArray head = be.word(0x10000, 4) + be.word(tables.size(), 2) + be.word(128, 2) + be.word(3, 2) + be.word(0, 2), body;
+        const quint32 start = base + 12 + 16 * tables.size();
+        for (const auto &[tag, data] : tables) {
+            head += tag + be.word(0, 4) + be.word(start + body.size(), 4) + be.word(data.size(), 4);
+            body += data + QByteArray(data.size() % 4 ? 4 - data.size() % 4 : 0, '\0');
+        }
+        return head + body;
+    }
+    // The tables as a WOFF 1.0 that keeps each one uncompressed, as WOFF allows.
+    static QByteArray woff(const FontTables &tables)
+    {
+        const Raw be(false);
+        const quint32 start = 44 + 20 * tables.size();
+        QByteArray directory, body;
+        for (const auto &[tag, data] : tables) {
+            directory += tag + be.word(start + body.size(), 4) + be.word(data.size(), 4) + be.word(data.size(), 4) + be.word(0, 4);
+            body += data + QByteArray(data.size() % 4 ? 4 - data.size() % 4 : 0, '\0');
+        }
+        // Signature, flavour, length, tables, reserved, the sfnt's size, version 1.0, and no metadata or private block.
+        return "wOFF" + be.word(0x10000, 4) + be.word(start + body.size(), 4) + be.word(tables.size(), 2) + be.word(0, 2)
+            + be.word(12 + 16 * tables.size() + body.size(), 4) + be.word(1, 2) + be.word(0, 2) + QByteArray(20, '\0') + directory + body;
     }
     // A camera RAW in either byte order; blobs and IFDs are appended, so every offset is known before it is named.
     struct Raw {

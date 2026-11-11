@@ -212,6 +212,8 @@ QString FolderModel::kindForMime(const QString &mime) {
     if (mime.startsWith("image/")) return "image";
     if (mime.startsWith("video/")) return "video";
     if (mime.startsWith("audio/")) return "audio";
+    // A Type 1 font is PostScript, and so text, to the MIME database; it is shown as the font it is.
+    if (mime == "application/x-font-type1") return "other";
     // Anything readable as text (source code, config, JSON, Ruby, ...) is
     // text, whatever its own type is called.
     static const QMimeDatabase types;

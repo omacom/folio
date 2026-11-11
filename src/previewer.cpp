@@ -36,6 +36,9 @@ QString Previewer::viewerFor(const QString &mime, bool isDir) {
     }
     if (mime == "text/markdown")
         return "markdown";
+    // A Type 1 font is PostScript, and so text, to the MIME database; it shows its sample like every other font, never its source.
+    if (mime == "application/x-font-type1")
+        return "other";
     const QMimeType type = QMimeDatabase().mimeTypeForName(mime);
     if (mime.startsWith("text/") || type.inherits("text/plain"))
         return "text";

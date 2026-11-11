@@ -404,7 +404,7 @@ QImage Thumbnails::load(const QString &path, const QString &mime, int size) cons
 }
 
 QImage Thumbnails::generate(const QString &path, const QString &mime, int pixels, bool &attempted) const {
-    // A camera RAW, or a file that keeps its picture in a zip, with no installed thumbnailer, the desktop's own answer, shows the picture it embedded.
+    // A camera RAW, a file that keeps its picture in a zip, or a font, with no installed thumbnailer, the desktop's own answer, is drawn from its own bytes.
     if ((RawEmbed::handles(mime) || Embedded::handles(mime, path)) && !m_thumbnailers.contains(mime)) {
         attempted = true;
         const QImage image = RawEmbed::handles(mime) ? RawEmbed::thumbnail(path, pixels) : Embedded::thumbnail(path, mime, pixels);
