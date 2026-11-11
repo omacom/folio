@@ -33,6 +33,12 @@ Rectangle {
                 return d
         return null
     }
+    // Tab reaches the details after the panes while there's an app to pick
+    // for the file, and Escape hands the keyboard back to the files.
+    readonly property bool takesKeyboard: opensWith.visible
+    readonly property bool hasKeyboard: opensWith.activeFocus
+    function focusKeyboard() { opensWith.forceActiveFocus(Qt.TabFocusReason) }
+    signal finished()
     function homeless(path) { return path.startsWith(places.home + "/") ? "~" + path.slice(places.home.length) : path }
     // A picture's size or a text's opening lines once they've been read off
     // the UI thread.
@@ -199,6 +205,10 @@ Rectangle {
                 implicitHeight: 28
                 text: (current ? current.name : qsTr("Choose")) + "  ▾"
                 onClicked: appsMenu.popup(opensWith, 0, opensWith.height + 4)
+                Keys.onEscapePressed: pane.finished()
+                // Gone with the keyboard on it (another item selected, or the
+                // details hidden), it hands the keyboard back.
+                onVisibleChanged: if (!visible && activeFocus) pane.finished()
                 FolioMenu {
                     id: appsMenu
                     Repeater {

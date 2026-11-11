@@ -123,8 +123,6 @@ FolioDialog {
             id: cancelButton
             text: qsTr("Cancel")
             onClicked: dialog.close()
-            Keys.onReturnPressed: dialog.close()
-            Keys.onEnterPressed: dialog.close()
         }
         PlainButton {
             text: qsTr("Format")

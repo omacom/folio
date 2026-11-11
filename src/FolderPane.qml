@@ -51,7 +51,12 @@ FocusScope {
     // While a text field has the keyboard (renaming, a password), single-key
     // and clipboard shortcuts stand aside so typing works.
     readonly property bool typing: rename.visible || confirm.visible || clash.visible || formatDialog.visible || backend.mounter.asking || pathBar.editing || pathBar.searchFocused || (!!host && host.helpVisible)
-    readonly property bool keys: active && !typing
+    // Keys for the pane as a whole (undo, a new window, typing a path) work
+    // wherever the keyboard is; keys for its files only while the files
+    // have it, not while Tab has put it in the sidebar or the details, where
+    // Delete or Space would act on files out of the keyboard's sight.
+    readonly property bool paneKeys: active && !typing
+    readonly property bool keys: paneKeys && activeFocus
     // What file actions act on: everything selected, or the item under
     // the cursor when nothing is.
     function selectedPaths() {
@@ -141,23 +146,27 @@ FocusScope {
     // Shift+Delete skips the trash, after asking.
     Shortcut { sequence: "Shift+Del"; enabled: pane.fileKeys; onActivated: pane.confirmDelete(pane.selectedPaths()) }
     Shortcut { sequence: "F2"; enabled: pane.fileKeys && !pane.inTrash; onActivated: if (pane.current.path) rename.open(pane.current) }
-    Shortcut { sequence: "Ctrl+Z"; enabled: pane.keys; onActivated: fileOps.undo() }
-    Shortcut { sequences: ["Ctrl+Shift+Z", "Ctrl+Y"]; enabled: pane.keys; onActivated: fileOps.redo() }
+    Shortcut { sequence: "Ctrl+Z"; enabled: pane.paneKeys; onActivated: fileOps.undo() }
+    Shortcut { sequences: ["Ctrl+Shift+Z", "Ctrl+Y"]; enabled: pane.paneKeys; onActivated: fileOps.redo() }
     Shortcut { sequences: [StandardKey.SelectAll]; enabled: pane.keys; onActivated: backend.folder.selectAll() }
-    // Escape stops file work under way; otherwise it narrows a selection
-    // of several back to the cursor, then ends a search.
+    // Escape stops file work under way; otherwise it dismisses a problem
+    // the banner says, narrows a selection of several back to the cursor,
+    // then ends a search.
     Shortcut { sequence: "Escape"; enabled: pane.keys && fileOps.busy.length > 0; onActivated: fileOps.cancel() }
     Shortcut {
         sequence: "Escape"
-        enabled: pane.keys && fileOps.busy.length === 0 && (backend.folder.selectedCount > 1 || backend.folder.query.length > 0)
+        enabled: pane.keys && fileOps.busy.length === 0
+                 && (backend.message.length > 0 || backend.folder.selectedCount > 1 || backend.folder.query.length > 0)
         onActivated: {
-            if (backend.folder.selectedCount > 1)
+            if (backend.message.length > 0)
+                backend.dismissMessage()
+            else if (backend.folder.selectedCount > 1)
                 backend.folder.selectOnly(view.item ? view.item.currentIndex : -1)
             else
                 pathBar.endSearch()
         }
     }
-    Shortcut { sequence: "/"; enabled: pane.keys && backend.path !== "recent:"; onActivated: pathBar.search() }
+    Shortcut { sequence: "/"; enabled: pane.paneKeys && backend.path !== "recent:"; onActivated: pathBar.search() }
     // The right-click menu from the keyboard, beside the selected item.
     Shortcut {
         sequences: ["Alt+Return", "Alt+Enter", "Menu", "Shift+F10"]
@@ -168,9 +177,9 @@ FocusScope {
         }
     }
     Shortcut { sequence: "Ctrl+Shift+D"; enabled: pane.fileKeys && !pane.inTrash; onActivated: if (pane.current.path) fileOps.duplicate(pane.current.path) }
-    Shortcut { sequences: [StandardKey.New]; enabled: pane.keys; onActivated: backend.newWindow() }
+    Shortcut { sequences: [StandardKey.New]; enabled: pane.paneKeys; onActivated: backend.newWindow() }
     Shortcut { sequence: "Ctrl+Shift+N"; enabled: pane.fileKeys && !pane.inTrash; onActivated: fileOps.newFolder(backend.path) }
-    Shortcut { sequences: ["Ctrl+L", "Alt+D"]; enabled: pane.keys; onActivated: pathBar.editPath() }
+    Shortcut { sequences: ["Ctrl+L", "Alt+D"]; enabled: pane.paneKeys; onActivated: pathBar.editPath() }
     // Pins the selected folder, or the folder being shown when a file is
     // selected; pressed again, unpins it.
     Shortcut { sequence: "Ctrl+P"; enabled: pane.active && !pane.inView; onActivated: pane.togglePin(pane.current.isDir ? pane.current.path : backend.path) }
@@ -180,7 +189,7 @@ FocusScope {
     Shortcut { sequences: [StandardKey.ZoomIn, "Ctrl+="]; enabled: pane.active; onActivated: pane.zoomBy(1) }
     Shortcut { sequences: [StandardKey.ZoomOut]; enabled: pane.active; onActivated: pane.zoomBy(-1) }
     Shortcut { sequence: "Ctrl+0"; enabled: pane.active; onActivated: pane.zoom = 1 }
-    Shortcut { sequences: ["Return", "Enter"]; enabled: pane.keys && pane.activeFocus; onActivated: if (pane.current.path) backend.open(pane.current.path) }
+    Shortcut { sequences: ["Return", "Enter"]; enabled: pane.keys; onActivated: if (pane.current.path) backend.open(pane.current.path) }
     Shortcut { sequences: ["Backspace", "Alt+Up"]; enabled: pane.keys; onActivated: backend.goUp() }
     Shortcut { sequences: ["Alt+Left", "Back"]; enabled: pane.active; onActivated: backend.back() }
     Shortcut { sequences: ["Alt+Right", "Forward"]; enabled: pane.active; onActivated: backend.forward() }

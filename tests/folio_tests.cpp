@@ -19,6 +19,7 @@
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQmlPropertyMap>
+#include <QQuickItem>
 #include <QQuickWindow>
 #include <QSettings>
 #include <QSignalSpy>
@@ -4495,6 +4496,55 @@ private slots:
         fake->missing = {"vfat", "ext4"};
         QVERIFY(shown().contains("exFAT"));
         QVERIFY(!shown().contains("exFAT  ▾"));
+    }
+
+    void dialogsKeepTheKeyboard()
+    {
+        // Tab goes round a dialog's own buttons, never on to one behind
+        // it, and Return presses the button Tab has reached.
+        QTemporaryDir home;
+        Theme theme(home.filePath("theme"));
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("theme", &theme);
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window {\n"
+                          "    width: 800; height: 600; visible: true\n"
+                          "    property string answer\n"
+                          "    PlainButton { text: 'Behind' }\n"
+                          "    ConfirmDialog { id: dialog; anchors.fill: parent }\n"
+                          "    function ask() { answer = ''; dialog.ask('Empty?', 'For good.', 'Empty', () => answer = 'emptied') }\n"
+                          "    readonly property bool asking: dialog.visible\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/ConfirmDialogTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowFocused(window));
+        const auto focused = [&] { return window->activeFocusItem() ? window->activeFocusItem()->property("text").toString() : QString(); };
+
+        QMetaObject::invokeMethod(window, "ask");
+        QCOMPARE(focused(), QString("Empty"));
+        for (const QString &next : {"Cancel", "Empty", "Cancel"}) {
+            QTest::keyClick(window, Qt::Key_Tab);
+            QCOMPARE(focused(), next);
+        }
+        QTest::keyClick(window, Qt::Key_Backtab, Qt::ShiftModifier);
+        QCOMPARE(focused(), QString("Empty"));
+        QTest::keyClick(window, Qt::Key_Tab);
+        QTest::keyClick(window, Qt::Key_Return);
+        QVERIFY(!window->property("asking").toBool());
+        QCOMPARE(window->property("answer").toString(), QString());
+
+        QMetaObject::invokeMethod(window, "ask");
+        QTest::keyClick(window, Qt::Key_Return);
+        QCOMPARE(window->property("answer").toString(), QString("emptied"));
+
+        QMetaObject::invokeMethod(window, "ask");
+        QTest::keyClick(window, Qt::Key_Escape);
+        QVERIFY(!window->property("asking").toBool());
+        QCOMPARE(window->property("answer").toString(), QString());
     }
 
     void formattingOffersWhatThisMachineCanMake()

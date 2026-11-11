@@ -95,8 +95,10 @@ FolioMenu {
         text: fileMenu.forSelection ? qsTr("Restore %Ln Items", "", fileMenu.paths.length) : qsTr("Restore")
         onTriggered: fileOps.restore(fileMenu.paths)
     }
+    // On an item too: the keyboard's menu is always on one, while there's
+    // one in the trash.
     FolioMenuItem {
-        shown: !fileMenu.forItem && fileMenu.trashView
+        shown: fileMenu.trashView
         text: qsTr("Empty Trash…")
         onTriggered: fileMenu.emptyTrashRequested()
     }

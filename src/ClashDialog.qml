@@ -80,16 +80,12 @@ FolioDialog {
             id: replace
             text: dialog.merge ? qsTr("Merge") : qsTr("Replace")
             onClicked: dialog.answer("replace")
-            Keys.onReturnPressed: clicked()
-            Keys.onEnterPressed: clicked()
             KeyNavigation.right: skip
         }
         PlainButton {
             id: skip
             text: qsTr("Skip")
             onClicked: dialog.answer("skip")
-            Keys.onReturnPressed: clicked()
-            Keys.onEnterPressed: clicked()
             KeyNavigation.left: replace
             KeyNavigation.right: keepBoth
         }
@@ -98,8 +94,6 @@ FolioDialog {
             text: qsTr("Keep Both")
             primary: true
             onClicked: dialog.answer("both")
-            Keys.onReturnPressed: clicked()
-            Keys.onEnterPressed: clicked()
             KeyNavigation.left: skip
         }
     }

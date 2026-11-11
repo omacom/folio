@@ -128,6 +128,7 @@
   "Cut": "Cut",
   "Delete": "Delete",
   "Delete for good?": "Delete for good?",
+  "Delete in the sidebar": "Delete in the sidebar",
   "Delete permanently (asks first)": "Delete permanently (asks first)",
   "Deleted": "Deleted",
   "Delete…": "Delete…",
@@ -218,7 +219,7 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.",
   "Modified": "Modified",
   "Mount": "Mount",
-  "Move between the sidebar and the panes": "Move between the sidebar and the panes",
+  "Move between the sidebar, the panes and the details": "Move between the sidebar, the panes and the details",
   "Move the selection": "Move the selection",
   "Move to the trash": "Move to the trash",
   "Moved only part of %1: %2": "Moved only part of %1: %2",
@@ -340,7 +341,7 @@
     "one": "Restoring %Ln item…",
     "other": "Restoring %Ln items…"
   },
-  "Right-click / Alt+⏎": "Right-click / Alt+⏎",
+  "Right-click / Alt+⏎ / Menu": "Right-click / Alt+⏎ / Menu",
   "Scroll": "Scroll",
   "Search %1": "Search %1",
   "Search %1 and below": "Search %1 and below",
@@ -366,7 +367,7 @@
   "Sorted by kind": "Sorted by kind",
   "Sorted by name": "Sorted by name",
   "Split into two panes / close the right one": "Split into two panes / close the right one",
-  "Stop the file work under way": "Stop the file work under way",
+  "Stop the file work under way, or dismiss what went wrong": "Stop the file work under way, or dismiss what went wrong",
   "Stopped after %L1 of %Ln items.": {
     "one": "Stopped after %L1 of %Ln item.",
     "other": "Stopped after %L1 of %Ln items."
@@ -433,6 +434,7 @@
   "Undoing…": "Undoing…",
   "Unmount": "Unmount",
   "Unpin": "Unpin",
+  "Unpin the folder, or take the item off the sidebar": "Unpin the folder, or take the item off the sidebar",
   "Untitled Folder": "Untitled Folder",
   "Untitled Folder %1": "Untitled Folder %1",
   "User": "User",

@@ -29,7 +29,7 @@ Files (`folio`) is Omarchy's file manager. It's one quiet window that follows yo
 | Ctrl+Shift+N | New folder |
 | Ctrl+P | Pin the folder |
 | Ctrl+N, Ctrl+Alt+N | New window, split |
-| Tab | Sidebar and back |
+| Tab, Shift+Tab | Sidebar, panes and details |
 | ? | Every other shortcut |
 
 ## Building

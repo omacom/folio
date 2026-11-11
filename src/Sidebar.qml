@@ -15,7 +15,7 @@ Rectangle {
 
     // Keyboard: Tab moves here from the files and back. ↑ ↓ move between
     // rows, ⏎ (or →, toward the files) opens one and hands the keyboard
-    // back to the files.
+    // back to the files, and Delete does what a row's ✕ does.
     signal finished()
     // The ? in the corner: show or hide the shortcuts.
     signal helpRequested()
@@ -86,6 +86,16 @@ Rectangle {
     Keys.onRightPressed: if (!LayoutMirroring.enabled) activate(cursor)
     Keys.onLeftPressed: if (LayoutMirroring.enabled) activate(cursor)
     Keys.onEscapePressed: finished()
+    // A pinned folder is unpinned, a plugin's item taken off the sidebar.
+    Keys.onDeletePressed: {
+        const row = rows[cursor]
+        if (cursor >= pinnedAt && cursor < viewsAt)
+            places.unpin(row.path)
+        else if (row && row.forgettable)
+            plugins.forget(row.plugin, row.id)
+    }
+    // Rows taken away under the keyboard leave it on the last one.
+    onRowsChanged: cursor = Math.max(0, Math.min(cursor, rows.length - 1))
 
     // Alt+⏎ (or the Menu key) on a drive opens its menu beside it; the
     // files' menu stands aside for it.
@@ -308,7 +318,9 @@ Rectangle {
                     glyph: modelData.icon
                     active: sidebar.activePath === modelData.path
                     onClicked: sidebar.target.navigate(modelData.path)
-                    // The name ends short of the unpin button while it shows.
+                    // The name ends short of the unpin button while it shows:
+                    // hovered, or on the keyboard's row, where Delete does
+                    // the same.
                     endPadding: unpin.visible ? unpin.implicitWidth + 6 : 14
                     IconButton {
                         id: unpin
@@ -316,7 +328,7 @@ Rectangle {
                         anchors.verticalCenter: parent.verticalCenter
                         implicitWidth: 28
                         implicitHeight: 28
-                        visible: pinRow.hovered || hovered
+                        visible: pinRow.hovered || hovered || pinRow.keyed
                         glyph: "close"
                         text: qsTr("Unpin")
                         onClicked: places.unpin(pinRow.modelData.path)
@@ -447,7 +459,7 @@ Rectangle {
                                 anchors.verticalCenter: parent.verticalCenter
                                 implicitWidth: 28
                                 implicitHeight: 28
-                                visible: itemRow.modelData.forgettable && (itemRow.hovered || hovered)
+                                visible: itemRow.modelData.forgettable && (itemRow.hovered || hovered || itemRow.keyed)
                                 glyph: "close"
                                 text: qsTr("Remove from the sidebar")
                                 onClicked: plugins.forget(itemRow.modelData.plugin, itemRow.modelData.id)
