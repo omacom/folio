@@ -104,7 +104,7 @@ Item {
             const size = tile.isDir ? Format.count(tile.itemCount) : Format.size(tile.size)
             // A folder's own date says little (it changes when anything in
             // it is added or removed), so only files show one.
-            const date = tile.isDir ? "" : Format.when(tile.modified)
+            const date = tile.isDir || tile.folder ? "" : Format.when(tile.modified) // A search result's folder takes the date's room.
             const rest = size && date ? qsTr("%1 · %2").arg(size).arg(date) : size || date
             // Both in one arg() call, so a "%2" in a folder's name stays as written.
             return tile.folder && rest ? qsTr("%1 · %2").arg(tile.folder, rest) : tile.folder || rest
