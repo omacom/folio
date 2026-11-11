@@ -9,13 +9,21 @@
 #include <QFileInfo>
 #include <QFutureWatcher>
 #include <QGuiApplication>
+#include <QHash>
 #include <QImageReader>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QMimeDatabase>
 #include <QPointer>
 #include <QStorageInfo>
 #include <QUrl>
 #include <QtConcurrent>
+#include <cmath>
 #include <unistd.h>
+
+// ffprobe's answer for a file with many streams and tags is a few kilobytes.
+static constexpr qint64 probeOutputLimit = 1024 * 1024;
 
 Backend::Backend(const QString &home, QObject *parent)
     : QObject(parent), m_home(home.isEmpty() ? QDir::homePath() : home) {
@@ -380,7 +388,7 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
     m_pluginItem = path.startsWith('/') && !inTrash ? item : QVariantMap();
     showPluginRows(askPlugins());
     // What a helper program reads comes on top of the rest.
-    const auto help = [this, path, mime](const QVariantMap &details) {
+    const auto help = [this, path, kind, mime](const QVariantMap &details) {
         // A helper program reads a file on the disk: a plugin's own item isn't one.
         if (!path.startsWith('/'))
             return;
@@ -392,6 +400,24 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
                 m_details.insert("sentence", sentence);
                 emit detailsChanged();
             });
+        } else if (kind == "video" || kind == "audio") {
+            // A video's or a song's length and codecs, once ffprobe is done.
+            auto json = std::make_shared<QByteArray>();
+            // "file:" keeps a name with a colon from being taken for a protocol.
+            m_helper.run("ffprobe", {"-v", "error", "-print_format", "json", "-show_format", "-show_streams",
+                                     "file:" + QFileInfo(path).absoluteFilePath()},
+                         probeOutputLimit, [json](const QByteArray &output) { *json += output; },
+                         [this, details, json](int code, const QByteArray &) {
+                             QVariantMap facts;
+                             if (code == 0)
+                                 facts = mediaFacts(*json);
+                             else if (code == Helper::missing)
+                                 facts.insert("sentence", tr("Lengths and codecs need ffprobe, from the ffmpeg package."));
+                             // Shown even when there's nothing to add: a file written over that ffprobe can't read loses the old one's length.
+                             m_details = details;
+                             m_details.insert(facts);
+                             emit detailsChanged();
+                         });
         }
     };
     if (kind != "image" && kind != "text" && !inTrash) {
@@ -479,6 +505,56 @@ bool Backend::askPlugins() {
 
 QString Backend::typeName(const QString &mime, const QString &path) {
     return QMimeDatabase().mimeTypeForName(FontSample::typeOf(mime, path)).comment();
+}
+
+// ffprobe's names for common codecs as people write them; any other is upper-cased.
+static QString codecName(const QString &name) {
+    static const QHash<QString, QString> names{
+        {"h264", "H.264"}, {"hevc", "H.265"}, {"vp8", "VP8"}, {"vp9", "VP9"}, {"av1", "AV1"},
+        {"mpeg4", "MPEG-4"}, {"mpeg2video", "MPEG-2"}, {"mpeg1video", "MPEG-1"}, {"aac", "AAC"},
+        {"mp3", "MP3"}, {"opus", "Opus"}, {"vorbis", "Vorbis"}, {"flac", "FLAC"}, {"ac3", "AC-3"},
+        {"eac3", "E-AC-3"}, {"dts", "DTS"}, {"alac", "ALAC"}};
+    if (name.startsWith("pcm_"))
+        return "PCM";
+    return names.value(name, name.toUpper());
+}
+
+// Sample: {"streams": [{"codec_name": "h264", "codec_type": "video", "width": 1920, "height": 1080, "side_data_list": [{"rotation": -90}]}, {"codec_name": "aac", "codec_type": "audio"}], "format": {"duration": "125.400000"}}
+QVariantMap Backend::mediaFacts(const QByteArray &json) {
+    const QJsonObject root = QJsonDocument::fromJson(json).object();
+    QVariantMap facts;
+    for (const QJsonValue &value : root.value("streams").toArray()) {
+        const QJsonObject stream = value.toObject();
+        const QString type = stream.value("codec_type").toString();
+        const QString codec = codecName(stream.value("codec_name").toString());
+        // A song's cover art is a video stream to ffprobe, not to a person.
+        const bool cover = stream.value("disposition").toObject().value("attached_pic").toInt() != 0;
+        if (type == "video" && !cover && !facts.contains("video")) {
+            facts.insert("video", codec);
+            int width = stream.value("width").toInt(), height = stream.value("height").toInt();
+            // A phone's sideways recording is turned when it plays, so its size is given as it shows.
+            for (const QJsonValue &side : stream.value("side_data_list").toArray())
+                if (qAbs(qRound(side.toObject().value("rotation").toDouble())) % 180 == 90)
+                    std::swap(width, height);
+            // Numbers, as a picture's are: the pane writes them in the language's digits.
+            if (width > 0 && height > 0) {
+                facts.insert("width", width);
+                facts.insert("height", height);
+            }
+        } else if (type == "audio" && !facts.contains("audio")) {
+            facts.insert("audio", codec);
+        }
+    }
+    // A stream ffprobe couldn't name gives no codec row.
+    for (const QString &key : {QStringLiteral("video"), QStringLiteral("audio")})
+        if (facts.value(key).toString().isEmpty())
+            facts.remove(key);
+    // A live recording's dump has no duration at all: no length, rather than 0:00.
+    bool ok = false;
+    const double seconds = root.value("format").toObject().value("duration").toString().toDouble(&ok);
+    if (ok && std::isfinite(seconds) && seconds > 0)
+        facts.insert("seconds", seconds);
+    return facts;
 }
 
 Backend::~Backend() {

@@ -3361,6 +3361,98 @@ private slots:
         QCOMPARE(backend.title(), QString("Trash"));
     }
 
+    void backendReadsMediaFacts()
+    {
+        // A phone's clip: turned a quarter, with sound, past the hour.
+        const QVariantMap clip = Backend::mediaFacts(R"({"streams": [
+            {"codec_name": "hevc", "codec_type": "video", "width": 1920, "height": 1080,
+             "side_data_list": [{"side_data_type": "Display Matrix", "rotation": -90}]},
+            {"codec_name": "aac", "codec_type": "audio"}],
+            "format": {"duration": "3725.900000"}})");
+        QCOMPARE(clip, (QVariantMap{{"seconds", 3725.9}, {"width", 1080}, {"height", 1920}, {"video", "H.265"}, {"audio", "AAC"}}));
+
+        // A song with its cover art: the cover gives no picture size or video codec.
+        const QVariantMap song = Backend::mediaFacts(R"({"streams": [
+            {"codec_name": "pcm_s16le", "codec_type": "audio"},
+            {"codec_name": "mjpeg", "codec_type": "video", "width": 600, "height": 600,
+             "disposition": {"attached_pic": 1}}],
+            "format": {"duration": "59.990000"}})");
+        QCOMPARE(song, (QVariantMap{{"seconds", 59.99}, {"audio", "PCM"}}));
+
+        // A dump with no duration has no length; a codec without a name of
+        // its own keeps ffprobe's, and one without any gives no row.
+        const QVariantMap dump = Backend::mediaFacts(R"({"streams": [
+            {"codec_name": "prores", "codec_type": "video", "width": 3840, "height": 2160},
+            {"codec_type": "audio"}], "format": {}})");
+        QCOMPARE(dump, (QVariantMap{{"width", 3840}, {"height", 2160}, {"video", "PRORES"}}));
+        QVERIFY(Backend::mediaFacts("not json").isEmpty());
+    }
+
+    void backendAsksFfprobeAboutMedia()
+    {
+        // A stand-in ffprobe that answers for clip.mp4 unless a file named broken is beside it, fails on anything else, and notes what it was asked.
+        QTemporaryDir dir, empty;
+        const QString asked = dir.filePath("asked");
+        write(dir.filePath("answer.json"), R"({"streams": [{"codec_name": "h264", "codec_type": "video",
+            "width": 1280, "height": 720}, {"codec_name": "opus", "codec_type": "audio"}], "format": {"duration": "65.4"}})");
+        write(dir.filePath("ffprobe"), "#!/bin/sh\nPATH=/usr/bin:/bin\nfor a in \"$@\"; do echo \"$a\"; done > '" + asked.toUtf8()
+                                           + "'\ncase \"$*\" in *'/-a: clip.mp4') [ -e '" + dir.filePath("broken").toUtf8() + "' ] && exit 1; cat '"
+                                           + dir.filePath("answer.json").toUtf8()
+                                           + "' ;; *) exit 1 ;; esac\n");
+        QVERIFY(QFile::setPermissions(dir.filePath("ffprobe"), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+        const QString clip = dir.filePath("-a: clip.mp4");
+        write(clip, "x");
+
+        Backend backend(dir.path());
+        {
+            const auto restore = pathAt(dir.path());
+            backend.describe({{"path", clip}, {"kind", "video"}, {"mime", "video/mp4"}});
+            QVERIFY(!backend.details().contains("seconds"));
+            QTRY_COMPARE(backend.details().value("seconds").toDouble(), 65.4);
+            QCOMPARE(backend.details().value("width").toInt(), 1280);
+            QCOMPARE(backend.details().value("height").toInt(), 720);
+            QCOMPARE(backend.details().value("video").toString(), QString("H.264"));
+            QCOMPARE(backend.details().value("audio").toString(), QString("Opus"));
+            QFile file(asked);
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            QCOMPARE(QString::fromUtf8(file.readAll()).split('\n').value(6), "file:" + clip);
+
+            // The clip written over with something ffprobe can't read loses the length and codecs it showed.
+            write(dir.filePath("broken"), "x");
+            QVERIFY(QFile::remove(asked));
+            backend.describe({{"path", clip}, {"kind", "video"}, {"mime", "video/mp4"}});
+            QTRY_VERIFY(QFile::exists(asked));
+            QTRY_VERIFY(!backend.details().contains("seconds"));
+            QVERIFY(!backend.details().contains("video"));
+            QVERIFY(QFile::remove(dir.filePath("broken")));
+
+            // ffprobe failing says nothing.
+            QVERIFY(QFile::remove(asked));
+            backend.describe({{"path", dir.filePath("song.mp3")}, {"kind", "audio"}, {"mime", "audio/mpeg"}});
+            QTRY_VERIFY(QFile::exists(asked));
+            QTest::qWait(200);
+            QVERIFY(backend.details().isEmpty());
+        }
+        // Without ffprobe, the package that has it is named.
+        const auto restore = pathAt(empty.path());
+        backend.describe({{"path", clip}, {"kind", "video"}, {"mime", "video/mp4"}});
+        QTRY_COMPARE(backend.details().value("sentence").toString(), QString("Lengths and codecs need ffprobe, from the ffmpeg package."));
+        QVERIFY(!backend.details().contains("seconds"));
+    }
+
+    void formatShowsLengthsAsAClock()
+    {
+        QQmlEngine engine;
+        QQmlComponent lengths(&engine);
+        lengths.setData("import QtQml\nimport \"Format.js\" as Format\n"
+                        "QtObject { property var shown: [0, 0.4, 59.99, 65, 3599, 3725.9, 36000].map(Format.length) }",
+                        QUrl::fromLocalFile(QFINDTESTDATA("../src/Format.js")));
+        std::unique_ptr<QObject> object(lengths.create());
+        QVERIFY2(object, qPrintable(lengths.errorString()));
+        QCOMPARE(object->property("shown").toStringList(),
+                 QStringList({"", "0:00", "0:59", "1:05", "59:59", "1:02:05", "10:00:00"}));
+    }
+
     void placesListEveryFolderInHome()
     {
         QTemporaryDir home;

@@ -278,6 +278,45 @@ Rectangle {
                 color: theme.foreground
                 font.pixelSize: 12
             }
+            Text { visible: !!pane.info.seconds; text: qsTr("Length"); color: theme.secondaryForeground; font.pixelSize: 12 }
+            Text {
+                visible: !!pane.info.seconds
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignRight
+                text: Format.length(pane.info.seconds)
+                color: theme.foreground
+                font.pixelSize: 12
+            }
+            Text { visible: !!pane.info.video; text: qsTr("Video"); color: theme.secondaryForeground; font.pixelSize: 12 }
+            Text {
+                visible: !!pane.info.video
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignRight
+                text: pane.info.video || ""
+                color: theme.foreground
+                font.pixelSize: 12
+                elide: Text.ElideRight
+            }
+            Text { visible: !!pane.info.audio; text: qsTr("Audio"); color: theme.secondaryForeground; font.pixelSize: 12 }
+            Text {
+                visible: !!pane.info.audio
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignRight
+                text: pane.info.audio || ""
+                color: theme.foreground
+                font.pixelSize: 12
+                elide: Text.ElideRight
+            }
+            // Without ffprobe, the package that brings it.
+            Text {
+                visible: (pane.item.kind === "video" || pane.item.kind === "audio") && !!pane.info.sentence
+                Layout.columnSpan: 2
+                Layout.fillWidth: true
+                text: pane.info.sentence || ""
+                color: theme.secondaryForeground
+                font.pixelSize: 12
+                wrapMode: Text.Wrap
+            }
             // Plugins' rows, label and value in turn, after Folio's own: a
             // plugin's item's details, or what plugins say about a file.
             Repeater {

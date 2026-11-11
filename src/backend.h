@@ -31,9 +31,9 @@ class Backend : public QObject {
     // What the details pane shows beyond the listing, for the item last
     // given to describe(), once they've been read in the background: a
     // picture's dimensions, a text's opening lines, an archive's names (or
-    // a sentence in their place), or a trashed item's origin and deletion
-    // time; and under `plugins`, plugins' rows about a file or folder,
-    // [[label, value]...].
+    // a sentence in their place), a video's or a song's length and codecs,
+    // or a trashed item's origin and deletion time; and under `plugins`,
+    // plugins' rows about a file or folder, [[label, value]...].
     Q_PROPERTY(QVariantMap details READ details NOTIFY detailsChanged)
 
 public:
@@ -115,6 +115,8 @@ public:
     // A server address (sftp://, smb://, ftp://, dav://, davs://) as GIO
     // mounts it, or empty when the text isn't one.
     static QString serverAddress(const QString &text);
+    // ffprobe's JSON as details: seconds, width and height, video and audio codecs, only those it gave.
+    static QVariantMap mediaFacts(const QByteArray &json);
 
 signals:
     void pathChanged();
