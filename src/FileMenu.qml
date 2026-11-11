@@ -1,10 +1,10 @@
 import QtQuick
 
 // The right-click menu. On an item: Open, Open With (each app that can),
-// Preview, Rename, Duplicate, Copy, Cut, Paste Into, Copy Path, Compress,
+// Preview, Rename, Duplicate, Copy, Cut, Paste Into, Copy as Text, Compress,
 // Extract (for archives), Burn (for disk images), plugins' own actions for
 // it, Share (whatever plugins offer for it), Pin, Terminal, Trash. On empty
-// space: Undo, Paste, New Folder, Copy Path, Terminal, hidden files. In the
+// space: Undo, Paste, New Folder, Copy as Text, Terminal, hidden files. In the
 // trash: Restore, Empty Trash and Delete…, without the entries that change
 // files or plugins' actions. On a plugin's item: Open, and nothing for files. Entries show their
 // keys, so the menu also teaches the shortcuts.
@@ -70,7 +70,8 @@ FolioMenu {
             if (entry && entry.subMenu)
                 entry.shown = entry.subMenu === shareMenu ? canShare
                             : entry.subMenu === burnMenu ? canBurn
-                            : entry.subMenu === openWithMenu ? canOpenWith : true
+                            : entry.subMenu === openWithMenu ? canOpenWith
+                            : entry.subMenu === copyMenu ? forFiles : true
         }
         // The menu's own `mirrored` is only set once it's open.
         const rtl = Qt.application.layoutDirection === Qt.RightToLeft
@@ -171,11 +172,32 @@ FolioMenu {
         enabled: fileOps.canPaste
         onTriggered: fileOps.paste(fileMenu.forItem ? fileMenu.target.path : fileMenu.folder)
     }
-    FolioMenuItem {
-        shown: fileMenu.forFiles
-        text: qsTr("Copy Path")
-        keys: "Ctrl+Shift+C"
-        onTriggered: fileOps.yank(fileMenu.forItem ? fileMenu.paths : [fileMenu.folder])
+    // The items (or the folder) as text, one line each.
+    FolioMenu {
+        id: copyMenu
+        readonly property var paths: fileMenu.forItem ? fileMenu.paths : [fileMenu.folder]
+        title: qsTr("Copy as Text")
+        FolioMenuItem {
+            text: qsTr("Path")
+            keys: "Ctrl+Shift+C"
+            onTriggered: fileOps.yank(copyMenu.paths)
+        }
+        FolioMenuItem {
+            text: qsTr("Name")
+            onTriggered: fileOps.yank(copyMenu.paths, "name")
+        }
+        FolioMenuItem {
+            text: qsTr("Name Without Extension")
+            onTriggered: fileOps.yank(copyMenu.paths, "stem")
+        }
+        FolioMenuItem {
+            text: qsTr("URI")
+            onTriggered: fileOps.yank(copyMenu.paths, "uri")
+        }
+        FolioMenuItem {
+            text: qsTr("Shell-Quoted Path")
+            onTriggered: fileOps.yank(copyMenu.paths, "quoted")
+        }
     }
     FolioMenuItem {
         shown: !fileMenu.forItem && !fileMenu.trashView

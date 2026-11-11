@@ -158,9 +158,25 @@ void FileOps::cut(const QStringList &paths) {
         QGuiApplication::clipboard()->setMimeData(mimeDataFor(paths, true));
 }
 
-void FileOps::yank(const QStringList &paths) {
-    if (!paths.isEmpty())
-        QGuiApplication::clipboard()->setText(paths.join('\n'));
+// /a/it's here becomes '/a/it'\''s here': inside single quotes only a quote needs ending, escaping and reopening.
+static QString shellQuoted(const QString &path) {
+    return '\'' + QString(path).replace('\'', "'\\''") + '\'';
+}
+
+void FileOps::yank(const QStringList &paths, const QString &as) {
+    if (paths.isEmpty())
+        return;
+    QStringList lines;
+    for (const QString &path : paths) {
+        const QFileInfo info(path);
+        const int dot = as == "stem" ? extensionStart(info.fileName(), info.isDir()) : -1;
+        lines << (as == "name"     ? info.fileName()
+                  : as == "stem"   ? info.fileName().left(dot)
+                  : as == "uri"    ? QString::fromLatin1(QUrl::fromLocalFile(path).toEncoded())
+                  : as == "quoted" ? shellQuoted(path)
+                                   : path);
+    }
+    QGuiApplication::clipboard()->setText(lines.join('\n'));
 }
 
 int FileOps::extensionStart(const QString &name, bool isDir) {

@@ -1068,6 +1068,37 @@ private slots:
         QVERIFY(!cut);
     }
 
+    void fileOpsCopyNamesUrisAndQuotedPaths()
+    {
+        // Copy as Text gives one line an item, and the quoted path comes back from a shell byte for byte, whatever the name holds.
+        QTemporaryDir dir;
+        // The name holds what a shell reads inside double quotes too: a dollar, a backtick, a backslash and the quote itself.
+        const QString stem = "-it's a\n\"$HOME\" `id` \\name";
+        const QString odd = dir.filePath(stem + ".tar.gz"), folder = dir.filePath("v1.2");
+        write(odd, "x");
+        QDir(dir.path()).mkdir("v1.2");
+        FileOps ops;
+        const auto yanked = [&](const QStringList &paths, const QString &as) {
+            ops.yank(paths, as);
+            return QGuiApplication::clipboard()->text();
+        };
+        QCOMPARE(yanked({odd, folder}, "path"), odd + "\n" + folder);
+        QCOMPARE(yanked({odd, folder}, "name"), stem + ".tar.gz\nv1.2");
+        // A folder has no extension, whatever dot its name has.
+        QCOMPARE(yanked({odd, folder}, "stem"), stem + "\nv1.2");
+        const QString uri = yanked({odd}, "uri");
+        QVERIFY(!uri.contains('\n') && !uri.contains(' '));
+        QCOMPARE(QUrl::fromEncoded(uri.toLatin1()).toLocalFile(), odd);
+
+        // The quoted text is the script's own source: anything short of whole quoting is a syntax error or another count.
+        QProcess sh;
+        sh.start("/bin/sh", {"-c", "set -- " + yanked({odd}, "quoted") + "; printf '%s|%s' \"$#\" \"$1\""});
+        QVERIFY(sh.waitForFinished(5000));
+        QCOMPARE(sh.exitCode(), 0);
+        QCOMPARE(sh.readAllStandardOutput(), "1|" + QFile::encodeName(odd));
+        QCOMPARE(yanked({odd, folder}, "quoted").count('\n'), 2);
+    }
+
     void fileOpsCompressAcrossFolders()
     {
         // Search results and Recents can hold items from different folders:

@@ -91,7 +91,9 @@ public:
     Q_INVOKABLE static bool shiftHeld();
     Q_INVOKABLE void copy(const QStringList &paths);
     Q_INVOKABLE void cut(const QStringList &paths);
-    Q_INVOKABLE void yank(const QStringList &paths);
+    // The paths as text, one line each: as they are, or `as` "name", "stem"
+    // (the name without its extension), "uri" or "quoted" (for a shell).
+    Q_INVOKABLE void yank(const QStringList &paths, const QString &as = QStringLiteral("path"));
     Q_INVOKABLE void paste(const QString &folder);
     // Files dropped on a folder: moved when they're on the same drive,
     // copied from another drive. Dropping something where it already is
