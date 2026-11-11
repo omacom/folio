@@ -6402,6 +6402,26 @@ private slots:
         QVERIFY(QFile::exists(dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(dir.filePath("clip.mp4")))));
     }
 
+    void thumbnailsHandAThumbnailerANameThatHoldsACode()
+    {
+        QTemporaryDir dir;
+        // The thumbnailer copies its input out and notes the third argument it was given beside itself.
+        const QString script = dir.filePath("copy.sh");
+        write(script, "cp \"$1\" \"$2\" && printf %s \"$3\" > \"$0.said\"\n");
+        write(dir.filePath("demo.thumbnailer"), "[Thumbnailer Entry]\nExec=/bin/sh \"" + script.toUtf8()
+              + "\" %i %o \"--size=%s,%s 100%% %u\"\nMimeType=video/mp4;\n");
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
+
+        // A name with every code in it is still one file to the thumbnailer, by path and by URI.
+        const QString clip = dir.filePath("50%off %sale %up %in 100%%.mp4");
+        QVERIFY(QImage(10, 20, QImage::Format_RGB32).save(clip, "PNG"));
+        QCOMPARE(thumbnails.load(clip, "video/mp4", 128).size(), QSize(10, 20));
+        QFile said(script + ".said");
+        QVERIFY(said.open(QIODevice::ReadOnly));
+        QCOMPARE(QString::fromUtf8(said.readAll()),
+                 "--size=128,128 100% " + QUrl::fromLocalFile(clip).toString(QUrl::FullyEncoded));
+    }
+
     void thumbnailsRememberOnlyWhatFailed()
     {
         QTemporaryDir dir;

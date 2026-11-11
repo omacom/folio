@@ -70,12 +70,31 @@ QByteArray withPlainText(const QByteArray &png) {
     return out;
 }
 
-// The spec's Exec field: %i input path, %u input URI, %o output, %s size.
+// The spec's Exec field, such as "ffmpegthumbnailer -i %i -o %o -s %s -f": %i input path, %u input URI, %o output, %s size, %% a percent sign.
+// Each code is read once, so a name that holds one arrives as it is.
 QStringList expandCommand(const QString &command, const QString &input, const QString &output, int size) {
     QStringList args = QProcess::splitCommand(command);
     for (QString &arg : args) {
-        arg.replace("%i", input).replace("%u", fileUri(input)).replace("%o", output)
-           .replace("%s", QString::number(size)).replace("%%", "%");
+        QString expanded;
+        for (qsizetype at = 0; at < arg.size(); ++at) {
+            const QChar code = arg.at(at) == '%' && at + 1 < arg.size() ? arg.at(at + 1) : QChar();
+            if (code == 'i')
+                expanded += input;
+            else if (code == 'u')
+                expanded += fileUri(input);
+            else if (code == 'o')
+                expanded += output;
+            else if (code == 's')
+                expanded += QString::number(size);
+            else if (code == '%')
+                expanded += '%';
+            else {
+                expanded += arg.at(at);
+                continue;
+            }
+            ++at;
+        }
+        arg = expanded;
     }
     return args;
 }
