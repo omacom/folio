@@ -1,6 +1,7 @@
 #include <QClipboard>
 #include <QDir>
 #include <QEventLoopLocker>
+#include <QMetaProperty>
 #include <QMimeData>
 #include <QPageSize>
 #include <QPainter>
@@ -3635,6 +3636,81 @@ private slots:
         QVERIFY(saved.contains("Work/folio"));
         QVERIFY(!saved.contains("Work/hype"));
         QCOMPARE(places.pinned().size(), 1);
+    }
+
+    void placesAnnounceOnlyTheListThatChanged()
+    {
+        QTemporaryDir home;
+        QDir(home.path()).mkpath("Work");
+        Places places(home.path());
+        QSignalSpy placesSpy(&places, &Places::placesChanged);
+        QSignalSpy pinnedSpy(&places, &Places::pinnedChanged);
+        QSignalSpy viewsSpy(&places, &Places::viewsChanged);
+        // The drives are read off the UI thread and land later: these are the lists a poll changes at once.
+        auto counts = [&] {
+            return QList<int>{int(placesSpy.count()), int(pinnedSpy.count()), int(viewsSpy.count())};
+        };
+
+        // A poll that finds nothing new says nothing.
+        places.refresh();
+        places.refresh();
+        QCOMPARE(counts(), QList<int>({0, 0, 0}));
+
+        // A new folder in home changes Home and nothing else.
+        QDir(home.path()).mkpath("Music");
+        places.refresh();
+        QCOMPARE(counts(), QList<int>({1, 0, 0}));
+        QCOMPARE(places.places().size(), 2);
+    }
+
+    void placesListsEachHaveTheirOwnSignal()
+    {
+        // What the sidebar binds to: a list's own signal, so one list's change rebuilds one section.
+        const QMetaObject &meta = Places::staticMetaObject;
+        for (const char *list : {"places", "pinned", "views", "devices"})
+            QCOMPARE(meta.property(meta.indexOfProperty(list)).notifySignal().name(), QByteArray(list) + "Changed");
+    }
+
+    void placesPinAnnouncesOnlyPinned()
+    {
+        QTemporaryDir home;
+        QDir(home.path()).mkpath("Work/folio");
+        Places places(home.path());
+        QSignalSpy placesSpy(&places, &Places::placesChanged);
+        QSignalSpy pinnedSpy(&places, &Places::pinnedChanged);
+
+        QCOMPARE(places.pin(home.filePath("Work/folio")), QString());
+        QCOMPARE(pinnedSpy.count(), 1);
+        // Pinning it again changes nothing, so it says nothing.
+        QCOMPARE(places.pin(home.filePath("Work/folio")), QString());
+        QCOMPARE(pinnedSpy.count(), 1);
+        places.unpin(home.filePath("Work/folio"));
+        QCOMPARE(pinnedSpy.count(), 2);
+        places.refresh();
+        QCOMPARE(pinnedSpy.count(), 2);
+        QCOMPARE(placesSpy.count(), 0);
+    }
+
+    void placesReorderedPinsAreAChange()
+    {
+        QTemporaryDir home;
+        for (const char *dir : {"Work/folio", "Work/hype"})
+            QDir(home.path()).mkpath(dir);
+        const QString bookmarks = home.filePath(".config/gtk-3.0/bookmarks");
+        QDir().mkpath(QFileInfo(bookmarks).absolutePath());
+        const QByteArray folio = QUrl::fromLocalFile(home.filePath("Work/folio")).toEncoded() + "\n";
+        const QByteArray hype = QUrl::fromLocalFile(home.filePath("Work/hype")).toEncoded() + "\n";
+        write(bookmarks, folio + hype);
+        Places places(home.path());
+        QSignalSpy pinnedSpy(&places, &Places::pinnedChanged);
+        places.refresh();
+        QCOMPARE(pinnedSpy.count(), 0);
+
+        // Reordered in a GTK dialog: the same pins, a new order.
+        write(bookmarks, hype + folio);
+        places.refresh();
+        QCOMPARE(pinnedSpy.count(), 1);
+        QCOMPARE(places.pinned().at(0).toMap().value("name").toString(), QString("hype"));
     }
 
     void typedViewsGoToTheirView()
