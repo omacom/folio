@@ -412,9 +412,9 @@ FocusScope {
                 items: view.item
             }
         }
-        Component { id: gridView; FolderGrid { zoom: pane.zoom; onZoomRequested: (step) => pane.zoomBy(step) } }
-        Component { id: listView; FolderList { } }
-        Component { id: columnsView; FolderColumns { } }
+        Component { id: gridView; FolderGrid { zoom: pane.zoom; inactive: !pane.active; onZoomRequested: (step) => pane.zoomBy(step) } }
+        Component { id: listView; FolderList { inactive: !pane.active } }
+        Component { id: columnsView; FolderColumns { inactive: !pane.active } }
     }
 
     // Drawn over the window's top bar. It reaches back over the sidebar for

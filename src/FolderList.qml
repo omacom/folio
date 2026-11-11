@@ -6,6 +6,9 @@ import QtQuick.Controls
 ListView {
     id: list
 
+    // In a pane the keys don't go to: the selection is drawn without the accent.
+    property bool inactive: false
+
     function select(row, keep) { selecting.select(row, keep) }
     // A click on empty space lets go of the cursor; the pane then keeps it
     // let go of through a re-read or a switch of view.
@@ -57,6 +60,7 @@ ListView {
         width: list.width
         detailed: true
         current: selected
+        inactive: list.inactive
         onClicked: (modifiers) => { selecting.click(index, modifiers); list.forceActiveFocus() }
         onActivated: backend.open(path)
     }

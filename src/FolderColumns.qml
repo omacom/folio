@@ -10,6 +10,8 @@ Item {
     id: view
 
     property alias currentIndex: here.currentIndex
+    // In a pane the keys don't go to: the selection is drawn without the accent.
+    property bool inactive: false
     readonly property int columnWidth: 260
 
     function select(row, keep) { selecting.select(row, keep) }
@@ -173,6 +175,7 @@ Item {
                     width: here.width
                     chevron: true
                     current: selected
+                    inactive: view.inactive
                     onClicked: (modifiers) => { selecting.click(index, modifiers); here.forceActiveFocus() }
                     onActivated: backend.open(path)
                 }

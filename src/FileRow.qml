@@ -22,6 +22,8 @@ Item {
     required property bool selected
 
     property bool current: false
+    // In a pane the keys don't go to: the selection is drawn without the accent.
+    property bool inactive: false
     // In a column to the left: the folder the next column is showing.
     property bool trail: false
     property bool detailed: false
@@ -64,9 +66,9 @@ Item {
         anchors.rightMargin: 4
         radius: Math.min(4, theme.radius)
         border.width: folderDrop.containsDrag ? 2 : row.cursor ? 1 : 0
-        border.color: theme.accent
-        color: row.current || folderDrop.containsDrag ? Qt.alpha(theme.accent, 0.18)
-             : row.trail ? Qt.alpha(theme.foreground, 0.08)
+        border.color: row.inactive && !folderDrop.containsDrag ? Qt.alpha(theme.foreground, 0.4) : theme.accent
+        color: row.current && !row.inactive || folderDrop.containsDrag ? Qt.alpha(theme.accent, 0.18)
+             : row.trail || row.current ? Qt.alpha(theme.foreground, 0.08)
              : hover.hovered ? Qt.alpha(theme.foreground, 0.05)
              : "transparent"
     }
