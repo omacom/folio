@@ -1,5 +1,6 @@
 #include "searchindex.h"
 
+#include <QBitArray>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -15,6 +16,15 @@
 
 static char lower(char c) {
     return c >= 'A' && c <= 'Z' ? char(c + ('a' - 'A')) : c;
+}
+
+static bool isLetter(char c) {
+    c = lower(c);
+    return c >= 'a' && c <= 'z';
+}
+
+static bool isAlnum(char c) {
+    return isLetter(c) || (c >= '0' && c <= '9');
 }
 
 static bool isSeparator(char c) {
@@ -51,6 +61,58 @@ SearchMatcher::SearchMatcher(const QString &query)
       m_folderPart(m_needle.lastIndexOf('/') + 1), m_bitsFrom(m_needle.size() + 1, 0) {
     for (qsizetype at = m_needle.size(); at-- > 0;)
         m_bitsFrom[at] = m_bitsFrom[at + 1] | bitsOf(m_needle.sliced(at, 1));
+    // One typo from this many letters and digits, two from twice as many.
+    constexpr int oneTypoFrom = 4;
+    const qsizetype letters = std::count_if(m_needle.begin(), m_needle.end(), isAlnum);
+    if (!m_needle.isEmpty() && isAlnum(m_needle[0]))
+        m_typos = letters >= 2 * oneTypoFrom ? 2 : letters >= oneTypoFrom ? 1 : 0;
+}
+
+// Optimal string alignment from each word start, so a swapped pair is one
+// typo: only letters are added, dropped or changed, never digits or marks.
+int SearchMatcher::typo(QByteArrayView hay) const {
+    // Each typo costs this much of the class's score.
+    constexpr int typoCost = 1000;
+    const int over = m_typos + 1;
+    const int length = int(m_needle.size());
+    int fewest = over;
+    for (int start = 0; start < int(hay.size()); ++start) {
+        if (!wordStart(hay, start) || int(hay.size()) - start + m_typos < length)
+            continue;
+        const int span = std::min(int(hay.size()) - start, length + m_typos);
+        m_older.assign(span + 1, over);
+        m_previous.assign(span + 1, over);
+        m_current.assign(span + 1, over);
+        m_previous[0] = 0;
+        for (int j = 1; j <= std::min(span, m_typos); ++j)
+            m_previous[j] = isLetter(hay[start + j - 1]) ? m_previous[j - 1] + 1 : over;
+        for (int i = 1; i <= length; ++i) {
+            std::fill(m_current.begin(), m_current.end(), over);
+            const char a = m_needle[i - 1];
+            m_current[0] = isLetter(a) ? m_previous[0] + 1 : over;
+            int low = m_current[0];
+            for (int j = std::max(1, i - m_typos); j <= std::min(span, i + m_typos); ++j) {
+                const char b = lower(hay[start + j - 1]);
+                int value = a == b ? m_previous[j - 1] : isLetter(a) && isLetter(b) ? m_previous[j - 1] + 1 : over;
+                if (isLetter(a))
+                    value = std::min(value, m_previous[j] + 1);
+                if (isLetter(b))
+                    value = std::min(value, m_current[j - 1] + 1);
+                if (i > 1 && j > 1 && a == lower(hay[start + j - 2]) && m_needle[i - 2] == b && isLetter(a) && isLetter(b))
+                    value = std::min(value, m_older[j - 2] + 1);
+                m_current[j] = std::min(value, over);
+                low = std::min(low, value);
+            }
+            m_older.swap(m_previous);
+            m_previous.swap(m_current);
+            if (low > m_typos)
+                break;
+            if (i == length)
+                for (int j = std::max(0, length - m_typos); j <= span; ++j)
+                    fewest = std::min(fewest, m_previous[j]);
+        }
+    }
+    return fewest <= m_typos ? Typo - fewest * typoCost : NoMatch;
 }
 
 qsizetype SearchMatcher::reach(QByteArrayView text, qsizetype at) const {
@@ -71,6 +133,29 @@ bool SearchMatcher::startsAt(QByteArrayView text, qsizetype at) const {
         if (lower(text[at + i]) != m_needle[i])
             return false;
     return true;
+}
+
+bool SearchMatcher::spells(QByteArrayView text) const {
+    for (qsizetype at = 0; at + m_needle.size() <= text.size(); ++at)
+        if (startsAt(text, at))
+            return true;
+    // reached[k]: the query's first k letters are placed, each run from the start of a word.
+    QVarLengthArray<bool, 64> reached(m_needle.size() + 1);
+    std::fill(reached.begin(), reached.end(), false);
+    reached[0] = true;
+    for (qsizetype at = 0; at < text.size(); ++at) {
+        if (!wordStart(text, at))
+            continue;
+        // From the far end, so a run this word starts isn't taken up again within the word.
+        for (qsizetype k = m_needle.size(); k-- > 0;) {
+            if (!reached[k])
+                continue;
+            for (qsizetype run = 0; k + run < m_needle.size() && at + run < text.size()
+                                    && lower(text[at + run]) == m_needle[k + run]; ++run)
+                reached[k + run + 1] = true;
+        }
+    }
+    return reached[m_needle.size()];
 }
 
 int SearchMatcher::name(QByteArrayView text) const {
@@ -284,10 +369,15 @@ qsizetype SearchIndex::pathLength(quint32 row) const {
     return (r.parent == None ? 0 : m_folders[r.parent].length + 1) + m_names[r.name].length;
 }
 
-// Whether a name, or a path, with `held` can hold every letter in `wanted`:
-// one it lacks rules it out unread.
-static bool possible(quint64 wanted, quint64 held) {
-    return ((wanted | held) & SearchMatcher::Unknown) || !(wanted & ~held);
+// Whether a name, or a path, with `held` can hold every letter in `wanted`,
+// `edits` of them aside: one more it lacks rules it out unread. Digits and
+// marks are never edited.
+static bool possible(quint64 wanted, quint64 held, int edits = 0) {
+    constexpr quint64 digitsAndMarks = ((1ull << 16) - 1) << 26;
+    if ((wanted | held) & SearchMatcher::Unknown)
+        return true;
+    const quint64 missing = wanted & ~held;
+    return !(missing & digitsAndMarks) && int(qPopulationCount(missing)) <= edits;
 }
 
 int SearchIndex::score(quint32 id, QByteArray &folded) const {
@@ -359,11 +449,7 @@ qsizetype SearchIndex::answer(const QString &query) {
     m_hits.clear();
     m_ordered = 0;
     // Each name is matched once, however many rows share it.
-    if (++m_stamp == 0) {
-        m_stamps.fill(0);
-        m_folderStamps.fill(0);
-        m_stamp = 1;
-    }
+    restamp();
     m_stamps.resize(m_names.size());
     m_scores.resize(m_names.size());
     m_folderStamps.resize(m_folders.size());
@@ -372,6 +458,9 @@ qsizetype SearchIndex::answer(const QString &query) {
     const quint64 first = needle.isEmpty() ? 0 : SearchMatcher::bitsOf(needle.first(1));
     const quint64 folderBits = SearchMatcher::bitsOf(needle.first(m_matcher.folderPart()));
     QByteArray folded;
+    // Whether a name spells the query out, or its folders were named with a
+    // "/": anything else found is its letters scattered about.
+    bool whole = false;
     const qsizetype count = narrow ? within.size() : m_rows.size();
     for (qsizetype i = 0; i < count; ++i) {
         const quint32 row = narrow ? within[i] : quint32(i);
@@ -396,24 +485,62 @@ qsizetype SearchIndex::answer(const QString &query) {
                     found = m_matcher.folderPart() > 0 ? SearchMatcher::PendingAligned : SearchMatcher::PendingPath;
             }
         }
-        if (found != SearchMatcher::NoMatch)
-            m_hits.push_back({found, row});
+        if (found == SearchMatcher::NoMatch)
+            continue;
+        m_hits.push_back({found, row});
+        whole = whole || found >= SearchMatcher::Word || found == SearchMatcher::PendingAligned
+            || (found == SearchMatcher::Pending && m_matcher.spells(text(r.name, folded)));
+    }
+    // No name spells it out: then names a typo or two off, ahead of the
+    // scattered ones. The slowest way to match, so it's only tried now.
+    if (!whole && m_matcher.typos() > 0) {
+        ++counts.typos;
+        restamp();
+        const auto off = [&](quint32 id) {
+            if (m_stamps[id] != m_stamp) {
+                m_stamps[id] = m_stamp;
+                m_scores[id] = possible(m_matcher.bits(), m_names[id].bits, m_matcher.typos())
+                    ? m_matcher.typo(text(id, folded)) : SearchMatcher::NoMatch;
+            }
+            return m_scores[id];
+        };
+        // A scattered match that is also a typo off counts as the typo.
+        QBitArray listed(m_rows.size());
+        for (Hit &hit : m_hits) {
+            listed.setBit(hit.row);
+            if (const int score = off(m_rows[hit.row].name); score != SearchMatcher::NoMatch)
+                hit.score = score;
+        }
+        for (quint32 row = 0; row < quint32(m_rows.size()); ++row)
+            if (!listed.testBit(row))
+                if (const int score = off(m_rows[row].name); score != SearchMatcher::NoMatch)
+                    m_hits.push_back({score, row});
     }
     return m_hits.size();
 }
 
+void SearchIndex::restamp() {
+    if (++m_stamp == 0) {
+        m_stamps.fill(0);
+        m_folderStamps.fill(0);
+        m_stamp = 1;
+    }
+}
+
 // The classes, best first; a pending score is in its own.
 static int classOf(int score) {
-    static constexpr int tiers[] = {SearchMatcher::Exact, SearchMatcher::Prefix, SearchMatcher::Word, SearchMatcher::Aligned};
+    static constexpr int tiers[] = {SearchMatcher::Exact, SearchMatcher::Prefix, SearchMatcher::Word, SearchMatcher::Aligned,
+                                    SearchMatcher::Named};
     if (score == SearchMatcher::PendingAligned)
         return 3;
-    if (score != SearchMatcher::Pending && score != SearchMatcher::PendingPath)
-        for (int i = 0; i < int(std::size(tiers)); ++i)
-            if (score >= tiers[i] - SearchMatcher::Span)
-                return i;
+    if (score == SearchMatcher::Pending || score == SearchMatcher::PendingPath)
+        return 4;
+    for (int i = 0; i < int(std::size(tiers)); ++i)
+        if (score >= tiers[i] - SearchMatcher::Span)
+            return i;
     return int(std::size(tiers));
 }
-static constexpr int Classes = 5;
+static constexpr int Classes = 6;
 
 // Paths in the order people number things: "photo9" before "photo10".
 static int natural(QByteArrayView a, QByteArrayView b) {

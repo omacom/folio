@@ -23,6 +23,7 @@ public:
         Prefix = 4000000, // the name starts with it
         Word = 3500000, // a word in the name starts with it
         Aligned = 3000000, // with a "/", its folders hold what's before it and the name the rest
+        Typo = 2500000, // the name is a letter or two off, when no name spells the query out
         Named = 2000000, // its letters are in the name, or along the path, in order
     };
     static constexpr int Span = 100000;
@@ -39,6 +40,15 @@ public:
     // A Named match's score: runs, word starts and letters close together
     // earn more.
     int align(QByteArrayView text) const;
+    // How many letters a name may be off from the query: none when the
+    // query doesn't start with a letter or a digit.
+    int typos() const { return m_typos; }
+    // The Typo score of a name that far off at most, from the start of a
+    // word, or NoMatch.
+    int typo(QByteArrayView text) const;
+    // Whether `text` spells the query out: whole anywhere, or in runs that
+    // each start a word, as framen does in frame_new.
+    bool spells(QByteArrayView text) const;
     // How far into the query `text` takes it, from `at`, its letters
     // taken in order.
     qsizetype reach(QByteArrayView text, qsizetype at) const;
@@ -76,6 +86,9 @@ private:
     quint64 m_bits = 0;
     qsizetype m_folderPart = 0;
     std::vector<quint64> m_bitsFrom;
+    int m_typos = 0;
+    // The rows of the typo pass's table, kept between names.
+    mutable std::vector<int> m_older, m_previous, m_current;
 };
 
 // Everything below a folder by name, read once for a search. Names stay the
@@ -90,6 +103,7 @@ public:
         qsizetype walks = 0;
         qsizetype names = 0; // names matched, each once a query however many rows share it
         qsizetype folders = 0; // folders matched along a path, each at most once a query
+        qsizetype typos = 0; // passes looking for names a letter or two off
     };
 
     // Reads `root` and every folder below it, breadth first, staying on its
@@ -139,6 +153,7 @@ private:
     int score(quint32 id, QByteArray &folded) const;
     qsizetype reach(quint32 folder);
     int alongPath(quint32 row, int tier, QHash<quint32, SearchMatcher::Alignment> &above);
+    void restamp();
     bool before(const Hit &a, const Hit &b) const;
 
     QString m_root;

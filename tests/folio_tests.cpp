@@ -1482,6 +1482,43 @@ private slots:
         QCOMPARE(best("render"), QString("render_notes.txt"));
     }
 
+    void searchForgivesATypoWhenNoNameSpellsTheQuery()
+    {
+        // No name spelling the query out, a name a letter off (a swapped
+        // pair counts as one) is found; a name that holds it whole, or in
+        // runs that each start a word, means the typo pass never runs.
+        QTemporaryDir dir;
+        for (const char *folder : {"projects/src", "editor/render"})
+            QDir(dir.path()).mkpath(folder);
+        write(dir.filePath("projects/src/render_frame.rs"), "x");
+        write(dir.filePath("projects/src/thread_runner.rs"), "x");
+        write(dir.filePath("editor/render/pipeline.rs"), "x");
+        write(dir.filePath("fuzzy.rs"), "x");
+        write(dir.filePath("report2024.pdf"), "x");
+        SearchIndex index;
+        QVERIFY(index.walk(dir.path(), false));
+        QCOMPARE(index.answer("redner_frame.rs"), 1);
+        QCOMPARE(index.path(index.rows(0, 1).first()), QByteArray("projects/src/render_frame.rs"));
+        QCOMPARE(index.answer("fzuzy"), 1);
+        QCOMPARE(index.path(index.rows(0, 1).first()), QByteArray("fuzzy.rs"));
+        QCOMPARE(index.counts.typos, 2);
+        // Digits aren't letters to get wrong.
+        QCOMPARE(index.answer("report2025"), 0);
+        QCOMPARE(index.counts.typos, 3);
+        for (const char *query : {"render", "rend", "fuzzy", "report", "renfr", "ort2024"})
+            QVERIFY(index.answer(query) > 0);
+        QCOMPARE(index.counts.typos, 3);
+        // Letters scattered through a name (thread_runner) or along a path
+        // (editor/render/pipeline) don't stand in for the name meant: it comes first.
+        QCOMPARE(index.answer("redner"), 4);
+        QCOMPARE(index.counts.typos, 4);
+        const QVector<quint32> rows = index.rows(0, 4);
+        QCOMPARE(index.path(rows[0]), QByteArray("editor/render"));
+        QCOMPARE(index.path(rows[1]), QByteArray("projects/src/render_frame.rs"));
+        QCOMPARE(QSet<QByteArray>({index.path(rows[2]), index.path(rows[3])}),
+                 QSet<QByteArray>({"editor/render/pipeline.rs", "projects/src/thread_runner.rs"}));
+    }
+
     void folderModelSwapsFoldersWithoutAnEmptyFrame()
     {
         QTemporaryDir a, b;
