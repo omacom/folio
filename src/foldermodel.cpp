@@ -3,6 +3,7 @@
 #include <QCache>
 #include <QCollator>
 #include <QDir>
+#include <QDirListing>
 #include <QXmlStreamReader>
 #include <QUrl>
 #include <QStandardPaths>
@@ -375,21 +376,28 @@ QString FolderModel::recentFile() {
 }
 
 void FolderModel::summarize(Entry &entry, bool showHidden) {
-    QDir::Filters filters = QDir::AllEntries | QDir::NoDotAndDotDot | QDir::System;
-    if (showHidden)
-        filters |= QDir::Hidden;
+    // The entries QDir lists for AllEntries | NoDotAndDotDot | System, broken symlinks, sockets and fifos included.
+    const auto flags = showHidden ? QDirListing::IteratorFlag::IncludeHidden : QDirListing::IteratorFlag::Default;
     QDir dir(entry.path);
-    const QStringList names = dir.entryList(filters, QDir::Name);
-    entry.itemCount = names.size();
+    entry.itemCount = 0;
     entry.peek.clear();
 
     static const QStringList pictures{"jpg", "jpeg", "png", "webp", "gif", "heic", "avif", "jxl"};
-    for (const QString &name : names) {
-        if (pictures.contains(QFileInfo(name).suffix().toLower()))
-            entry.peek << dir.filePath(name);
-        if (entry.peek.size() == 2)
-            break;
+    constexpr qsizetype peekSize = 2; // pictures a folder tile shows
+    // The first pictures in QDir::Name order (a case-sensitive QString compare), kept in one pass without sorting.
+    QStringList firsts;
+    for (const auto &item : QDirListing(dir.path(), flags)) {
+        ++entry.itemCount;
+        const QString name = item.fileName();
+        if ((firsts.size() == peekSize && name > firsts.last())
+            || !pictures.contains(QFileInfo(name).suffix().toLower()))
+            continue;
+        firsts.insert(std::lower_bound(firsts.cbegin(), firsts.cend(), name) - firsts.cbegin(), name);
+        if (firsts.size() > peekSize)
+            firsts.removeLast();
     }
+    for (const QString &name : std::as_const(firsts))
+        entry.peek << dir.filePath(name);
 }
 
 void FolderModel::reload() {

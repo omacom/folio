@@ -8,6 +8,7 @@
 #include <QTemporaryDir>
 #include <QUrl>
 #include <QtTest>
+#include <sys/stat.h>
 
 #include "backend.h"
 #include "fileops.h"
@@ -65,6 +66,31 @@ private slots:
         FolderModel::summarize(entry, false);
         QCOMPARE(entry.itemCount, 4);
         QCOMPARE(entry.peek.size(), 2);
+    }
+
+    void folderSummaryPeeksTheFirstPicturesByName()
+    {
+        // Written in neither name order nor its reverse, so a listing in creation order, either way, gives the wrong two.
+        QTemporaryDir dir;
+        QDir(dir.path()).mkdir(".shots.png");
+        for (int i = 20; i > 0; --i)
+            write(dir.filePath(QString("note%1.txt").arg(i)), "x");
+        for (const char *name : {"photo10.jpg", "\xc3\x89lan.png", "Photo9.JPG", "photo9.jpg"})
+            write(dir.filePath(QString::fromUtf8(name)), "x");
+        QVERIFY(QFile::link(dir.filePath("missing"), dir.filePath("gone")));
+        QVERIFY(QFile::link(dir.filePath(".shots.png"), dir.filePath("link")));
+        QCOMPARE(::mkfifo(QFile::encodeName(dir.filePath("pipe")).constData(), 0600), 0);
+
+        // Name order is a case-sensitive compare: capitals first, photo10 before photo9, accents after z.
+        FolderModel::Entry entry;
+        entry.path = dir.path();
+        FolderModel::summarize(entry, false);
+        QCOMPARE(entry.itemCount, 27);
+        QCOMPARE(entry.peek, QStringList({dir.filePath("Photo9.JPG"), dir.filePath("photo10.jpg")}));
+        // A folder named like a picture peeks like one.
+        FolderModel::summarize(entry, true);
+        QCOMPARE(entry.itemCount, 28);
+        QCOMPARE(entry.peek, QStringList({dir.filePath(".shots.png"), dir.filePath("Photo9.JPG")}));
     }
 
     void folderModelLoadsInTheBackground()
