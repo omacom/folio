@@ -13,8 +13,11 @@
 #include <QFileInfo>
 #include <QFutureWatcher>
 #include <QMimeDatabase>
+#include <QVarLengthArray>
 #include <QtConcurrent>
 #include <algorithm>
+#include <numeric>
+#include <vector>
 #include <sys/stat.h>
 
 FolderModel::FolderModel(QObject *parent) : QAbstractListModel(parent) {
@@ -361,11 +364,36 @@ QStringList FolderModel::sortModes() {
     return {"name", "kind", "modified", "oldest", "size"};
 }
 
+bool FolderModel::mergeRuns(QVector<Entry> &entries, const std::function<bool(const Entry &, const Entry &)> &less) {
+    constexpr qsizetype mostRuns = 64; // merging 64 runs takes 6 compares an entry, a third of sorting 100,000
+    // Where each run starts, then where the last one ends.
+    QVarLengthArray<QVector<Entry>::iterator, mostRuns + 1> bounds{entries.begin()};
+    for (auto at = entries.begin(); at != entries.end();) {
+        if (bounds.size() > mostRuns)
+            return false;
+        at = std::is_sorted_until(at, entries.end(), less);
+        bounds.push_back(at);
+    }
+    // Neighbouring runs merge in pairs until one is left; a merge puts its left run's equals first, so ties keep their order.
+    while (bounds.size() > 2) {
+        qsizetype merged = 1;
+        for (qsizetype i = 0; i + 2 < bounds.size(); i += 2) {
+            std::inplace_merge(bounds[i], bounds[i + 1], bounds[i + 2], less);
+            bounds[merged++] = bounds[i + 2];
+        }
+        if (bounds.size() % 2 == 0) // an odd run out keeps its end
+            bounds[merged++] = bounds.back();
+        bounds.resize(merged);
+    }
+    return true;
+}
+
 void FolderModel::sortEntries(QVector<Entry> &entries, const QString &sort, const QLocale &locale) {
     QCollator collator(locale);
     collator.setNumericMode(true);
     collator.setCaseSensitivity(Qt::CaseInsensitive);
-    std::stable_sort(entries.begin(), entries.end(), [&](const Entry &a, const Entry &b) {
+    // `collate` compares the two names, or with true the two extensions.
+    const auto before = [&sort](const Entry &a, const Entry &b, const auto &collate) {
         // Folders first in every order, as everywhere else on the desktop.
         if (a.isDir != b.isDir)
             return a.isDir;
@@ -380,10 +408,45 @@ void FolderModel::sortEntries(QVector<Entry> &entries, const QString &sort, cons
             if (a.kind != b.kind)
                 return a.kind < b.kind;
             if (a.extension != b.extension)
-                return collator.compare(a.extension, b.extension) < 0;
+                return collate(true) < 0;
         }
-        return collator.compare(a.name, b.name) < 0;
+        return collate(false) < 0;
+    };
+    const auto less = [&](const Entry &a, const Entry &b) {
+        return before(a, b, [&](bool extension) {
+            return extension ? collator.compare(a.extension, b.extension) : collator.compare(a.name, b.name);
+        });
+    };
+    // A folder listed in the order it was written, as btrfs gives one back, is in a few runs already.
+    if (mergeRuns(entries, less))
+        return;
+    // Keys pay where names decide the order, and outside the C locale, whose keys keep the case its compare ignores.
+    if ((sort != "name" && sort != "kind") || collator.locale().language() == QLocale::C) {
+        std::stable_sort(entries.begin(), entries.end(), less);
+        return;
+    }
+    // Each name and extension made into a key once, so a compare reads bytes instead of collating both strings.
+    std::vector<QCollatorSortKey> names, extensions;
+    names.reserve(entries.size());
+    for (const Entry &e : std::as_const(entries))
+        names.push_back(collator.sortKey(e.name));
+    if (sort == "kind") {
+        extensions.reserve(entries.size());
+        for (const Entry &e : std::as_const(entries))
+            extensions.push_back(collator.sortKey(e.extension));
+    }
+    std::vector<qsizetype> order(entries.size());
+    std::iota(order.begin(), order.end(), 0);
+    std::stable_sort(order.begin(), order.end(), [&](qsizetype i, qsizetype j) {
+        return before(entries.at(i), entries.at(j), [&](bool extension) {
+            return extension ? extensions[i].compare(extensions[j]) : names[i].compare(names[j]);
+        });
     });
+    QVector<Entry> sorted;
+    sorted.reserve(entries.size());
+    for (qsizetype i : order)
+        sorted.push_back(std::move(entries[i]));
+    entries = std::move(sorted);
 }
 
 // Recents are GTK's recently used files (~/.local/share/recently-used.xbel),

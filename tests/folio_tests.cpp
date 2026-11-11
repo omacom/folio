@@ -1,4 +1,5 @@
 #include <QClipboard>
+#include <QCollator>
 #include <QDir>
 #include <QEventLoopLocker>
 #include <QMetaProperty>
@@ -33,6 +34,7 @@
 #include <fcntl.h>
 #include <malloc.h>
 #include <cstring>
+#include <random>
 #include <linux/sockios.h>
 #include <signal.h>
 #include <sys/ioctl.h>
@@ -1699,6 +1701,70 @@ private slots:
         QCOMPARE(order("modified"), QString("Zeta b.txt c.txt a.png"));
         QCOMPARE(order("oldest"), QString("Zeta a.png c.txt b.txt"));
         QCOMPARE(order("size"), QString("Zeta a.png c.txt b.txt"));
+    }
+
+    void folderSortsInThePlainSortsOrder()
+    {
+        // However they arrive, entries end in the order one stable sort by one collating compare gives, ties and all.
+        const auto entries = sortable();
+        // A real locale sorts names by their keys, C by the plain compare: each is held to the same order.
+        for (const QLocale &locale : {QLocale(QLocale::English, QLocale::UnitedStates), QLocale::c()}) {
+            const SortLocale sorting(locale);
+            for (const QString &sort : FolderModel::sortModes()) {
+                auto ordered = entries;
+                plainSort(ordered, sort);
+                auto reversed = ordered;
+                std::reverse(reversed.begin(), reversed.end());
+                auto shuffled = entries;
+                std::shuffle(shuffled.begin(), shuffled.end(), std::mt19937(2026));
+                // A few runs, as a folder written in batches arrives.
+                auto runs = shuffled;
+                constexpr int batches = 5;
+                for (int i = 0; i < batches; ++i) {
+                    QVector<FolderModel::Entry> batch(runs.begin() + i * runs.size() / batches, runs.begin() + (i + 1) * runs.size() / batches);
+                    plainSort(batch, sort);
+                    std::move(batch.begin(), batch.end(), runs.begin() + i * runs.size() / batches);
+                }
+                for (const auto &arrived : {ordered, reversed, shuffled, runs}) {
+                    auto sorted = arrived, expected = arrived;
+                    FolderModel::sortEntries(sorted, sort);
+                    plainSort(expected, sort);
+                    QCOMPARE(paths(sorted), paths(expected));
+                }
+            }
+        }
+    }
+
+    void folderSortsAnOrderedListingInOneCompareAnEntry()
+    {
+        // A listing already in order is checked, not sorted again: about one compare an entry, where a sort takes a dozen.
+        constexpr qsizetype comparesAnEntry = 2;
+        for (const QString &sort : FolderModel::sortModes()) {
+            auto entries = sortable();
+            plainSort(entries, sort);
+            const QStringList expected = paths(entries);
+            QCollator collator;
+            collator.setNumericMode(true);
+            collator.setCaseSensitivity(Qt::CaseInsensitive);
+            qsizetype compares = 0;
+            QVERIFY(FolderModel::mergeRuns(entries, [&](const FolderModel::Entry &a, const FolderModel::Entry &b) {
+                ++compares;
+                return plainBefore(a, b, sort, collator);
+            }));
+            QVERIFY2(compares <= comparesAnEntry * entries.size(), qPrintable(QString("%1 compares").arg(compares)));
+            QCOMPARE(paths(entries), expected);
+        }
+    }
+
+    void folderLeavesAnOrderedListingWhereItIs()
+    {
+        // sortEntries merges what arrives in order; the keyed sort a real locale would fall to builds the listing again in another buffer.
+        const SortLocale sorting(QLocale(QLocale::English, QLocale::UnitedStates));
+        auto entries = sortable();
+        plainSort(entries, "name");
+        const FolderModel::Entry *listed = entries.constData();
+        FolderModel::sortEntries(entries, "name");
+        QCOMPARE(entries.constData(), listed);
     }
 
     void folderKeepsASelection()
@@ -6513,6 +6579,75 @@ private:
             if (line.startsWith(key))
                 return line.mid(qstrlen(key)).trimmed().split(' ').first().toLong();
         return -1;
+    }
+
+    // Entries with every kind of tie: names equal but for case, numbers written two ways, equal sizes and dates, folders among them.
+    static QVector<FolderModel::Entry> sortable()
+    {
+        const QStringList names{"README", "readme", "ReadMe", "a9.txt", "a09.txt", "a10.txt", "photo9.jpg", "photo10.jpg",
+                                "Photo9.jpg", "b.png", "B.PNG", "zeta", "Zeta", "é.md", "e.md", "notes", "x.tar.gz"};
+        QVector<FolderModel::Entry> entries;
+        constexpr int count = 2000; // shuffled, far more runs than mergeRuns takes, so the sorts behind it run too
+        for (int i = 0; i < count; ++i) {
+            FolderModel::Entry e;
+            e.name = i < 400 ? names.at(i % names.size()) : QString("file %1 %2").arg(i % 97).arg(names.at(i % names.size()));
+            e.path = QString("/sortable/%1").arg(i);
+            e = FolderModel::typed(e);
+            if (i % 13 == 0) {
+                e.isDir = true;
+                e.mime = "inode/directory";
+                e.kind = FolderModel::kindForMime(e.mime);
+                e.extension = QString();
+            } else {
+                e.size = (i % 5) * 10;
+            }
+            e.modified = QDateTime::fromSecsSinceEpoch(1700000000 + (i % 7) * 60);
+            entries.push_back(e);
+        }
+        return entries;
+    }
+
+    // The default locale, which a QCollator made without one follows, for as long as this lives.
+    struct SortLocale {
+        explicit SortLocale(const QLocale &locale) { QLocale::setDefault(locale); }
+        ~SortLocale() { QLocale::setDefault(was); }
+        const QLocale was;
+    };
+
+    // The order every faster sort must keep: Folio's compare, one pair at a time, in a stable sort.
+    static bool plainBefore(const FolderModel::Entry &a, const FolderModel::Entry &b, const QString &sort, const QCollator &collator)
+    {
+        if (a.isDir != b.isDir)
+            return a.isDir;
+        if (sort == "modified" && a.modified != b.modified)
+            return a.modified > b.modified;
+        if (sort == "oldest" && a.modified != b.modified)
+            return a.modified < b.modified;
+        if (sort == "size" && !a.isDir && a.size != b.size)
+            return a.size > b.size;
+        if (sort == "kind" && !a.isDir) {
+            if (a.kind != b.kind)
+                return a.kind < b.kind;
+            if (a.extension != b.extension)
+                return collator.compare(a.extension, b.extension) < 0;
+        }
+        return collator.compare(a.name, b.name) < 0;
+    }
+
+    static void plainSort(QVector<FolderModel::Entry> &entries, const QString &sort)
+    {
+        QCollator collator;
+        collator.setNumericMode(true);
+        collator.setCaseSensitivity(Qt::CaseInsensitive);
+        std::stable_sort(entries.begin(), entries.end(), [&](const auto &a, const auto &b) { return plainBefore(a, b, sort, collator); });
+    }
+
+    static QStringList paths(const QVector<FolderModel::Entry> &entries)
+    {
+        QStringList out;
+        for (const auto &e : entries)
+            out << e.path;
+        return out;
     }
 
     static void write(const QString &path, const QByteArray &contents)

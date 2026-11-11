@@ -127,6 +127,8 @@ public:
     static int itemCount(const QString &folder, bool showHidden);
     static QStringList sortModes();
     static void sortEntries(QVector<Entry> &entries, const QString &sort, const QLocale &locale = QLocale());
+    // Sorts `entries` by merging the ascending runs they arrived in, as stable_sort would; false, untouched, when they're too many.
+    static bool mergeRuns(QVector<Entry> &entries, const std::function<bool(const Entry &, const Entry &)> &less);
     // The Recents view: a path that isn't a folder, listing recently used files.
     static QString recentPath() { return QStringLiteral("recent:"); }
     static QString recentFile();
