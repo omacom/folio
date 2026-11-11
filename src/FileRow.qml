@@ -68,7 +68,7 @@ Item {
         anchors.rightMargin: 4
         radius: Math.min(4, theme.radius)
         border.width: folderDrop.containsDrag ? 2 : row.cursor ? 1 : 0
-        border.color: row.inactive && !folderDrop.containsDrag ? Qt.alpha(theme.foreground, 0.4) : theme.accent
+        border.color: row.inactive && !folderDrop.containsDrag ? Qt.alpha(theme.foreground, 0.6) : theme.accent
         color: row.current && !row.inactive || folderDrop.containsDrag ? Qt.alpha(theme.accent, 0.18)
              : row.trail || row.current ? Qt.alpha(theme.foreground, 0.08)
              : hover.hovered ? Qt.alpha(theme.foreground, 0.05)

@@ -190,7 +190,7 @@ Item {
                     : hover.hovered ? Qt.tint(theme.lighterBackground, Qt.alpha(theme.foreground, 0.06))
                     : theme.lighterBackground
                 strokeColor: (tile.current || tile.cursor) && !tile.inactive || folderDrop.containsDrag ? theme.accent
-                           : tile.current || tile.cursor ? Qt.alpha(theme.foreground, 0.4) : "transparent"
+                           : tile.current || tile.cursor ? Qt.alpha(theme.foreground, 0.6) : "transparent"
                 strokeWidth: folderDrop.containsDrag ? 2.5 : tile.cursor ? 1 : 1.5
                 joinStyle: tile.iconRadius > 0 ? ShapePath.RoundJoin : ShapePath.MiterJoin
                 PathSvg { path: tile.folderPath(tile.iconRadius) }
@@ -276,7 +276,7 @@ Item {
                 height: parent.shown.height + 6
                 color: "transparent"
                 border.width: tile.current ? 2 : 1
-                border.color: (tile.current || tile.cursor) && !tile.inactive ? theme.accent : Qt.alpha(theme.foreground, tile.current || tile.cursor ? 0.4 : 0.2)
+                border.color: (tile.current || tile.cursor) && !tile.inactive ? theme.accent : Qt.alpha(theme.foreground, tile.current || tile.cursor ? 0.6 : 0.2)
                 radius: tile.iconRadius > 0 ? tile.iconRadius + 3 : 0
             }
         }
@@ -300,7 +300,7 @@ Item {
                 anchors.margins: -3
                 color: "transparent"
                 border.width: tile.current ? 2 : 1
-                border.color: (tile.current || tile.cursor) && !tile.inactive ? theme.accent : Qt.alpha(theme.foreground, tile.current || tile.cursor ? 0.4 : 0.2)
+                border.color: (tile.current || tile.cursor) && !tile.inactive ? theme.accent : Qt.alpha(theme.foreground, tile.current || tile.cursor ? 0.6 : 0.2)
                 radius: tile.iconRadius > 0 ? tile.iconRadius + 3 : 0
             }
         }
