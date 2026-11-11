@@ -35,6 +35,8 @@ ApplicationWindow {
     readonly property bool split: rightPane !== null
     // The rightmost pane's path bar reaches over the details column.
     readonly property int detailsWidth: details.visible ? details.width : 0
+    // The panes draw their dialogs here, so they dim and centre on the whole window.
+    readonly property Item dialogLayer: layer
 
     // Remembers the view between launches (~/.config/folio/folio.conf).
     Settings {
@@ -88,6 +90,7 @@ ApplicationWindow {
     // Right-to-left languages mirror the window; the Translator sets the
     // application's layout direction.
     Item {
+        id: layer
         anchors.fill: parent
         LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
         LayoutMirroring.childrenInherit: true

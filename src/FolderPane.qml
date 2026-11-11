@@ -13,6 +13,7 @@ FocusScope {
 
     // The window this pane is in, for the state the panes share.
     readonly property var host: ApplicationWindow.window
+    readonly property Item dialogLayer: host ? host.dialogLayer : pane
     readonly property bool active: !!host && host.activePane === pane
     readonly property var paneBackend: backend
     property bool closable: false
@@ -324,17 +325,24 @@ FocusScope {
         onPressed: mouse => mouse.button === Qt.BackButton ? backend.back() : backend.forward()
     }
 
+    // The dialogs dim the whole window but act on this pane and return its focus.
     MountPrompt {
+        parent: pane.dialogLayer
         anchors.fill: parent
+        onVisibleChanged: if (!visible && pane.active) pane.focusView()
     }
 
     RenameDialog {
         id: rename
+        parent: pane.dialogLayer
         anchors.fill: parent
+        onVisibleChanged: if (!visible && pane.active) pane.focusView()
     }
 
     ConfirmDialog {
         id: confirm
+        parent: pane.dialogLayer
         anchors.fill: parent
+        onVisibleChanged: if (!visible && pane.active) pane.focusView()
     }
 }
