@@ -55,7 +55,7 @@ Item {
     function revealEnd() { flick.contentX = view.LayoutMirroring.enabled ? 0 : Math.max(0, flick.contentWidth - flick.width) }
     LayoutMirroring.onEnabledChanged: revealEnd()
     function enter() {
-        if (view.selected.isDir && (insideFolder.loading || insideFolder.count > 0))
+        if (view.selected.isDir && (insideFolder.loading || insideFolder.count > 0 || insideFolder.error.length > 0))
             backend.navigate(view.selected.path)
     }
 
