@@ -217,6 +217,14 @@
   "Keep Both": "Keep Both",
   "Keyboard shortcuts": "Keyboard shortcuts",
   "Kind": "Kind",
+  "Linking %L1 of %Ln items…": {
+    "one": "Linking %L1 of %Ln item…",
+    "other": "Linking %L1 of %Ln items…"
+  },
+  "Linking %Ln items…": {
+    "one": "Linking %Ln item…",
+    "other": "Linking %Ln items…"
+  },
   "Making a preview…": "Making a preview…",
   "Merge": "Merge",
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.",
@@ -278,6 +286,7 @@
   "Password": "Password",
   "Paste": "Paste",
   "Paste Into Folder": "Paste Into Folder",
+  "Paste as Link": "Paste as Link",
   "Path": "Path",
   "Pause (K)": "Pause (K)",
   "Permission was refused.": "Permission was refused.",
@@ -303,6 +312,10 @@
   "Redid extracting %Ln archives.": {
     "one": "Redid extracting %Ln archive.",
     "other": "Redid extracting %Ln archives."
+  },
+  "Redid linking %Ln items.": {
+    "one": "Redid linking %Ln item.",
+    "other": "Redid linking %Ln items."
   },
   "Redid making %1.": "Redid making %1.",
   "Redid moving %Ln items to the trash.": {
@@ -398,6 +411,7 @@
   "There's nothing to redo.": "There's nothing to redo.",
   "There's nothing to undo.": "There's nothing to undo.",
   "This computer can't make %1 drives.": "This computer can't make %1 drives.",
+  "This drive can't hold links.": "This drive can't hold links.",
   "This folder is empty": "This folder is empty",
   "This folder no longer exists.": "This folder no longer exists.",
   "Trash": "Trash",
@@ -414,6 +428,10 @@
   "Undid extracting %Ln archives.": {
     "one": "Undid extracting %Ln archive.",
     "other": "Undid extracting %Ln archives."
+  },
+  "Undid linking %Ln items.": {
+    "one": "Undid linking %Ln item.",
+    "other": "Undid linking %Ln items."
   },
   "Undid making %1.": "Undid making %1.",
   "Undid moving %Ln items to the trash.": {
@@ -435,6 +453,7 @@
   "Undo Move": "Undo Move",
   "Undo New File": "Undo New File",
   "Undo New Folder": "Undo New Folder",
+  "Undo Paste as Link": "Undo Paste as Link",
   "Undo Rename": "Undo Rename",
   "Undoing %L1 of %Ln items…": {
     "one": "Undoing %L1 of %Ln item…",

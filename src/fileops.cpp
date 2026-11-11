@@ -56,7 +56,8 @@ FileOps::FileOps(QObject *parent) : QObject(parent) {
         const auto readCut = [this, clipboard] {
             bool cut = false;
             const QMimeData *data = clipboard->mimeData();
-            const QStringList paths = data && data->hasFormat("x-special/gnome-copied-files") ? pathsFrom(data, &cut) : QStringList();
+            const QStringList paths =
+                data && data->hasFormat("x-special/gnome-copied-files") ? pathsFrom(data, &cut) : QStringList();
             m_cut.clear();
             if (cut)
                 for (const QString &path : paths)
@@ -968,6 +969,56 @@ void FileOps::startTransfer(const QStringList &paths, const QString &folder, Mod
         });
 }
 
+void FileOps::pasteLinks(const QString &folder) {
+    const QStringList paths = pathsFrom(QGuiApplication::clipboard()->mimeData(), nullptr);
+    if (paths.isEmpty() || !idle())
+        return;
+    if (!QFileInfo(folder).isDir() || inTrash(folder)) {
+        emit failed(tr("Files can't be pasted here."));
+        return;
+    }
+    const int count = paths.size();
+    inBackground(
+        [count](const Job &job) {
+            return counting(job, tr("Linking %L1 of %Ln items…", "", job.total), tr("Linking %Ln items…", "", count));
+        },
+        [paths, folder](Job &job) {
+            Outcome result;
+            job.total = paths.size();
+            for (const QString &path : paths) {
+                if (job.cancelled)
+                    break;
+                // The clipboard's absolute path, as written, as a link is copied; symlink() never replaces, nor reads what it leads to.
+                QString name;
+                int why = EEXIST;
+                while (why == EEXIST) {
+                    name = freeName(folder, QFileInfo(path).fileName());
+                    const QByteArray link = QFile::encodeName(QDir(folder).filePath(name));
+                    why = ::symlink(QFile::encodeName(path).constData(), link.constData()) == 0 ? 0 : errno;
+                }
+                if (why != 0) {
+                    const bool unlinkable = why == EPERM || why == EOPNOTSUPP || why == ENOSYS;
+                    result.error = unlinkable ? tr("This drive can't hold links.") : tr("Couldn't create %1.").arg(name);
+                    break;
+                }
+                result.made << name;
+                result.steps << identified({true, QDir(folder).filePath(name), {}});
+                ++job.done;
+            }
+            return result;
+        },
+        [this, folder](const Outcome &result, const Job &job) {
+            if (!result.steps.isEmpty())
+                remember({Linking, result.made.first(), int(result.made.size()), result.steps});
+            if (!result.error.isEmpty())
+                emit failed(result.error);
+            else if (job.cancelled)
+                sayStopped(job);
+            if (!result.made.isEmpty())
+                emit done(folder, result.made.first());
+        });
+}
+
 void FileOps::duplicate(const QString &path) {
     if (!idle())
         return;
@@ -1747,6 +1798,7 @@ QString FileOps::undoName() const {
     case Duplicating: return tr("Undo Duplicate");
     case MakingFolder: return tr("Undo New Folder");
     case MakingFile: return tr("Undo New File");
+    case Linking: return tr("Undo Paste as Link");
     case Compressing: return tr("Undo Compress");
     case Extracting: return tr("Undo Extract");
     case Trashing: return tr("Undo Delete");
@@ -1770,6 +1822,9 @@ static QString didMessage(const FileOps::Change &change, bool undoing) {
     case FileOps::MakingFolder:
     case FileOps::MakingFile:
         return undoing ? FileOps::tr("Undid making %1.").arg(name) : FileOps::tr("Redid making %1.").arg(name);
+    case FileOps::Linking:
+        return undoing ? FileOps::tr("Undid linking %Ln items.", "", n)
+                       : FileOps::tr("Redid linking %Ln items.", "", n);
     case FileOps::Compressing:
         return undoing ? FileOps::tr("Undid compressing into %1.").arg(name)
                        : FileOps::tr("Redid compressing into %1.").arg(name);
@@ -1812,7 +1867,8 @@ static QString unchanged(const QList<FileOps::Step> &steps, bool undoing) {
         struct stat made;
         if (step->empty && step->other.isEmpty() && !after.contains(now)
             && (::lstat(QFile::encodeName(now).constData(), &made) != 0 || made.st_size != 0))
-            return FileOps::tr("Can't undo that: %1 has been written to since it was made.").arg(QFileInfo(now).fileName());
+            return FileOps::tr("Can't undo that: %1 has been written to since it was made.")
+                .arg(QFileInfo(now).fileName());
         if (!next.isEmpty() && there(next)) {
             const QFileInfo blocked(next);
             const QString folder = QFileInfo(blocked.absolutePath()).fileName();

@@ -1182,6 +1182,49 @@ private slots:
             QTRY_COMPARE(dim(window.get(), "cut.txt"), QString("false"));
     }
 
+    void pasteAsLinkTakesNoNameAndNeverWalksIn()
+    {
+        // Each link gets a free name and leads to the clipboard's absolute path, a folder is never walked, and undo takes them.
+        QTemporaryDir data, from, to;
+        const auto restore = dataHomeAt(data.path());
+        FileOps::forgetHistory();
+        write(from.filePath("a.txt"), "a");
+        QDir(from.path()).mkpath("box/inner");
+        write(to.filePath("a.txt"), "kept");
+        FileOps ops;
+        QSignalSpy done(&ops, &FileOps::done), failed(&ops, &FileOps::failed);
+        ops.copy({from.filePath("a.txt"), from.filePath("box")});
+        ops.pasteLinks(to.path());
+        QVERIFY(done.wait(3000));
+        QCOMPARE(QFileInfo(to.filePath("a (copy).txt")).readSymLink(), from.filePath("a.txt"));
+        QCOMPARE(contents(to.filePath("a.txt")), QByteArray("kept"));
+        QCOMPARE(QFileInfo(to.filePath("box")).readSymLink(), from.filePath("box"));
+        QCOMPARE(ops.undoName(), QString("Undo Paste as Link"));
+
+        ops.copy({from.filePath("box")});
+        ops.pasteLinks(from.filePath("box"));
+        QVERIFY(done.wait(3000));
+        QCOMPARE(QDir(from.filePath("box")).entryList(QDir::AllEntries | QDir::NoDotAndDotDot), QStringList({"box", "inner"}));
+        QCOMPARE(QFileInfo(from.filePath("box/box")).readSymLink(), from.filePath("box"));
+
+        for (int i = 0; i < 2; ++i) {
+            ops.undo();
+            QTRY_VERIFY(ops.busy().isEmpty());
+        }
+        QCOMPARE(QDir(to.path()).entryList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::System), QStringList({"a.txt"}));
+        QCOMPARE(QDir(from.filePath("box")).entryList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::System), QStringList({"inner"}));
+        QCOMPARE(contents(from.filePath("a.txt")), QByteArray("a"));
+        QVERIFY(failed.isEmpty());
+
+        if (geteuid() != 0) {
+            QVERIFY(QFile::setPermissions(to.path(), QFile::ReadOwner | QFile::ExeOwner));
+            ops.pasteLinks(to.path());
+            QTRY_COMPARE(failed.count(), 1);
+            QCOMPARE(failed.first().first().toString(), QString("Couldn't create box."));
+            QVERIFY(QFile::setPermissions(to.path(), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+        }
+    }
+
     void fileOpsCompressAcrossFolders()
     {
         // Search results and Recents can hold items from different folders:

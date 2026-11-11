@@ -83,7 +83,9 @@ public:
         bool empty = false;
     };
     // What undo names: the kind of change, and the item or how many.
-    enum Kind { Renaming, Moving, Copying, Duplicating, MakingFolder, MakingFile, Compressing, Extracting, Trashing };
+    enum Kind {
+        Renaming, Moving, Copying, Duplicating, MakingFolder, MakingFile, Linking, Compressing, Extracting, Trashing
+    };
     struct Change {
         Kind kind;
         QString name;
@@ -101,6 +103,8 @@ public:
     // The paths as text, one line each, `as` "path", "name", "stem" (no extension), "uri" or "quoted" (for a shell).
     Q_INVOKABLE void yank(const QStringList &paths, const QString &as = QStringLiteral("path"));
     Q_INVOKABLE void paste(const QString &folder);
+    // Links each file on the clipboard into `folder` under its name (a "(copy)" one when that's taken), never over anything.
+    Q_INVOKABLE void pasteLinks(const QString &folder);
     // Files dropped on a folder: moved when they're on the same drive,
     // copied from another drive. Dropping something where it already is
     // does nothing.

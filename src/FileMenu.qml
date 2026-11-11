@@ -4,7 +4,7 @@ import QtQuick
 // Preview, Rename, Duplicate, Copy, Cut, Paste Into, Copy as Text, Compress,
 // Extract (for archives), Burn (for disk images), plugins' own actions for
 // it, Share (whatever plugins offer for it), Pin, Terminal, Trash. On empty
-// space: Undo, Paste, New Folder, New File, Copy as Text, Terminal, hidden files. In the
+// space: Undo, Paste, Paste as Link, New Folder, New File, Copy as Text, Terminal, hidden files. In the
 // trash: Restore, Empty Trash and Delete…, without the entries that change
 // files or plugins' actions. On a plugin's item: Open, and nothing for files. Entries show their
 // keys, so the menu also teaches the shortcuts.
@@ -174,6 +174,12 @@ FolioMenu {
         keys: fileMenu.forItem ? "" : "Ctrl+V"
         enabled: fileOps.canPaste
         onTriggered: fileOps.paste(fileMenu.forItem ? fileMenu.target.path : fileMenu.folder)
+    }
+    FolioMenuItem {
+        shown: !fileMenu.trashView && !fileMenu.forItem
+        text: qsTr("Paste as Link")
+        enabled: fileOps.canPaste
+        onTriggered: fileOps.pasteLinks(fileMenu.folder)
     }
     // The items (or the folder) as text, one line each.
     FolioMenu {
