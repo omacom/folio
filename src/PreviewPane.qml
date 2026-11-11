@@ -141,21 +141,6 @@ Rectangle {
                 font.pixelSize: 12
                 elide: Text.ElideMiddle
             }
-            // A plugin's item: its own rows, label and value in turn.
-            Repeater {
-                model: pane.pluginItem ? pane.item.details.reduce((all, row) => all.concat([row[0], row[1]]), []) : []
-                Text {
-                    required property string modelData
-                    required property int index
-                    readonly property bool label: index % 2 === 0
-                    Layout.fillWidth: !label
-                    horizontalAlignment: label ? Text.AlignLeft : Text.AlignRight
-                    text: modelData
-                    color: label ? theme.secondaryForeground : theme.foreground
-                    font.pixelSize: 12
-                    elide: label ? Text.ElideNone : Text.ElideMiddle
-                }
-            }
             Text { visible: !pane.pluginItem; text: pane.trashed || pane.noting ? qsTr("Deleted") : qsTr("Modified"); color: theme.secondaryForeground; font.pixelSize: 12 }
             Text {
                 visible: !pane.pluginItem
@@ -224,6 +209,22 @@ Rectangle {
                                                      .arg(pane.info.height.toLocaleString(Qt.locale(), "f", 0)) : ""
                 color: theme.foreground
                 font.pixelSize: 12
+            }
+            // Plugins' rows, label and value in turn, after Folio's own: a
+            // plugin's item's details, or what plugins say about a file.
+            Repeater {
+                model: (pane.pluginItem ? pane.item.details : pane.info.plugins || []).reduce((all, row) => all.concat([row[0], row[1]]), [])
+                Text {
+                    required property string modelData
+                    required property int index
+                    readonly property bool label: index % 2 === 0
+                    Layout.fillWidth: !label
+                    horizontalAlignment: label ? Text.AlignLeft : Text.AlignRight
+                    text: modelData
+                    color: label ? theme.secondaryForeground : theme.foreground
+                    font.pixelSize: 12
+                    elide: label ? Text.ElideNone : Text.ElideMiddle
+                }
             }
         }
 

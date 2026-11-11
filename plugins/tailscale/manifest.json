@@ -5,8 +5,8 @@
   "section": { "title": "Tailnet", "rows": "opened" },
   "view": { "title": "Tailnet", "label": "Machines", "icon": "tailnet",
             "empty": "No machines are online" },
-  "share": [
-    { "id": "taildrop", "label": "Taildrop", "to": "items", "files": true,
+  "actions": [
+    { "id": "taildrop", "label": "Taildrop", "menu": "share", "to": "items", "files": true,
       "command": ["./send"], "busy": "Sending to %1…" }
   ]
 }

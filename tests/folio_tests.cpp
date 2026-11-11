@@ -3405,10 +3405,11 @@ private slots:
             "poll": {"command": ["./machines", "--all"], "every": 2},
             "section": {"title": "Tailnet", "rows": "opened", "limit": 3},
             "view": {"title": "Tailnet", "label": "Machines", "icon": "tailnet", "empty": "No machines are online"},
-            "share": [{"id": "taildrop", "label": "Taildrop", "to": "items", "files": true,
-                       "command": ["./send"], "busy": "Sending to %1…"},
-                      {"id": "link", "label": "Link", "command": ["./link"], "under": ["~/Dropbox/"],
-                       "single": true, "detach": true}]})", &error);
+            "actions": [{"id": "taildrop", "label": "Taildrop", "menu": "share", "to": "items", "files": true,
+                         "command": ["./send"], "busy": "Sending to %1…"},
+                        {"id": "link", "label": "Link", "command": ["./link"], "under": ["~/Dropbox/"],
+                         "types": ["image/png", "application/pdf"], "single": true, "detach": true}],
+            "details": {"command": ["./status"], "under": ["~/Dropbox/"], "types": ["text/plain"]}})", &error);
         QVERIFY2(manifest, qPrintable(error));
         QCOMPARE(manifest->required, QStringList({"tailscale"}));
         QCOMPARE(manifest->poll, QStringList({"./machines", "--all"}));
@@ -3420,11 +3421,18 @@ private slots:
         QVERIFY(manifest->view);
         QCOMPARE(manifest->viewLabel, QString("Machines"));
         QCOMPARE(manifest->viewEmpty, QString("No machines are online"));
-        QCOMPARE(manifest->share.size(), 2);
-        QVERIFY(manifest->share[0].toItems && manifest->share[0].files && !manifest->share[0].single);
-        QCOMPARE(manifest->share[0].busy, QString("Sending to %1…"));
-        QCOMPARE(manifest->share[1].under, QStringList({"~/Dropbox/"}));
-        QVERIFY(manifest->share[1].single && manifest->share[1].detach);
+        QCOMPARE(manifest->actions.size(), 2);
+        QVERIFY(manifest->actions[0].share && manifest->actions[0].toItems && manifest->actions[0].files);
+        QVERIFY(!manifest->actions[0].single);
+        QCOMPARE(manifest->actions[0].busy, QString("Sending to %1…"));
+        // An action is in the menu itself unless it says Share.
+        QVERIFY(!manifest->actions[1].share);
+        QCOMPARE(manifest->actions[1].under, QStringList({"~/Dropbox/"}));
+        QCOMPARE(manifest->actions[1].types, QStringList({"image/png", "application/pdf"}));
+        QVERIFY(manifest->actions[1].single && manifest->actions[1].detach);
+        QCOMPARE(manifest->details, QStringList({"./status"}));
+        QCOMPARE(manifest->detailsUnder, QStringList({"~/Dropbox/"}));
+        QCOMPARE(manifest->detailsTypes, QStringList({"text/plain"}));
 
         // Nor less often than once a day, which a timer can still count.
         QCOMPARE(Plugins::parseManifest(R"({"folio": 1, "poll": {"command": ["./x"], "every": 5000000}})", &error)->every,
@@ -3444,9 +3452,14 @@ private slots:
                                    R"({"folio": 1, "requires": "tailscale"})",
                                    R"({"folio": 1, "section": {"title": "X", "rows": "opened"}})",
                                    R"({"folio": 1, "section": {"rows": "all"}})",
-                                   R"({"folio": 1, "share": [{"id": "a", "label": "A"}]})",
-                                   R"({"folio": 1, "share": [{"id": "a", "label": "A", "command": ["x"]},
-                                                             {"id": "a", "label": "B", "command": ["y"]}]})"}) {
+                                   R"({"folio": 1, "actions": [{"id": "a", "label": "A"}]})",
+                                   R"({"folio": 1, "actions": [{"id": "a", "label": "A", "command": ["x"]},
+                                                               {"id": "a", "label": "B", "command": ["y"]}]})",
+                                   R"({"folio": 1, "actions": [{"id": "a", "label": "A", "command": ["x"], "menu": "top"}]})",
+                                   R"({"folio": 1, "actions": [{"id": "a", "label": "A", "command": ["x"], "types": "image/png"}]})",
+                                   R"({"folio": 1, "actions": {"id": "a", "label": "A", "command": ["x"]}})",
+                                   R"({"folio": 1, "details": {"under": ["~/Dropbox/"]}})",
+                                   R"({"folio": 1, "details": {"command": ["./x"], "types": [""]}})"}) {
             error.clear();
             QVERIFY2(!Plugins::parseManifest(broken, &error), broken);
             QVERIFY2(!error.isEmpty(), broken);
@@ -3681,7 +3694,7 @@ private slots:
                       {"id": "no-name"}, {"name": "no id"},
                       {"id": "studio.example.ts.net", "name": "twice"}],
             "places": [{"path": "~/Dropbox", "icon": "dropbox.svg", "status": "syncing", "tone": "warning"}, {"status": "no path"}],
-            "share": ["link"]})");
+            "actions": ["link"]})");
         QVERIFY(output);
         // Items without an id or a name, or with an id already listed, are left out.
         QCOMPARE(output->items.size(), 1);
@@ -3689,8 +3702,8 @@ private slots:
         QCOMPARE(output->items[0].open.value("mount").toString(), QString("sftp://studio.example.ts.net/"));
         QCOMPARE(output->places.size(), 1);
         QCOMPARE(output->places[0].tone, QString("warning"));
-        QCOMPARE(output->share, std::optional<QStringList>(QStringList{"link"}));
-        QVERIFY(!Plugins::parseOutput("{}")->share);
+        QCOMPARE(output->actions, std::optional<QStringList>(QStringList{"link"}));
+        QVERIFY(!Plugins::parseOutput("{}")->actions);
         QVERIFY(!Plugins::parseOutput("garbage"));
         QVERIFY(!Plugins::parseOutput("[1, 2]"));
         QVERIFY(!Plugins::parseOutput(""));
@@ -3845,7 +3858,7 @@ private slots:
         QCOMPARE(plugins.opened("tailscale").first(), QString("m2"));
     }
 
-    void pluginShareEntriesFollowTheirConditions()
+    void pluginActionsUnderShareFollowTheirConditions()
     {
         QTemporaryDir folder, files;
         QDir(files.path()).mkpath("Dropbox/folder");
@@ -3854,29 +3867,29 @@ private slots:
         write(files.filePath("c.txt"), "c");
         const QString under = files.path() + "/Dropbox/";
         writePlugin(folder.path(), "zeta", R"({"folio": 1, "poll": {"command": ["./poll"]},
-            "share": [{"id": "send", "label": "Send", "to": "items", "files": true, "command": ["./send"], "busy": "Sending to %1…"}]})",
+            "actions": [{"id": "send", "label": "Send", "menu": "share", "to": "items", "files": true, "command": ["./send"], "busy": "Sending to %1…"}]})",
                     {{"poll", "#!/bin/sh\necho '{\"items\": [{\"id\": \"s.example\", \"name\": \"studio\"}]}'\n"},
                      {"send", "#!/bin/sh\nprintf '%s|' \"$FOLIO_TARGET\" \"$FOLIO_TARGET_NAME\" \"$@\" > sent\n"
                               "echo '{\"notice\": [\"Sent to %1.\", \"'\"$FOLIO_TARGET_NAME\"'\"]}'\n"}});
-        writePlugin(folder.path(), "alpha", "{\"folio\": 1, \"poll\": {\"command\": [\"./poll\"]}, \"share\": ["
-                                            "{\"id\": \"link\", \"label\": \"Link\", \"under\": [\"" + under.toUtf8() + "\"], \"single\": true, \"command\": [\"./link\"]},"
-                                            "{\"id\": \"off\", \"label\": \"Off\", \"command\": [\"./link\"]}]}",
-                    {{"poll", "#!/bin/sh\necho '{\"share\": [\"link\"]}'\n"},
+        writePlugin(folder.path(), "alpha", "{\"folio\": 1, \"poll\": {\"command\": [\"./poll\"]}, \"actions\": ["
+                                            "{\"id\": \"link\", \"label\": \"Link\", \"menu\": \"share\", \"under\": [\"" + under.toUtf8() + "\"], \"single\": true, \"command\": [\"./link\"]},"
+                                            "{\"id\": \"off\", \"label\": \"Off\", \"menu\": \"share\", \"command\": [\"./link\"]}]}",
+                    {{"poll", "#!/bin/sh\necho '{\"actions\": [\"link\"]}'\n"},
                      {"link", "#!/bin/sh\necho \"no link for $1\" >&2\nexit 1\n"}});
-        writePlugin(folder.path(), "beta", R"({"folio": 1, "share": [{"id": "copy", "label": "Copy It", "command": ["./copy"]}]})",
+        writePlugin(folder.path(), "beta", R"({"folio": 1, "actions": [{"id": "copy", "label": "Copy It", "menu": "share", "command": ["./copy"]}]})",
                     {{"copy", "#!/bin/sh\necho '{\"copy\": \"https://example.com/x\", \"error\": [\"%1 is too big\", \"x\"]}'\n"}});
 
         Plugins plugins("en", {folder.path()}, files.filePath("folio.conf"));
         auto labels = [&](const QStringList &paths) {
             QStringList list;
-            for (const QVariant &v : plugins.shareFor(paths))
+            for (const QVariant &v : plugins.actionsFor(paths))
                 list << v.toMap().value("label").toString();
             return list;
         };
         // Entries wait for their plugin's poll, and only those it names show.
         QTRY_COMPARE(labels({files.filePath("Dropbox/a.txt")}), QStringList({"Link", "Copy It", "Send"}));
         // Plain entries first, by plugin id, then submenus with their targets.
-        const QVariantMap send = plugins.shareFor({files.filePath("c.txt")}).last().toMap();
+        const QVariantMap send = plugins.actionsFor({files.filePath("c.txt")}).last().toMap();
         QCOMPARE(send.value("targets").toList().at(0).toMap().value("name").toString(), QString("studio"));
         QCOMPARE(labels({files.filePath("c.txt")}), QStringList({"Copy It", "Send"}));
         QCOMPARE(labels({files.filePath("Dropbox/a.txt"), files.filePath("Dropbox/b.txt")}), QStringList({"Copy It", "Send"}));
@@ -3886,7 +3899,7 @@ private slots:
         // An entry gets the paths as arguments and the target in its
         // environment, and says what to do when it's done.
         std::optional<Plugins::Result> result;
-        const QString busy = plugins.share("zeta", "send", {files.filePath("c.txt"), files.filePath("Dropbox/a.txt")},
+        const QString busy = plugins.perform("zeta", "send", {files.filePath("c.txt"), files.filePath("Dropbox/a.txt")},
                                            "s.example", [&](const Plugins::Result &r) { result = r; });
         QCOMPARE(busy, QString("Sending to studio…"));
         QTRY_VERIFY(result);
@@ -3900,16 +3913,250 @@ private slots:
         // A failure without an error of its own shows its last word on
         // standard error after the entry's label.
         result.reset();
-        plugins.share("alpha", "link", {files.filePath("Dropbox/a.txt")}, {}, [&](const Plugins::Result &r) { result = r; });
+        plugins.perform("alpha", "link", {files.filePath("Dropbox/a.txt")}, {}, [&](const Plugins::Result &r) { result = r; });
         QTRY_VERIFY(result);
         QCOMPARE(result->error, "Link: no link for " + files.filePath("Dropbox/a.txt"));
         // An error printed is a failure even with a zero exit, and a
         // failure does nothing else it asks.
         result.reset();
-        plugins.share("beta", "copy", {files.filePath("c.txt")}, {}, [&](const Plugins::Result &r) { result = r; });
+        plugins.perform("beta", "copy", {files.filePath("c.txt")}, {}, [&](const Plugins::Result &r) { result = r; });
         QTRY_VERIFY(result);
         QCOMPARE(result->error, QString("x is too big"));
         QCOMPARE(result->copy, QString());
+    }
+
+    void pluginActionsFollowTheirTypesAndMenus()
+    {
+        QTemporaryDir folder, files;
+        QDir(files.path()).mkpath("repo/sub");
+        for (const char *name : {"repo/a.txt", "repo/main.c", "repo/photo.png", "repo/report.pdf", "elsewhere.txt"})
+            write(files.filePath(name), "x");
+        const QByteArray repo = files.filePath("repo").toUtf8() + "/";
+        writePlugin(folder.path(), "git", "{\"folio\": 1, \"actions\": ["
+            "{\"id\": \"link\", \"label\": \"Copy Git Link\", \"under\": [\"" + repo + "\"], \"types\": [\"text/plain\"],"
+            " \"single\": true, \"command\": [\"./link\"]},"
+            "{\"id\": \"thumb\", \"label\": \"Make Thumbnail\", \"types\": [\"image/*\", \"application/pdf\"], \"files\": true,"
+            " \"command\": [\"./link\"]},"
+            "{\"id\": \"mail\", \"label\": \"Mail\", \"menu\": \"share\", \"command\": [\"./link\"]}]}",
+                    {{"link", "#!/bin/sh\necho \"{\\\"copy\\\": \\\"https://git.example.com/$(basename \"$1\")\\\"}\"\n"}});
+        writePlugin(folder.path(), "hosts", R"({"folio": 1, "poll": {"command": ["./poll"], "every": 86400},
+            "actions": [{"id": "copy", "label": "Copy To", "to": "items", "command": ["./link"]}]})",
+                    {{"poll", "#!/bin/sh\necho '{\"items\": [{\"id\": \"nas\", \"name\": \"nas\"}]}'\n"}});
+
+        Plugins plugins("en", {folder.path()}, files.filePath("folio.conf"));
+        // Each as menu:label, in the order they come.
+        auto actions = [&](const QStringList &names) {
+            QStringList paths, list;
+            for (const QString &name : names)
+                paths << files.filePath(name);
+            for (const QVariant &v : plugins.actionsFor(paths))
+                list << v.toMap().value("menu").toString() + ":" + v.toMap().value("label").toString();
+            return list;
+        };
+        // Plain entries first, by plugin id, then submenus, wherever they go.
+        QTRY_COMPARE(actions({"repo/a.txt"}), QStringList({"main:Copy Git Link", "share:Mail", "main:Copy To"}));
+        // A type takes the types that are kinds of it: C is plain text.
+        QCOMPARE(actions({"repo/main.c"}), QStringList({"main:Copy Git Link", "share:Mail", "main:Copy To"}));
+        QCOMPARE(actions({"elsewhere.txt"}), QStringList({"share:Mail", "main:Copy To"}));
+        QCOMPARE(actions({"repo/photo.png"}), QStringList({"main:Make Thumbnail", "share:Mail", "main:Copy To"}));
+        QCOMPARE(actions({"repo/photo.png", "repo/report.pdf"}), QStringList({"main:Make Thumbnail", "share:Mail", "main:Copy To"}));
+        // Every item has to fit, and a folder is of no type but its own.
+        QCOMPARE(actions({"repo/photo.png", "repo/a.txt"}), QStringList({"share:Mail", "main:Copy To"}));
+        QCOMPARE(actions({"repo/sub"}), QStringList({"share:Mail", "main:Copy To"}));
+
+        // One in the menu itself runs as one under Share does.
+        std::optional<Plugins::Result> result;
+        plugins.perform("git", "link", {files.filePath("repo/a.txt")}, {}, [&](const Plugins::Result &r) { result = r; });
+        QTRY_VERIFY(result);
+        QCOMPARE(result->copy, QString("https://git.example.com/a.txt"));
+    }
+
+    void fileMenuPutsPluginActionsBeforeShare()
+    {
+        QTemporaryDir home, folder;
+        write(home.filePath("notes.txt"), "x");
+        write(home.filePath("photo.png"), "x");
+        writePlugin(folder.path(), "git", R"({"folio": 1, "actions": [
+            {"id": "link", "label": "Copy Git Link", "types": ["text/plain"], "command": ["true"]},
+            {"id": "mail", "label": "Mail", "menu": "share", "command": ["true"]}]})");
+        writePlugin(folder.path(), "hosts", R"({"folio": 1, "poll": {"command": ["./poll"], "every": 86400},
+            "actions": [{"id": "copy", "label": "Copy To", "to": "items", "command": ["true"]}]})",
+                    {{"poll", "#!/bin/sh\necho '{\"items\": [{\"id\": \"nas\", \"name\": \"nas\"}]}'\n"}});
+        Plugins plugins("en", {folder.path()}, home.filePath("folio.conf"));
+        QTRY_COMPARE(plugins.actionsFor({home.filePath("notes.txt")}).size(), 3);
+        Backend backend(home.path());
+        backend.setPlugins(&plugins);
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("plugins", &plugins);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window {\n"
+                          "    width: 800; height: 600; visible: true\n"
+                          "    FileMenu { id: menu }\n"
+                          "    function entries(path, mime) {\n"
+                          "        menu.show({ path: path, name: path.split('/').pop(), isDir: false, mime: mime },\n"
+                          "                  path.replace(/\\/[^\\/]*$/, ''))\n"
+                          "        const shown = []\n"
+                          "        for (let i = 0; i < menu.count; ++i) {\n"
+                          "            const entry = menu.itemAt(i)\n"
+                          "            if (entry.visible && entry.text) shown.push(entry.text)\n"
+                          "        }\n"
+                          "        menu.close()\n"
+                          "        return shown\n"
+                          "    }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/FileMenuTest.qml"));
+        std::unique_ptr<QObject> window(component.create());
+        QVERIFY2(window, qPrintable(component.errorString()));
+        auto around = [&](const QString &name, const QString &mime) {
+            QVariant shown;
+            QMetaObject::invokeMethod(window.get(), "entries", Q_RETURN_ARG(QVariant, shown),
+                                      Q_ARG(QVariant, home.filePath(name)), Q_ARG(QVariant, mime));
+            // What comes between Compress and Share.
+            const QStringList all = shown.toStringList();
+            const qsizetype from = all.indexOf("Compress"), to = all.indexOf("Share");
+            return from < 0 || to < from ? all : all.mid(from + 1, to - from - 1);
+        };
+        // Plain entries, then submenus, together after Compress and before
+        // Share, and in that order again however often the menu opens.
+        QCOMPARE(around("notes.txt", "text/plain"), QStringList({"Copy Git Link", "Copy To"}));
+        QCOMPARE(around("photo.png", "image/png"), QStringList({"Copy To"}));
+        QCOMPARE(around("notes.txt", "text/plain"), QStringList({"Copy Git Link", "Copy To"}));
+    }
+
+    void pluginDetailsAreAskedForOnceAndKept()
+    {
+        QTemporaryDir folder, files;
+        for (const char *name : {"a.txt", "b.txt", "photo.png", "slow.txt", "broken.txt"})
+            write(files.filePath(name), "x");
+        writePlugin(folder.path(), "notes", "{\"folio\": 1, \"details\": {\"command\": [\"./describe\"], \"under\": [\""
+                                                + files.path().toUtf8() + "/\"], \"types\": [\"text/*\"]}}",
+                    {{"describe", "#!/bin/sh\necho \"$1\" >> asked\ncase \"$1\" in\n"
+                                  "  *slow*) exec sleep 5 ;;\n  *broken*) echo 'not json' ;;\n"
+                                  "  *) echo '[[\"Lines\", 3], [\"Kind\", \"Lines\"], \"not a row\"]' ;;\nesac\n"},
+                     {"i18n/da.json", R"({"Lines": "Linjer"})"}});
+        writePlugin(folder.path(), "alpha", R"({"folio": 1, "details": {"command": ["./describe"]}})",
+                    {{"describe", "#!/bin/sh\necho '[[\"First\", \"yes\"]]'\n"}});
+        Plugins plugins("da", {folder.path()}, files.filePath("folio.conf"));
+        QSignalSpy read(&plugins, &Plugins::detailsChanged);
+        QVERIFY(read.wait(5000));
+        auto asked = [&] {
+            QFile file(folder.filePath("notes/asked"));
+            return file.open(QIODevice::ReadOnly) ? QString::fromUtf8(file.readAll()).split('\n', Qt::SkipEmptyParts)
+                                                  : QStringList();
+        };
+        const QDateTime when = QFileInfo(files.filePath("a.txt")).lastModified();
+        int answered = 0;
+        auto describe = [&](const QString &name, const QString &mime, const QDateTime &modified, bool wanted = true) {
+            plugins.describe(files.filePath(name), mime, modified, [wanted] { return wanted; }, [&] { ++answered; });
+        };
+
+        // Nothing's known until the commands answer, each with the path,
+        // and then their rows show in plugin id order: labels translated,
+        // values as they are, and what isn't a row left out.
+        describe("a.txt", "text/plain", when);
+        QVERIFY(plugins.details(files.filePath("a.txt"), when).isEmpty());
+        QTRY_COMPARE(answered, 2);
+        const QVariantList rows{QVariantList{"First", "yes"}, QVariantList{"Linjer", "3"}, QVariantList{"Kind", "Lines"}};
+        QCOMPARE(plugins.details(files.filePath("a.txt"), when), rows);
+        QCOMPARE(asked(), QStringList({files.filePath("a.txt")}));
+
+        // Coming back to it runs nothing; once it's changed, it's asked again.
+        describe("a.txt", "text/plain", when);
+        QTest::qWait(300);
+        QCOMPARE(answered, 2);
+        describe("a.txt", "text/plain", when.addSecs(1));
+        QTRY_COMPARE(answered, 4);
+        QCOMPARE(asked().size(), 2);
+
+        // A command is only run for what its manifest says: of its types,
+        // inside its folders.
+        describe("photo.png", "image/png", when);
+        QTRY_COMPARE(answered, 5);
+        QCOMPARE(plugins.details(files.filePath("photo.png"), when), QVariantList({QVariantList{"First", "yes"}}));
+        QCOMPARE(asked().size(), 2);
+
+        // One the selection has moved on from before its turn isn't run.
+        describe("b.txt", "text/plain", when, false);
+        QTest::qWait(300);
+        QCOMPARE(answered, 5);
+        QCOMPARE(asked().size(), 2);
+
+        // One that takes too long is ended, and one that prints nonsense
+        // has no rows; the other plugins' rows still show.
+        QElapsedTimer clock;
+        clock.start();
+        describe("slow.txt", "text/plain", when);
+        describe("broken.txt", "text/plain", when);
+        QTRY_COMPARE_WITH_TIMEOUT(answered, 9, 4000);
+        QVERIFY(clock.elapsed() < 4000);
+        QCOMPARE(plugins.details(files.filePath("slow.txt"), when), QVariantList({QVariantList{"First", "yes"}}));
+        QCOMPARE(plugins.details(files.filePath("broken.txt"), when), QVariantList({QVariantList{"First", "yes"}}));
+        // Neither is asked again while it's as it was.
+        describe("slow.txt", "text/plain", when);
+        QTest::qWait(300);
+        QCOMPARE(answered, 9);
+
+        // F5 forgets what was said, and has it asked again.
+        plugins.refresh();
+        QVERIFY(plugins.details(files.filePath("a.txt"), when).isEmpty());
+        QVERIFY(read.wait(5000));
+        describe("a.txt", "text/plain", when);
+        QTRY_COMPARE(plugins.details(files.filePath("a.txt"), when), rows);
+    }
+
+    void backendShowsPluginDetailsForTheSelectedItem()
+    {
+        QTemporaryDir folder, home;
+        for (const char *name : {"a.txt", "late.txt"})
+            write(home.filePath(name), "x");
+        // Its state says how files stand; Sync Now changes it, and with it
+        // what its poll prints.
+        writePlugin(folder.path(), "sync", R"({"folio": 1, "poll": {"command": ["cat", "state"], "every": 86400},
+            "actions": [{"id": "sync", "label": "Sync Now", "command": ["./sync"]}],
+            "details": {"command": ["./describe"]}})",
+                    {{"state", "{}"},
+                     {"describe", "#!/bin/sh\ncase \"$1\" in *late*) sleep 1; echo '[[\"Late\", \"yes\"]]' ;;\n"
+                                  "  *) echo \"[[\\\"State\\\", \\\"$(cat word 2>/dev/null || echo waiting)\\\"]]\" ;; esac\n"},
+                     {"sync", "#!/bin/sh\necho synced > word\necho '{\"places\": []}' > state\n"}});
+        Plugins plugins("en", {folder.path()}, home.filePath("folio.conf"));
+        QSignalSpy read(&plugins, &Plugins::detailsChanged);
+        QVERIFY(read.wait(5000));
+        Backend backend(home.path());
+        backend.setPlugins(&plugins);
+        auto item = [&](const QString &name) {
+            return QVariantMap{{"path", home.filePath(name)}, {"kind", "text"}, {"mime", "text/plain"},
+                               {"modified", QFileInfo(home.filePath(name)).lastModified()}};
+        };
+        auto rows = [&] { return backend.details().value("plugins").toList(); };
+
+        backend.describe(item("a.txt"));
+        QTRY_COMPARE(rows(), QVariantList({QVariantList{"State", "waiting"}}));
+
+        // An answer for an item the selection has moved on from is dropped.
+        backend.describe(item("late.txt"));
+        backend.describe(item("a.txt"));
+        QCOMPARE(rows(), QVariantList({QVariantList{"State", "waiting"}}));
+        QTest::qWait(1500);
+        QCOMPARE(rows(), QVariantList({QVariantList{"State", "waiting"}}));
+
+        // Neither trashed items nor plugins' own are asked about.
+        backend.describe(item("a.txt"), true);
+        QVERIFY(rows().isEmpty());
+        backend.describe({{"path", "plugin:sync/x"}, {"kind", "item"}});
+        QVERIFY(rows().isEmpty());
+
+        // A poll saying something new has the item asked about again.
+        backend.describe(item("a.txt"));
+        QTRY_COMPARE(rows(), QVariantList({QVariantList{"State", "waiting"}}));
+        backend.perform("sync", "sync", {home.filePath("a.txt")});
+        QTRY_COMPARE(rows(), QVariantList({QVariantList{"State", "synced"}}));
     }
 
     void pluginViewsListTheirItems()
@@ -4075,9 +4322,9 @@ private slots:
             "case \"$*\" in *offline*) echo 'no such peer: offline' >&2; exit 1 ;; esac\n"}});
         const auto path = pathAt(bin);
         const auto plugin = bundledPlugin("tailscale");
-        QCOMPARE(plugin.share.size(), 1);
-        QVERIFY(plugin.share[0].toItems && plugin.share[0].files);
-        const Plugins::Run sent = runBundled(plugin, plugin.share[0].command + QStringList{"/a b.txt", "/c.txt"}, bin, dir.path(),
+        QCOMPARE(plugin.actions.size(), 1);
+        QVERIFY(plugin.actions[0].toItems && plugin.actions[0].files);
+        const Plugins::Run sent = runBundled(plugin, plugin.actions[0].command + QStringList{"/a b.txt", "/c.txt"}, bin, dir.path(),
                                              {{"FOLIO_TARGET", "studio.example.ts.net"}, {"FOLIO_TARGET_NAME", "studio"}});
         QVERIFY(sent.ok());
         QFile file(dir.filePath("sent"));
@@ -4085,7 +4332,7 @@ private slots:
         QCOMPARE(file.readAll(), QByteArray("file|cp|/a b.txt|/c.txt|studio.example.ts.net:|"));
 
         // Its failure says which machine, in words Folio can translate.
-        const Plugins::Run failed = runBundled(plugin, plugin.share[0].command + QStringList{"/c.txt"}, bin, dir.path(),
+        const Plugins::Run failed = runBundled(plugin, plugin.actions[0].command + QStringList{"/c.txt"}, bin, dir.path(),
                                                {{"FOLIO_TARGET", "offline.example.ts.net"}, {"FOLIO_TARGET_NAME", "offline"}});
         QVERIFY(!failed.ok());
         const QJsonValue error = QJsonDocument::fromJson(failed.out).object().value("error");
@@ -4115,19 +4362,19 @@ private slots:
         QCOMPARE(output->places[0].path, QString("~/Dropbox"));
         QCOMPARE(output->places[0].icon, QString("dropbox.svg"));
         QVERIFY(output->places[0].status.isUndefined());
-        QCOMPARE(output->share, std::optional<QStringList>(QStringList{}));
+        QCOMPARE(output->actions, std::optional<QStringList>(QStringList{}));
         // Up to date says nothing; links work while Dropbox runs.
         output = run("Up to date", true);
         QVERIFY(output->places[0].status.isUndefined());
-        QCOMPARE(output->share, std::optional<QStringList>(QStringList{"link"}));
+        QCOMPARE(output->actions, std::optional<QStringList>(QStringList{"link"}));
         output = run("Syncing 3 files", true);
         QCOMPARE(output->places[0].status.toString(), QString("syncing"));
         QCOMPARE(output->places[0].tone, QString("warning"));
-        QCOMPARE(output->share, std::optional<QStringList>(QStringList{"link"}));
+        QCOMPARE(output->actions, std::optional<QStringList>(QStringList{"link"}));
         output = run("Dropbox isn't running!", true);
         QCOMPARE(output->places[0].status.toString(), QString("stopped"));
         QCOMPARE(output->places[0].tone, QString("error"));
-        QCOMPARE(output->share, std::optional<QStringList>(QStringList{}));
+        QCOMPARE(output->actions, std::optional<QStringList>(QStringList{}));
     }
 
     void dropboxPluginCopiesLinks()
@@ -4137,19 +4384,42 @@ private slots:
             "#!/bin/sh\ncase \"$2\" in *nope*) echo \"Couldn't get link: not in Dropbox\"; exit 1 ;; esac\n"
             "echo 'https://www.dropbox.com/s/x/'\"$(basename \"$2\")\"\n"}});
         const auto plugin = bundledPlugin("dropbox");
-        QCOMPARE(plugin.share.size(), 1);
-        QVERIFY(plugin.share[0].single);
-        QCOMPARE(plugin.share[0].under, QStringList({"~/Dropbox/"}));
-        const Plugins::Run linked = runBundled(plugin, plugin.share[0].command + QStringList{"/home/me/Dropbox/a \"b\".pdf"}, bin, dir.path());
+        QCOMPARE(plugin.actions.size(), 1);
+        QVERIFY(plugin.actions[0].single);
+        QCOMPARE(plugin.actions[0].under, QStringList({"~/Dropbox/"}));
+        const Plugins::Run linked = runBundled(plugin, plugin.actions[0].command + QStringList{"/home/me/Dropbox/a \"b\".pdf"}, bin, dir.path());
         QVERIFY(linked.ok());
         const QJsonObject said = QJsonDocument::fromJson(linked.out).object();
         QCOMPARE(said.value("copy").toString(), QString("https://www.dropbox.com/s/x/a \"b\".pdf"));
         QCOMPARE(Plugins::text(plugin, said.value("notice")), QString("Dropbox link for a \"b\".pdf copied."));
 
-        const Plugins::Run failed = runBundled(plugin, plugin.share[0].command + QStringList{"/home/me/Dropbox/nope.pdf"}, bin, dir.path());
+        const Plugins::Run failed = runBundled(plugin, plugin.actions[0].command + QStringList{"/home/me/Dropbox/nope.pdf"}, bin, dir.path());
         QVERIFY(!failed.ok());
         QCOMPARE(Plugins::text(plugin, QJsonDocument::fromJson(failed.out).object().value("error")),
                  QString("Couldn't get a Dropbox link for nope.pdf: Couldn't get link: not in Dropbox"));
+    }
+
+    void dropboxPluginSaysHowAFileStands()
+    {
+        QTemporaryDir dir;
+        const auto plugin = bundledPlugin("dropbox");
+        QCOMPARE(plugin.details, QStringList({"./filestatus"}));
+        QCOMPARE(plugin.detailsUnder, QStringList({"~/Dropbox/"}));
+        // dropbox-cli filestatus prints "<path>: <status>", or why it can't.
+        const QString bin = binWith(dir.filePath("bin"), {{"dropbox-cli",
+            "#!/bin/sh\ncase \"$2\" in *stopped*) echo \"Dropbox isn't running!\" ;; *new*) echo \"$2: syncing\" ;;\n"
+            "  *ignored*) echo \"$2: unwatched\" ;; *) echo \"$2: up to date\" ;; esac\n"}});
+        auto rows = [&](const QString &path, const QString &programs) {
+            const Plugins::Run run = runBundled(plugin, plugin.details + QStringList{path}, programs, dir.path());
+            return run.ok() ? QJsonDocument::fromJson(run.out).array() : QJsonArray{"failed"};
+        };
+        QCOMPARE(rows("/home/me/Dropbox/a: b.pdf", bin), QJsonArray({QJsonArray{"Dropbox", "up to date"}}));
+        QCOMPARE(rows("/home/me/Dropbox/new.pdf", bin), QJsonArray({QJsonArray{"Dropbox", "syncing"}}));
+        // Nothing when Dropbox isn't running, about what it doesn't watch,
+        // or without dropbox-cli.
+        QCOMPARE(rows("/home/me/Dropbox/stopped.pdf", bin), QJsonArray());
+        QCOMPARE(rows("/home/me/Dropbox/ignored.pdf", bin), QJsonArray());
+        QCOMPARE(rows("/home/me/Dropbox/a.pdf", binWith(dir.filePath("none"), {})), QJsonArray());
     }
 
     void localSendPluginNeedsLocalSend()
@@ -4162,10 +4432,10 @@ private slots:
         const QString bin = binWith(dir.filePath("bin"), {{"localsend", "#!/bin/sh\n"}});
         const auto path = pathAt(bin);
         const auto plugin = bundledPlugin("localsend");
-        QCOMPARE(plugin.share.size(), 1);
-        QCOMPARE(plugin.share[0].label, QString("LocalSend…"));
-        QCOMPARE(plugin.share[0].command, QStringList({"localsend", "--headless", "send"}));
-        QVERIFY(plugin.share[0].detach);
+        QCOMPARE(plugin.actions.size(), 1);
+        QCOMPARE(plugin.actions[0].label, QString("LocalSend…"));
+        QCOMPARE(plugin.actions[0].command, QStringList({"localsend", "--headless", "send"}));
+        QVERIFY(plugin.actions[0].detach);
     }
 
     void bundledPluginsTranslateTheirText()
@@ -4180,7 +4450,7 @@ private slots:
         const auto path = pathAt(bin);
         const auto plugin = Plugins::read({copy.path()}, "da").value(0);
         QCOMPARE(Plugins::text(plugin, QJsonValue(plugin.viewLabel)), QString("Maskiner"));
-        QCOMPARE(Plugins::text(plugin, QJsonArray{plugin.share[0].busy, "studio"}), QString("Sender til studio…"));
+        QCOMPARE(Plugins::text(plugin, QJsonArray{plugin.actions[0].busy, "studio"}), QString("Sender til studio…"));
     }
 
     void placesListOnlyPhysicalDrives()
@@ -5563,8 +5833,8 @@ private slots:
             QStringList shown{manifest.value("section").toObject().value("title").toString(),
                               view.value("title").toString(), view.value("label").toString(),
                               view.value("empty").toString()};
-            for (const QJsonValue &share : manifest.value("share").toArray())
-                shown << share.toObject().value("label").toString() << share.toObject().value("busy").toString();
+            for (const QJsonValue &action : manifest.value("actions").toArray())
+                shown << action.toObject().value("label").toString() << action.toObject().value("busy").toString();
             for (const QString &text : std::as_const(shown))
                 if (!text.isEmpty() && !english.contains(text))
                     problems << id + ": missing from en.json: " + text;

@@ -7,15 +7,15 @@ if [ ! -d "$HOME/Dropbox" ]; then
   echo '{}'
   exit 0
 fi
-# Without a share list every entry would be on, so it's always there.
+# Without an actions list every action would be on, so it's always there.
 status=
-share=', "share": []'
+actions=', "actions": []'
 if command -v dropbox-cli >/dev/null 2>&1; then
   said=$(dropbox-cli status 2>/dev/null | tr 'A-Z' 'a-z')
   case "$said" in
     "" | *"isn't running"*) status=', "status": "stopped", "tone": "error"' ;;
-    "up to date"*) share=', "share": ["link"]' ;;
-    *) status=', "status": "syncing", "tone": "warning"'; share=', "share": ["link"]' ;;
+    "up to date"*) actions=', "actions": ["link"]' ;;
+    *) status=', "status": "syncing", "tone": "warning"'; actions=', "actions": ["link"]' ;;
   esac
 fi
-printf '{"places": [{"path": "~/Dropbox", "icon": "dropbox.svg"%s}]%s}\n' "$status" "$share"
+printf '{"places": [{"path": "~/Dropbox", "icon": "dropbox.svg"%s}]%s}\n' "$status" "$actions"

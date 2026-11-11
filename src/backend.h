@@ -13,7 +13,7 @@
 // Where the window is and how it got there: the current folder, its
 // breadcrumbs, back/forward history, and the actions that leave the folder
 // (opening files and plugins' items, mounting other machines, running
-// plugins' share entries).
+// plugins' actions).
 class Backend : public QObject {
     Q_OBJECT
     Q_PROPERTY(FolderModel *folder READ folder CONSTANT)
@@ -30,14 +30,15 @@ class Backend : public QObject {
     // What the details pane shows beyond the listing, for the item last
     // given to describe(), once they've been read in the background: a
     // picture's dimensions, a text's opening lines, or a trashed item's
-    // origin and deletion time.
+    // origin and deletion time; and under `plugins`, plugins' rows about a
+    // file or folder, [[label, value]...].
     Q_PROPERTY(QVariantMap details READ details NOTIFY detailsChanged)
 
 public:
     explicit Backend(const QString &home = {}, QObject *parent = nullptr);
     ~Backend() override;
 
-    // The plugins whose views, items and share entries this window offers.
+    // The plugins whose views, items and actions this window offers.
     void setPlugins(Plugins *plugins);
 
     FolderModel *folder() { return &m_folder; }
@@ -58,11 +59,11 @@ public:
     Q_INVOKABLE void goUp();
     Q_INVOKABLE void back();
     Q_INVOKABLE void forward();
-    // Runs a plugin's share entry on the paths, sent to `target` (an item's
-    // id) for a submenu, showing its busy text meanwhile and what it says
-    // when it's done.
-    Q_INVOKABLE void share(const QString &plugin, const QString &entry, const QStringList &paths,
-                           const QString &target = {});
+    // Runs a plugin's action on the paths, sent to `target` (an item's id)
+    // for a submenu, showing its busy text meanwhile and what it says when
+    // it's done.
+    Q_INVOKABLE void perform(const QString &plugin, const QString &action, const QStringList &paths,
+                             const QString &target = {});
     Q_INVOKABLE void dismissMessage();
     Q_INVOKABLE void showMessage(const QString &message) { setMessage(message); }
     // Good news that needs no answer ("Link copied"): shown for a few
@@ -70,7 +71,7 @@ public:
     Q_INVOKABLE void showNotice(const QString &notice);
     // Selects `name` the next time the folder loads (after file work).
     Q_INVOKABLE void expectSelection(const QString &name) { m_pendingSelection = name; }
-    QVariantMap details() const { return m_details; }
+    QVariantMap details() const;
     Q_INVOKABLE void describe(const QVariantMap &item, bool inTrash = false);
     // The system's own name for a type ("JPEG image"), in the language of
     // the moment.
@@ -141,6 +142,11 @@ private:
     // A plugin action finished: its busy text goes, and what it asks for
     // happens.
     void finish(int run, const Plugins::Result &result);
+    // Plugins' rows about the item described: those known, then the rest
+    // as their commands answer. While `keep`, rows already shown stay until
+    // there are others, so the same item asked about again doesn't flicker.
+    void showPluginRows(bool keep);
+    void askPlugins();
     // A GVfs mount's name on screen: its plugin item's name, or its host.
     QString mountName(const QString &mount) const;
 
@@ -171,6 +177,9 @@ private:
     // replaced by a folder of the same name), and the newest describe(),
     // which a reading has to match to be shown, or even to start.
     QString m_described;
+    // The real file or folder described, which plugins are asked about.
+    QVariantMap m_pluginItem;
+    QVariantList m_pluginRows;
     std::shared_ptr<std::atomic<quint64>> m_describing = std::make_shared<std::atomic<quint64>>(0);
     // The pane the working directory follows: the one used last.
     static inline Backend *s_working = nullptr;

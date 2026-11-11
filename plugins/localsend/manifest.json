@@ -1,8 +1,8 @@
 {
   "folio": 1,
   "requires": ["localsend"],
-  "share": [
-    { "id": "send", "label": "LocalSend…", "command": ["localsend", "--headless", "send"],
-      "detach": true }
+  "actions": [
+    { "id": "send", "label": "LocalSend…", "menu": "share",
+      "command": ["localsend", "--headless", "send"], "detach": true }
   ]
 }

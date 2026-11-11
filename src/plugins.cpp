@@ -13,6 +13,7 @@
 #include <QJsonDocument>
 #include <QLocale>
 #include <QMap>
+#include <QMimeDatabase>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QSettings>
@@ -104,7 +105,42 @@ QString whyNot(const Plugins::Run &run) {
         return "crashed";
     if (run.code > 0)
         return QString("exited with %1").arg(run.code);
-    return "printed something that isn't a JSON object";
+    return "printed something that isn't the JSON it should be";
+}
+
+// Whether the file or folder at `path`, of type `mime`, is inside one of
+// the folders `under` and of one of the `types`, either list matching
+// anything when empty. A type matches the types its type is a kind of too,
+// so text/plain takes a C file.
+bool fits(const QStringList &under, const QStringList &types, const QString &path, const QString &mime) {
+    const bool inside = under.isEmpty() || std::any_of(under.begin(), under.end(), [&](const QString &folder) {
+        return path.startsWith(QDir::cleanPath(Plugins::expand(folder)) + "/");
+    });
+    if (!inside || types.isEmpty())
+        return inside;
+    const QStringList kinds = QStringList{mime} + QMimeDatabase().mimeTypeForName(mime).allAncestors();
+    return std::any_of(types.begin(), types.end(), [&](const QString &type) {
+        const QRegularExpression glob(QRegularExpression::wildcardToRegularExpression(type));
+        return std::any_of(kinds.begin(), kinds.end(), [&](const QString &kind) { return glob.match(kind).hasMatch(); });
+    });
+}
+
+// Where a details command's answer is kept: a file changed since gets
+// asked about again.
+QString detailsKey(const QString &plugin, const QString &path, const QDateTime &modified) {
+    return plugin + '\n' + path + '\n' + QString::number(modified.toMSecsSinceEpoch());
+}
+
+// Rows for the details pane, [label, value] each: the label is the
+// plugin's text, translated; the value is shown as it is.
+QVariantList rowsOf(const Plugins::Manifest &plugin, const QJsonArray &rows) {
+    QVariantList shown;
+    for (const QJsonValue &row : rows) {
+        const QJsonArray pair = row.toArray();
+        if (pair.size() == 2)
+            shown << QVariant(QVariantList{Plugins::text(plugin, pair.at(0)), pair.at(1).toVariant().toString()});
+    }
+    return shown;
 }
 
 } // namespace
@@ -202,27 +238,45 @@ std::optional<Plugins::Manifest> Plugins::parseManifest(const QByteArray &json, 
     if (m.opened && !m.view)
         return fail("a section of opened rows needs a view");
 
-    if (root.contains("share") && !root.value("share").isArray())
-        return fail("\"share\" isn't a list of entries");
-    for (const QJsonValue &value : root.value("share").toArray()) {
+    if (root.contains("actions") && !root.value("actions").isArray())
+        return fail("\"actions\" isn't a list of actions");
+    for (const QJsonValue &value : root.value("actions").toArray()) {
         const QJsonObject entry = value.toObject();
-        Share share;
-        share.id = entry.value("id").toString();
-        share.label = entry.value("label").toString();
+        Action action;
+        action.id = entry.value("id").toString();
+        action.label = entry.value("label").toString();
         const auto command = commandOf(entry.value("command"));
         const auto under = stringList(entry.value("under"));
-        if (share.id.isEmpty() || share.label.isEmpty() || !command || !under)
-            return fail("a share entry needs an id, a label and a command");
-        if (std::any_of(m.share.begin(), m.share.end(), [&](const Share &s) { return s.id == share.id; }))
-            return fail("two share entries are called " + share.id);
-        share.command = *command;
-        share.under = *under;
-        share.toItems = entry.value("to").toString() == "items";
-        share.files = entry.value("files").toBool();
-        share.single = entry.value("single").toBool();
-        share.detach = entry.value("detach").toBool();
-        share.busy = entry.value("busy").toString();
-        m.share << share;
+        const auto types = stringList(entry.value("types"));
+        if (action.id.isEmpty() || action.label.isEmpty() || !command || !under || !types)
+            return fail("an action needs an id, a label and a command");
+        if (std::any_of(m.actions.begin(), m.actions.end(), [&](const Action &a) { return a.id == action.id; }))
+            return fail("two actions are called " + action.id);
+        const QString menu = entry.value("menu").toString("main");
+        if (menu != "main" && menu != "share")
+            return fail("an action's menu is \"main\" or \"share\"");
+        action.share = menu == "share";
+        action.command = *command;
+        action.under = *under;
+        action.types = *types;
+        action.toItems = entry.value("to").toString() == "items";
+        action.files = entry.value("files").toBool();
+        action.single = entry.value("single").toBool();
+        action.detach = entry.value("detach").toBool();
+        action.busy = entry.value("busy").toString();
+        m.actions << action;
+    }
+
+    if (root.contains("details")) {
+        const QJsonObject details = root.value("details").toObject();
+        const auto command = commandOf(details.value("command"));
+        const auto under = stringList(details.value("under"));
+        const auto types = stringList(details.value("types"));
+        if (!command || !under || !types)
+            return fail("\"details\" has no command");
+        m.details = *command;
+        m.detailsUnder = *under;
+        m.detailsTypes = *types;
     }
     return m;
 }
@@ -299,12 +353,13 @@ std::optional<Plugins::Output> Plugins::parseOutput(const QByteArray &json) {
         if (!mark.path.isEmpty())
             output.places << mark;
     }
-    if (root.contains("share")) {
+    if (root.contains("actions")) {
         QStringList ids;
-        for (const QJsonValue &value : root.value("share").toArray())
+        for (const QJsonValue &value : root.value("actions").toArray())
             ids << value.toString();
-        output.share = ids;
+        output.actions = ids;
     }
+    output.printed = json;
     return output;
 }
 
@@ -325,7 +380,7 @@ Plugins::Run Plugins::execute(const Manifest &plugin, const QStringList &command
     const qint64 group = process.processId();
 
     // Standard error goes to Folio's, a line at a time, marked with the
-    // plugin's id; its last line can say why a share entry failed. A line
+    // plugin's id; its last line can say why an action failed. A line
     // is cut short at maxErrorLine bytes and the rest of it dropped, so one
     // that never ends can't fill memory.
     QByteArray line;
@@ -428,6 +483,8 @@ std::pair<QString, QString> Plugins::split(const QString &itemPath) {
 }
 
 void Plugins::refresh() {
+    // F5 asks again about files too, for whatever changed without them.
+    m_details.clear();
     reload(true);
 }
 
@@ -481,6 +538,8 @@ void Plugins::apply(const QList<Manifest> &manifests) {
             poll(id);
     m_pollAll = false;
     rebuild();
+    // Read anew, the plugins' details commands and catalogs may be others.
+    emit detailsChanged();
 }
 
 const Plugins::Manifest *Plugins::manifest(const QString &plugin) const {
@@ -520,6 +579,7 @@ void Plugins::poll(const QString &plugin) {
             return;
         }
         const auto [run, output] = watcher->result();
+        const QByteArray before = m_outputs.value(plugin).printed;
         // A failed poll counts as an empty answer, and says why once each
         // time the plugin goes from working to failing.
         if (output) {
@@ -530,6 +590,13 @@ void Plugins::poll(const QString &plugin) {
                 complain(plugin, "its poll " + whyNot(run));
             m_failing.insert(plugin);
             m_outputs.remove(plugin);
+        }
+        // What a plugin says about a file can change with its state while
+        // the file doesn't (Dropbox finishing a sync), so a poll saying
+        // something new has it asked again.
+        if (m_outputs.value(plugin).printed != before && !now->details.isEmpty()) {
+            m_details.removeIf([&](const auto &it) { return it.key().startsWith(plugin + '\n'); });
+            emit detailsChanged();
         }
         rebuild();
     });
@@ -548,12 +615,6 @@ QString Plugins::icon(const Manifest &plugin, const QString &name) const {
 }
 
 QVariantMap Plugins::itemMap(const Manifest &plugin, const Item &item) const {
-    QVariantList details;
-    for (const QJsonValue &row : item.details) {
-        const QJsonArray pair = row.toArray();
-        if (pair.size() == 2)
-            details << QVariant(QVariantList{text(plugin, pair.at(0)), pair.at(1).toVariant().toString()});
-    }
     // Where it's lit in the sidebar: inside the folder it opens (only an
     // absolute path is one), or inside the mount, wherever GVfs puts it.
     QString folder = QDir::cleanPath(expand(item.open.value("path").toString()));
@@ -562,7 +623,7 @@ QVariantMap Plugins::itemMap(const Manifest &plugin, const Item &item) const {
     const QString root = item.open.contains("mount") ? Mounter::folderFor(item.open.value("mount").toString()) : folder;
     return {{"plugin", plugin.id}, {"id", item.id}, {"path", pathOf(plugin.id, item.id)}, {"name", item.name},
             {"icon", icon(plugin, item.icon)}, {"subtitle", item.subtitle.isUndefined() ? QString() : text(plugin, item.subtitle)},
-            {"details", details}, {"root", root}, {"folder", folder}, {"forgettable", plugin.opened}};
+            {"details", rowsOf(plugin, item.details)}, {"root", root}, {"folder", folder}, {"forgettable", plugin.opened}};
 }
 
 void Plugins::rebuild() {
@@ -631,35 +692,42 @@ QString Plugins::nameForMount(const QString &folder) const {
     return {};
 }
 
-bool Plugins::available(const Manifest &plugin, const QString &entry) const {
-    // A plugin with a poll offers its entries only while the poll works,
+bool Plugins::available(const Manifest &plugin, const QString &action) const {
+    // A plugin with a poll offers its actions only while the poll works,
     // and then only those it names, if it names any.
     if (plugin.poll.isEmpty())
         return true;
     if (!m_outputs.contains(plugin.id))
         return false;
-    const auto &share = m_outputs.value(plugin.id).share;
-    return !share || share->contains(entry);
+    const auto &actions = m_outputs.value(plugin.id).actions;
+    return !actions || actions->contains(action);
 }
 
-QVariantList Plugins::shareFor(const QStringList &paths) const {
+QVariantList Plugins::actionsFor(const QStringList &paths) const {
     if (paths.isEmpty())
         return {};
-    const bool folders = std::any_of(paths.begin(), paths.end(), [](const QString &p) { return QFileInfo(p).isDir(); });
-    auto inside = [&](const QStringList &under) {
-        return under.isEmpty() || std::all_of(paths.begin(), paths.end(), [&](const QString &path) {
-            return std::any_of(under.begin(), under.end(), [&](const QString &folder) {
-                return path.startsWith(QDir::cleanPath(expand(folder)) + "/");
-            });
-        });
+    // Types by name only: reading each file's start to tell would wait on
+    // its disk while the menu opens.
+    QStringList mimes;
+    QMimeDatabase database;
+    for (const QString &path : paths)
+        mimes << (QFileInfo(path).isDir() ? QStringLiteral("inode/directory")
+                                          : database.mimeTypeForFile(path, QMimeDatabase::MatchExtension).name());
+    const bool folders = mimes.contains("inode/directory");
+    auto applies = [&](const Action &action) {
+        for (qsizetype i = 0; i < paths.size(); ++i)
+            if (!fits(action.under, action.types, paths[i], mimes[i]))
+                return false;
+        return true;
     };
     QVariantList plain, menus;
     for (const Manifest &m : m_manifests) {
-        for (const Share &entry : m.share) {
+        for (const Action &entry : m.actions) {
             if (!available(m, entry.id) || (entry.single && paths.size() > 1) || (entry.files && folders)
-                || !inside(entry.under))
+                || !applies(entry))
                 continue;
-            QVariantMap shown{{"plugin", m.id}, {"id", entry.id}, {"label", text(m, entry.label)}};
+            QVariantMap shown{{"plugin", m.id}, {"id", entry.id}, {"label", text(m, entry.label)},
+                              {"menu", entry.share ? "share" : "main"}};
             if (!entry.toItems) {
                 plain << shown;
                 continue;
@@ -676,27 +744,75 @@ QVariantList Plugins::shareFor(const QStringList &paths) const {
     return plain + menus;
 }
 
-QString Plugins::share(const QString &plugin, const QString &entry, const QStringList &paths, const QString &target,
-                       const Done &done) {
+QString Plugins::perform(const QString &plugin, const QString &action, const QStringList &paths, const QString &target,
+                         const Done &done) {
     const Manifest *m = manifest(plugin);
-    const Share *share = nullptr;
-    for (const Share &s : m ? m->share : QList<Share>())
-        if (s.id == entry)
-            share = &s;
+    const Action *picked = nullptr;
+    for (const Action &a : m ? m->actions : QList<Action>())
+        if (a.id == action)
+            picked = &a;
     const auto chosen = item(pathOf(plugin, target));
-    if (!share || paths.isEmpty() || (share->toItems && !chosen)) {
+    if (!picked || paths.isEmpty() || (picked->toItems && !chosen)) {
         finish(done, {});
         return {};
     }
     QProcessEnvironment environment = this->environment(*m);
     QString name = QFileInfo(paths.first()).fileName();
-    if (share->toItems) {
+    if (picked->toItems) {
         environment.insert("FOLIO_TARGET", chosen->id);
         environment.insert("FOLIO_TARGET_NAME", chosen->name);
         name = chosen->name;
     }
-    act(*m, plugin + "/" + entry, text(*m, share->label), share->command + paths, environment, share->detach, done);
-    return share->busy.isEmpty() ? QString() : text(*m, QJsonArray{share->busy, name});
+    act(*m, plugin + "/" + action, text(*m, picked->label), picked->command + paths, environment, picked->detach, done);
+    return picked->busy.isEmpty() ? QString() : text(*m, QJsonArray{picked->busy, name});
+}
+
+QVariantList Plugins::details(const QString &path, const QDateTime &modified) const {
+    QVariantList rows;
+    for (const Manifest &m : m_manifests)
+        rows << rowsOf(m, m_details.value(detailsKey(m.id, path, modified)));
+    return rows;
+}
+
+void Plugins::describe(const QString &path, const QString &mime, const QDateTime &modified,
+                       const std::function<bool()> &wanted, const std::function<void()> &done) {
+    for (const Manifest &m : std::as_const(m_manifests)) {
+        const QString key = detailsKey(m.id, path, modified);
+        if (m.details.isEmpty() || m_details.contains(key) || !fits(m.detailsUnder, m.detailsTypes, path, mime))
+            continue;
+        auto *watcher = new QFutureWatcher<std::optional<Run>>(this);
+        connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, plugin = m.id, key, done] {
+            watcher->deleteLater();
+            const std::optional<Run> run = watcher->result();
+            if (!run)
+                return;
+            // One that fails or takes too long has no rows for the file,
+            // and says why once each time it goes from working to failing.
+            const QJsonDocument said = run->ok() ? QJsonDocument::fromJson(run->out) : QJsonDocument();
+            if (said.isArray()) {
+                m_failingDetails.remove(plugin);
+            } else if (!m_failingDetails.contains(plugin)) {
+                complain(plugin, "its details command " + whyNot(*run));
+                m_failingDetails.insert(plugin);
+            }
+            // Enough for the folders gone through lately, without growing
+            // with every file ever looked at.
+            if (m_details.size() >= 5000)
+                m_details.clear();
+            m_details.insert(key, said.array());
+            done();
+        });
+        // Stepping through files faster than they're answered for queues
+        // commands; those overtaken before their turn aren't run, so they
+        // don't hold up the polls behind them.
+        watcher->setFuture(QtConcurrent::run(&m_pool, [plugin = m, command = m.details + QStringList{path},
+                                                       environment = environment(m), wanted,
+                                                       stop = m_stop]() -> std::optional<Run> {
+            if (!wanted())
+                return {};
+            return execute(plugin, command, environment, detailsTimeout, stop.get());
+        }));
+    }
 }
 
 void Plugins::run(const QString &itemPath, const Done &done) {
@@ -720,7 +836,7 @@ void Plugins::act(const Manifest &plugin, const QString &key, const QString &lab
         // Started and forgotten: a program with a window of its own.
         QProcess process;
         Result result;
-        // %1 is what was picked: a Share entry, or a plugin's item.
+        // %1 is what was picked: a plugin's action, or its item.
         if (!prepare(process, plugin, command, environment))
             result.error = tr("%1 couldn't be started.").arg(label);
         else if (!process.startDetached())
@@ -770,7 +886,7 @@ Plugins::Result Plugins::interpret(const Manifest &plugin, const QString &label,
     result.copy = said.value("copy").toString();
     result.path = said.value("path").toString();
     if (!run.ok() && result.error.isEmpty()) {
-        // %1 is what was picked: a Share entry, or a plugin's item.
+        // %1 is what was picked: a plugin's action, or its item.
         result.error = !run.lastError.isEmpty()
                            //: What was picked in a plugin, then the error it printed, as it printed it.
                            ? tr("%1: %2").arg(label, run.lastError)

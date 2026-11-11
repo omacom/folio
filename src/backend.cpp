@@ -247,6 +247,10 @@ void Backend::setPlugins(Plugins *plugins) {
     m_plugins = plugins;
     // A view's title and a mount's name come from the plugins.
     connect(plugins, &Plugins::changed, this, &Backend::placeChanged);
+    connect(plugins, &Plugins::detailsChanged, this, [this] {
+        showPluginRows(true);
+        askPlugins();
+    });
 }
 
 void Backend::openItem(const QString &path) {
@@ -312,12 +316,12 @@ QString Backend::serverAddress(const QString &text) {
     return url.toString(QUrl::FullyEncoded);
 }
 
-void Backend::share(const QString &plugin, const QString &entry, const QStringList &paths, const QString &target) {
+void Backend::perform(const QString &plugin, const QString &action, const QStringList &paths, const QString &target) {
     if (!m_plugins)
         return;
     const int run = ++m_lastRun;
     QPointer<Backend> self(this);
-    const QString busy = m_plugins->share(plugin, entry, paths, target, [self, run](const Plugins::Result &result) {
+    const QString busy = m_plugins->perform(plugin, action, paths, target, [self, run](const Plugins::Result &result) {
         if (self)
             self->finish(run, result);
     });
@@ -368,8 +372,14 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
     if (const QString described = path + '\n' + mime; described != m_described) {
         m_described = described;
         m_details = details;
+        m_pluginRows.clear();
         emit detailsChanged();
     }
+    // Plugins say things about real files and folders, not trashed ones or
+    // a plugin's own items.
+    m_pluginItem = path.startsWith('/') && !inTrash ? item : QVariantMap();
+    showPluginRows(!m_pluginItem.isEmpty());
+    askPlugins();
     if (kind != "image" && kind != "text" && !inTrash)
         return;
 
@@ -414,6 +424,40 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
         }
         return read;
     }));
+}
+
+QVariantMap Backend::details() const {
+    QVariantMap details = m_details;
+    if (!m_pluginRows.isEmpty())
+        details.insert("plugins", m_pluginRows);
+    return details;
+}
+
+void Backend::showPluginRows(bool keep) {
+    const QVariantList rows = m_plugins && !m_pluginItem.isEmpty()
+                                  ? m_plugins->details(m_pluginItem.value("path").toString(),
+                                                       m_pluginItem.value("modified").toDateTime())
+                                  : QVariantList();
+    if (rows == m_pluginRows || (keep && rows.isEmpty()))
+        return;
+    m_pluginRows = rows;
+    emit detailsChanged();
+}
+
+void Backend::askPlugins() {
+    if (!m_plugins || m_pluginItem.isEmpty())
+        return;
+    // Answers for an item the selection has since moved on from are
+    // dropped, and its commands not yet started aren't run.
+    const quint64 generation = *m_describing;
+    QPointer<Backend> self(this);
+    m_plugins->describe(
+        m_pluginItem.value("path").toString(), m_pluginItem.value("mime").toString(),
+        m_pluginItem.value("modified").toDateTime(), [latest = m_describing, generation] { return *latest == generation; },
+        [self, generation] {
+            if (self && *self->m_describing == generation)
+                self->showPluginRows(false);
+        });
 }
 
 QString Backend::typeName(const QString &mime) {

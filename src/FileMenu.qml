@@ -2,12 +2,12 @@ import QtQuick
 
 // The right-click menu. On an item: Open, Open With (each app that can),
 // Preview, Rename, Duplicate, Copy, Cut, Paste Into, Copy Path, Compress,
-// Extract (for archives), Burn (for disk images), Share (whatever plugins
-// offer for it), Pin, Terminal, Trash. On empty space: Undo, Paste, New
-// Folder, Copy Path, Terminal, hidden files. In the trash: Restore, Empty
-// Trash and Delete…, without the entries that change files. On a plugin's
-// item: Open, and nothing for files. Entries show their keys, so the menu
-// also teaches the shortcuts.
+// Extract (for archives), Burn (for disk images), plugins' own actions for
+// it, Share (whatever plugins offer for it), Pin, Terminal, Trash. On empty
+// space: Undo, Paste, New Folder, Copy Path, Terminal, hidden files. In the
+// trash: Restore, Empty Trash and Delete…, without the entries that change
+// files. On a plugin's item: Open, and nothing for files. Entries show their
+// keys, so the menu also teaches the shortcuts.
 FolioMenu {
     id: fileMenu
 
@@ -54,7 +54,7 @@ FolioMenu {
         target = clicked
         folder = where
         shifted = fileOps.shiftHeld()
-        shares = forItem && forFiles ? plugins.shareFor(paths) : []
+        actions = forItem && forFiles ? plugins.actionsFor(paths) : []
         // Empty space among a plugin's items has nothing to offer.
         if (!forItem && !forFiles)
             return
@@ -62,12 +62,14 @@ FolioMenu {
         burnTargets = canBurn ? fileOps.burnTargets(target.path) : []
         // Submenus (Open With, Share, Burn) show only when they apply.
         // Menu makes their entries itself, so they're set here rather than
-        // bound where they're declared.
+        // bound where they're declared. A plugin's own submenus are made
+        // only when they apply, so they always show.
         for (let i = 0; i < count; ++i) {
             const entry = itemAt(i)
             if (entry && entry.subMenu)
                 entry.shown = entry.subMenu === shareMenu ? canShare
-                            : entry.subMenu === burnMenu ? canBurn : canOpenWith
+                            : entry.subMenu === burnMenu ? canBurn
+                            : entry.subMenu === openWithMenu ? canOpenWith : true
         }
         // The menu's own `mirrored` is only set once it's open.
         const rtl = Qt.application.layoutDirection === Qt.RightToLeft
@@ -111,6 +113,7 @@ FolioMenu {
     }
     // Every app that says it can open this type, the default first.
     FolioMenu {
+        id: openWithMenu
         title: qsTr("Open With")
         Repeater {
             model: fileMenu.apps
@@ -212,11 +215,49 @@ FolioMenu {
             }
         }
     }
-    // Share offers whatever the plugins offer for these (a Dropbox link,
-    // Taildrop, LocalSend), as it stands when the menu opens: plain entries
-    // first, then submenus of a plugin's items. With none, there's no Share.
-    property var shares: []
-    readonly property bool canShare: shares.length > 0
+    // What plugins offer for these, as it stands when the menu opens: their
+    // own actions here, and under Share (a Dropbox link, Taildrop,
+    // LocalSend). Each comes plain entries first, then submenus of a
+    // plugin's items. With nothing to share, there's no Share.
+    property var actions: []
+    readonly property bool canShare: actions.some(action => action.menu === "share")
+    // Menu's entries are numbered; plugins' actions go after Burn's.
+    function afterBurn() {
+        for (let i = 0; i < count; ++i)
+            if (itemAt(i) && itemAt(i).subMenu === burnMenu)
+                return i + 1
+        return count
+    }
+    Instantiator {
+        id: mainActions
+        model: fileMenu.actions.filter(action => action.menu === "main" && !action.targets)
+        delegate: FolioMenuItem {
+            required property var modelData
+            text: modelData.label
+            onTriggered: backend.perform(modelData.plugin, modelData.id, fileMenu.paths)
+        }
+        onObjectAdded: (index, object) => fileMenu.insertItem(fileMenu.afterBurn() + index, object)
+        onObjectRemoved: (index, object) => fileMenu.removeItem(object)
+    }
+    Instantiator {
+        model: fileMenu.actions.filter(action => action.menu === "main" && !!action.targets)
+        delegate: FolioMenu {
+            id: mainTargets
+            required property var modelData
+            title: modelData.label
+            Repeater {
+                model: mainTargets.modelData.targets
+                FolioMenuItem {
+                    required property var modelData
+                    text: modelData.name
+                    onTriggered: backend.perform(mainTargets.modelData.plugin, mainTargets.modelData.id, fileMenu.paths, modelData.id)
+                }
+            }
+        }
+        // Submenus go after the plain entries, whichever are made first.
+        onObjectAdded: (index, object) => fileMenu.insertMenu(fileMenu.afterBurn() + mainActions.count + index, object)
+        onObjectRemoved: (index, object) => fileMenu.removeMenu(object)
+    }
 
     // The entries are made only while they apply, rather than hidden:
     // opening Share from the keyboard highlights its first entry, even a
@@ -225,16 +266,16 @@ FolioMenu {
         id: shareMenu
         title: qsTr("Share")
         Repeater {
-            model: fileMenu.shares.filter(entry => !entry.targets)
+            model: fileMenu.actions.filter(action => action.menu === "share" && !action.targets)
             FolioMenuItem {
                 required property var modelData
                 text: modelData.label
-                onTriggered: backend.share(modelData.plugin, modelData.id, fileMenu.paths)
+                onTriggered: backend.perform(modelData.plugin, modelData.id, fileMenu.paths)
             }
         }
     }
     Instantiator {
-        model: fileMenu.shares.filter(entry => !!entry.targets)
+        model: fileMenu.actions.filter(action => action.menu === "share" && !!action.targets)
         delegate: FolioMenu {
             id: targets
             required property var modelData
@@ -244,7 +285,7 @@ FolioMenu {
                 FolioMenuItem {
                     required property var modelData
                     text: modelData.name
-                    onTriggered: backend.share(targets.modelData.plugin, targets.modelData.id, fileMenu.paths, modelData.id)
+                    onTriggered: backend.perform(targets.modelData.plugin, targets.modelData.id, fileMenu.paths, modelData.id)
                 }
             }
         }

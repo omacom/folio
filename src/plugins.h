@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QDateTime>
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -24,9 +25,10 @@ class QTimer;
 // where it has one, and keeps what they print. A plugin that hangs or
 // prints nonsense only goes missing, and the others carry on.
 //
-// What the sidebar, the views and the Share menu show comes from the
+// What the sidebar, the views and the right-click menu show comes from the
 // latest output kept here, translated with the plugin's own catalog, so
-// drawing them never runs a command.
+// drawing them never runs a command. The details pane's rows about a file
+// come from a command run for that file, kept here once it has answered.
 class Plugins : public QObject {
     Q_OBJECT
     // Each plugin's sidebar section, in plugin id order, while it has
@@ -43,10 +45,11 @@ class Plugins : public QObject {
     Q_PROPERTY(QVariantMap views READ views NOTIFY changed)
 
 public:
-    struct Share {
+    // An entry in the right-click menu: at its top level, or under Share.
+    struct Action {
         QString id, label, busy;
-        QStringList command, under;
-        bool toItems = false, files = false, single = false, detach = false;
+        QStringList command, under, types;
+        bool share = false, toItems = false, files = false, single = false, detach = false;
     };
     struct Manifest {
         QString id, dir;
@@ -57,7 +60,10 @@ public:
         int limit = 6;
         bool view = false;
         QString viewTitle, viewLabel, viewIcon, viewEmpty;
-        QList<Share> share;
+        QList<Action> actions;
+        // The command giving rows for the details pane, and the files and
+        // folders it's run for.
+        QStringList details, detailsUnder, detailsTypes;
         // The plugin's catalog for the language Folio shows.
         QHash<QString, QPair<QString, QJsonValue>> strings;
     };
@@ -76,8 +82,10 @@ public:
     struct Output {
         QList<Item> items;
         QList<Mark> places;
-        // Without a `share` key every entry is available.
-        std::optional<QStringList> share;
+        // Without an `actions` key every action is available.
+        std::optional<QStringList> actions;
+        // What the poll printed, to tell whether anything changed.
+        QByteArray printed;
     };
     // How a command went.
     struct Run {
@@ -88,7 +96,7 @@ public:
         QString lastError;
         bool ok() const { return started && !timedOut && !tooLong && code == 0; }
     };
-    // What a finished share entry or run command asks the window to do.
+    // What a finished action or run command asks the window to do.
     struct Result {
         QString error, notice, copy, path;
     };
@@ -111,15 +119,27 @@ public:
     // Folio's language changed: the plugins' text follows, without polling.
     void setLanguage(const QString &language);
 
-    // The Share entries that apply to these paths: plain entries first,
-    // then submenus, each in plugin id order. Each is {plugin, id, label},
-    // and a submenu has `targets`: [{id, name}...].
-    Q_INVOKABLE QVariantList shareFor(const QStringList &paths) const;
-    // Runs a share entry on the paths (sent to the item `target` for a
+    // The actions that apply to these paths: plain entries first, then
+    // submenus, each in plugin id order. Each is {plugin, id, label, menu},
+    // `menu` being "main" or "share", and a submenu has `targets`:
+    // [{id, name}...].
+    Q_INVOKABLE QVariantList actionsFor(const QStringList &paths) const;
+    // Runs an action on the paths (sent to the item `target` for a
     // submenu), then hands `done` what it asks for. Returns what the status
     // bar says meanwhile.
-    QString share(const QString &plugin, const QString &entry, const QStringList &paths, const QString &target,
-                  const Done &done);
+    QString perform(const QString &plugin, const QString &action, const QStringList &paths, const QString &target,
+                    const Done &done);
+
+    // The rows plugins' details commands gave for the file or folder at
+    // `path` as it was at `modified`, translated: [[label, value]...], in
+    // plugin id order. Only what's known; describe() asks for the rest.
+    QVariantList details(const QString &path, const QDateTime &modified) const;
+    // Runs the details commands that apply to `path` and haven't answered
+    // for it as it was at `modified`, then calls `done` as each answers.
+    // One whose turn comes once `wanted` (asked off the UI thread) says
+    // the selection has moved on isn't run.
+    void describe(const QString &path, const QString &mime, const QDateTime &modified,
+                  const std::function<bool()> &wanted, const std::function<void()> &done);
     // Runs an item's run command, the same way.
     void run(const QString &itemPath, const Done &done);
 
@@ -155,8 +175,10 @@ public:
     // A plugin:<id>/<item> path, split into the plugin and the item.
     static std::pair<QString, QString> split(const QString &itemPath);
 
-    // Longest a poll may take, and most a command may print.
+    // Longest a poll may take, and a details command, which the details
+    // pane waits on; and most a command may print.
     static constexpr int pollTimeout = 10000;
+    static constexpr int detailsTimeout = 2000;
     static constexpr int maxOutput = 1 << 20;
     // Longest line of standard error kept.
     static constexpr int maxErrorLine = 1000;
@@ -167,6 +189,10 @@ public:
 
 signals:
     void changed();
+    // What plugins say about files may have changed (F5, another language,
+    // or a plugin's poll saying something new), so the details pane asks
+    // again.
+    void detailsChanged();
 
 private:
     void reload(bool pollAll);
@@ -174,7 +200,7 @@ private:
     void poll(const QString &plugin);
     void rebuild();
     const Manifest *manifest(const QString &plugin) const;
-    bool available(const Manifest &plugin, const QString &entry) const;
+    bool available(const Manifest &plugin, const QString &action) const;
     QProcessEnvironment environment(const Manifest &plugin) const;
     QString icon(const Manifest &plugin, const QString &name) const;
     QVariantMap itemMap(const Manifest &plugin, const Item &item) const;
@@ -195,7 +221,9 @@ private:
     // The latest output of each plugin whose poll works.
     QHash<QString, Output> m_outputs;
     QSet<QString> m_polling;
-    QSet<QString> m_failing;
+    QSet<QString> m_failing, m_failingDetails;
+    // What details commands printed, by plugin, path and modification time.
+    QHash<QString, QJsonArray> m_details;
     QHash<QString, QTimer *> m_timers;
     QHash<QString, QList<std::function<void()>>> m_queue;
     QVariantList m_sections;
