@@ -101,6 +101,8 @@ public:
     // By path, for Recents, where two files from different folders can
     // share a name.
     Q_INVOKABLE int indexOfPath(const QString &path) const;
+    // Where the query starts in a file's name, matched as the search matches it; -1 for none.
+    Q_INVOKABLE int matchStart(const QString &fileName) const;
 
     // The selection, kept by path so it survives a re-read or a re-sort.
     // The views keep the cursor (the current item) themselves.

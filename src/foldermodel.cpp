@@ -653,6 +653,10 @@ int FolderModel::indexOfPath(const QString &path) const {
     return -1;
 }
 
+int FolderModel::matchStart(const QString &fileName) const {
+    return m_query.isEmpty() ? -1 : fileName.indexOf(m_query, 0, Qt::CaseInsensitive);
+}
+
 void FolderModel::setLoading(bool loading) {
     if (loading == m_loading)
         return;

@@ -75,11 +75,14 @@ Item {
 
     Text {
         id: label
+        // A search result lights the run of its name that matched.
+        readonly property string lit: Format.lit(tile.fileName, backend.folder.matchStart(tile.fileName), backend.folder.query.length, theme.brightForeground)
         anchors.top: artBox.bottom
         anchors.topMargin: 12
         anchors.horizontalCenter: parent.horizontalCenter
         width: parent.width - 28
-        text: tile.fileName
+        text: lit || tile.fileName
+        textFormat: lit ? Text.StyledText : Text.AutoText
         color: tile.current ? theme.brightForeground : theme.foreground
         font.pixelSize: 12
         horizontalAlignment: Text.AlignHCenter

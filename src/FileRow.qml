@@ -120,10 +120,14 @@ Item {
         // mirrored: left as they are, they'd follow their own script, and a
         // Latin name would sit at the far end of a right-to-left row.
         Text {
+            // A search result lights the run of its name that matched; only the folder being shown is searched.
+            readonly property string lit: row.ListView.view.model === backend.folder
+                ? Format.lit(row.fileName, backend.folder.matchStart(row.fileName), backend.folder.query.length, theme.brightForeground) : ""
             Layout.fillWidth: true
             Layout.minimumWidth: 120
             horizontalAlignment: Text.AlignLeft
-            text: row.fileName
+            text: lit || row.fileName
+            textFormat: lit ? Text.StyledText : Text.AutoText
             color: row.current ? theme.brightForeground : theme.foreground
             elide: Text.ElideMiddle
         }

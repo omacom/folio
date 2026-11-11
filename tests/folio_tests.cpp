@@ -1436,14 +1436,14 @@ private slots:
         const std::unique_ptr<QQmlPropertyMap> theme(QQmlPropertyMap::create());
         const std::unique_ptr<QQmlPropertyMap> translator(QQmlPropertyMap::create());
         const std::unique_ptr<QQmlPropertyMap> backend(QQmlPropertyMap::create());
-        const std::unique_ptr<QQmlPropertyMap> folder(QQmlPropertyMap::create());
+        // A real model, whose matchStart a search result's name calls.
+        FolderModel folder;
         for (const char *role : {"accent", "accentMark", "foreground", "brightForeground", "secondaryForeground",
                                  "lighterBackground", "darkBackground", "red", "blue", "magenta", "orange", "yellow", "cyan"})
             theme->insert(role, QColor(Qt::gray));
         theme->insert("radius", 0);
         translator->insert("language", "en");
-        folder->insert("selectedCount", 0);
-        backend->insert("folder", QVariant::fromValue<QObject *>(folder.get()));
+        backend->insert("folder", QVariant::fromValue<QObject *>(&folder));
         QQmlEngine engine;
         engine.rootContext()->setContextProperty("fileOps", &ops);
         engine.rootContext()->setContextProperty("theme", theme.get());
@@ -6500,10 +6500,9 @@ private slots:
         FileOps ops;
         const std::unique_ptr<QQmlPropertyMap> translator(QQmlPropertyMap::create());
         const std::unique_ptr<QQmlPropertyMap> backend(QQmlPropertyMap::create());
-        const std::unique_ptr<QQmlPropertyMap> folder(QQmlPropertyMap::create());
+        FolderModel folder;
         translator->insert("language", "en");
-        folder->insert("selectedCount", 0);
-        backend->insert("folder", QVariant::fromValue<QObject *>(folder.get()));
+        backend->insert("folder", QVariant::fromValue<QObject *>(&folder));
         QQmlEngine engine;
         engine.rootContext()->setContextProperty("fileOps", &ops);
         engine.rootContext()->setContextProperty("theme", &theme);
@@ -6835,6 +6834,36 @@ private slots:
         }
         QVERIFY(foregroundInks > 0);
         QVERIFY(raisedInks > 0);
+    }
+
+    void folderMatchStartIsWhereTheSearchMatched()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("Shots");
+        write(dir.filePath("Field-NOTES.md"), "x");
+        write(dir.filePath("Shots/notes and notes.txt"), "x");
+        write(dir.filePath(QString::fromUtf8("\u00c9T\u00c9 notes.txt")), "x");
+        write(dir.filePath("plan.txt"), "x");
+
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        // Nothing is lit until there is a query.
+        QCOMPARE(model.matchStart("Field-NOTES.md"), -1);
+        model.setQuery("Notes");
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 3);
+        // Every result lights where the search found it, ignoring case, at the first match.
+        for (int row = 0; row < model.count(); ++row)
+            QVERIFY(model.matchStart(model.get(row).value("fileName").toString()) >= 0);
+        QCOMPARE(model.matchStart("Field-NOTES.md"), 6);
+        QCOMPARE(model.matchStart("notes and notes.txt"), 0);
+        QCOMPARE(model.matchStart("plan.txt"), -1);
+        model.setQuery(QString::fromUtf8("\u00e9t\u00e9"));
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 1);
+        QCOMPARE(model.matchStart(QString::fromUtf8("\u00c9T\u00c9 notes.txt")), 0);
     }
 
 private:
