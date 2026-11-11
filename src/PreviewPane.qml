@@ -15,6 +15,9 @@ Rectangle {
     // look for their trash notes or make large thumbnails for nobody.
     readonly property var item: visible && folderPane ? folderPane.current : ({})
     readonly property bool hasItem: item !== undefined && item.path !== undefined
+    // With several selected, the title and the line under it are theirs.
+    readonly property var folder: folderPane ? folderPane.paneBackend.folder : null
+    readonly property int many: visible && folder && folder.selectedCount > 1 ? folder.selectedCount : 0
     // An item in the trash shows where it came from and when it was
     // deleted, and offers Restore rather than Open. Its note is read in the
     // background; until it's in, the item looks trashed, as nearly all there
@@ -39,6 +42,8 @@ Rectangle {
     readonly property bool hasKeyboard: opensWith.activeFocus
     function focusKeyboard() { opensWith.forceActiveFocus(Qt.TabFocusReason) }
     signal finished()
+    // Several selected in a plugin's view are its items, with no size to add up.
+    readonly property bool pluginItems: many > 0 && folderPane.inView
     function homeless(path) { return path.startsWith(places.home + "/") ? "~" + path.slice(places.home.length) : path }
     // A picture's size or a text's opening lines once they've been read off
     // the UI thread.
@@ -110,7 +115,7 @@ Rectangle {
             Text {
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignLeft
-                text: pane.item.name || ""
+                text: pane.many ? qsTr("%Ln items selected", "", pane.many) : pane.item.name || ""
                 color: theme.brightForeground
                 font.pixelSize: 15
                 font.weight: Font.DemiBold
@@ -123,7 +128,10 @@ Rectangle {
                 horizontalAlignment: Text.AlignLeft
                 text: {
                     translator.language // The type's name comes from the system, in the language of the moment.
-                    return Format.summary(pane.item, backend.typeName(pane.item.mime || ""))
+                    return !pane.many ? Format.summary(pane.item, backend.typeName(pane.item.mime || ""))
+                        : pane.pluginItems ? ""
+                        : pane.folder.selectedFolderCount > 0 ? qsTr("%Ln folders", "", pane.folder.selectedFolderCount)
+                        : Format.size(pane.folder.selectedSize)
                 }
                 color: theme.secondaryForeground
                 font.pixelSize: 12
@@ -133,6 +141,7 @@ Rectangle {
 
         GridLayout {
             Layout.fillWidth: true
+            visible: !pane.many
             columns: 2
             rowSpacing: 12
             columnSpacing: 16

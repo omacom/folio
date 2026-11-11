@@ -6059,6 +6059,34 @@ private slots:
         QCOMPARE(QLocale().toString(1.5, 'f', 1), QString("1,5"));
     }
 
+    void folderTotalsTheSelection()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkdir("c");
+        write(dir.filePath("a.txt"), "xx");
+        write(dir.filePath("b.txt"), "xxxxx");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+
+        // Files add up their bytes; folders are only counted.
+        model.selectRange(1, 2, false);
+        QCOMPARE(model.selectedSize(), qint64(7));
+        QCOMPARE(model.selectedFolderCount(), 0);
+        model.selectAll();
+        QCOMPARE(model.selectedSize(), qint64(7));
+        QCOMPARE(model.selectedFolderCount(), 1);
+
+        // A selected file that grows is counted at its new size.
+        QSignalSpy selection(&model, &FolderModel::selectionChanged);
+        write(dir.filePath("a.txt"), "xxxx");
+        model.reload();
+        QVERIFY(loaded.wait(3000));
+        QVERIFY(selection.count() > 0);
+        QCOMPARE(model.selectedSize(), qint64(9));
+    }
+
 private:
     // Packs `items`, from `folder`, into `archive`, its kind from its name.
     static void pack(const QString &archive, const QString &folder, const QStringList &items)

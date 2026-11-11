@@ -30,6 +30,8 @@ class FolderModel : public QAbstractListModel {
     Q_PROPERTY(int selectedCount READ selectedCount NOTIFY selectionChanged)
     // Set, the folder lists what matches it here and in every folder below.
     Q_PROPERTY(QString query READ query WRITE setQuery NOTIFY queryChanged)
+    Q_PROPERTY(qint64 selectedSize READ selectedSize NOTIFY selectionChanged)
+    Q_PROPERTY(int selectedFolderCount READ selectedFolderCount NOTIFY selectionChanged)
     // The items a plugin's view lists, as Plugins::views gives them.
     Q_PROPERTY(QVariantList items READ items WRITE setItems NOTIFY itemsChanged)
 
@@ -105,6 +107,9 @@ public:
     Q_INVOKABLE void clearSelection();
     Q_INVOKABLE bool isSelected(int row) const;
     Q_INVOKABLE QStringList selectedPaths() const;
+    // The selected files' bytes together, and how many selected are folders.
+    qint64 selectedSize() const;
+    int selectedFolderCount() const;
 
     // Synchronous building blocks, used by the background passes and tests.
     // A listing stops, empty, as soon as `stop` returns true. Names sort

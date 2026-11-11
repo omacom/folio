@@ -32,9 +32,17 @@
   "%1 · %2": "%1 · %2",
   "%1 × %2": "%1 × %2",
   "%1: %2": "%1: %2",
+  "%Ln folders": {
+    "one": "%Ln folder",
+    "other": "%Ln folders"
+  },
   "%Ln items": {
     "one": "%Ln item",
     "other": "%Ln items"
+  },
+  "%Ln items selected": {
+    "one": "%Ln item selected",
+    "other": "%Ln items selected"
   },
   "%Ln items will be deleted permanently. This can't be undone.": {
     "one": "%Ln item will be deleted permanently. This can't be undone.",

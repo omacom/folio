@@ -469,7 +469,8 @@ void FolderModel::reload() {
             for (const Entry &e : m_entries)
                 if (m_selected.contains(e.path))
                     still.insert(e.path);
-            if (still != m_selected) {
+            // Kept items can still change size, which the totals follow.
+            if (still != m_selected || !same) {
                 m_selected = still;
                 emit selectionChanged();
             }
@@ -618,6 +619,19 @@ QStringList FolderModel::selectedPaths() const {
         if (m_selected.contains(e.path))
             paths << e.path;
     return paths;
+}
+
+qint64 FolderModel::selectedSize() const {
+    qint64 total = 0;
+    for (const Entry &e : m_entries)
+        if (!e.isDir && m_selected.contains(e.path))
+            total += e.size;
+    return total;
+}
+
+int FolderModel::selectedFolderCount() const {
+    return std::count_if(m_entries.begin(), m_entries.end(),
+                         [this](const Entry &e) { return e.isDir && m_selected.contains(e.path); });
 }
 
 int FolderModel::indexOf(const QString &name) const {
