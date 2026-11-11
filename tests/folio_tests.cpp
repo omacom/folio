@@ -6714,6 +6714,21 @@ private slots:
         QCOMPARE(passing.disabledForeground(), blend(QColor("#1e1e2e"), QColor("#cdd6f4"), 0.5));
     }
 
+    void themeFloorsRedText()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("theme");
+        write(dir.filePath("theme/colors.toml"), roseDawn);
+        Theme low(dir.path());
+        QVERIFY(contrast(low.redText(), low.background()) >= 4.5);
+        QVERIFY(snug(low.redText(), {low.background()}, 4.5));
+        // Fills and the confirm card's edge keep the theme's own red.
+        QCOMPARE(low.red(), QColor("#b4637a"));
+        write(dir.filePath("theme/colors.toml"), mocha);
+        Theme passing(dir.path());
+        QCOMPARE(passing.redText(), QColor("#f38ba8"));
+    }
+
 private:
     // Packs `items`, from `folder`, into `archive`, its kind from its name.
     static void pack(const QString &archive, const QString &folder, const QStringList &items)

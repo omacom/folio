@@ -242,7 +242,7 @@ Rectangle {
                 readonly property string said: row.mark ? row.mark.status : row.status
                 visible: said.length > 0
                 text: said
-                color: !row.mark ? row.statusColor : row.mark.tone === "error" ? theme.red
+                color: !row.mark ? row.statusColor : row.mark.tone === "error" ? theme.redText
                      : row.mark.tone === "warning" ? theme.yellow : theme.secondaryForeground
                 font.pixelSize: 11
             }

@@ -268,3 +268,7 @@ QColor Theme::disabledForeground() const {
     return ensureRatio(mix(background(), foreground(), share), background(), markFloor);
 }
 
+// Red as words, raised to 4.5:1 on the background; fills keep the theme's own red.
+QColor Theme::redText() const {
+    return ensureRatio(red(), background(), textFloor);
+}

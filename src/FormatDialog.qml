@@ -113,7 +113,7 @@ FolioDialog {
     Text {
         Layout.fillWidth: true
         text: qsTr("Everything on this drive will be erased. This can't be undone.")
-        color: theme.red
+        color: theme.redText
         wrapMode: Text.Wrap
     }
     RowLayout {
