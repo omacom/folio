@@ -5793,6 +5793,79 @@ private slots:
         }
     }
 
+    void previewSheetTakesTheKeysFromThePreview()
+    {
+        // With the shortcut sheet up in the preview window, the keys scroll the sheet, not the file behind it, and its bar shows at rest.
+        QTemporaryDir home;
+        // Nothing here should write settings; any that did would land in the test's home, not the user's.
+        QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, home.path());
+        QByteArray lines;
+        for (int i = 0; i < 400; ++i)
+            lines += "line " + QByteArray::number(i) + "\n";
+        write(home.filePath("a.txt"), "a");
+        write(home.filePath("b.txt"), lines);
+        write(home.filePath("c.txt"), "c");
+        Theme theme(home.filePath("theme"));
+        Translator translator(home.filePath("language"), sourceFolder() + "/i18n");
+        Previewer previewer;
+        previewer.start(home.filePath("b.txt"), false, "name");
+        QTRY_COMPARE(previewer.count(), 3);
+        QCOMPARE(previewer.index(), 1);
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("previewer", &previewer);
+        QQmlComponent component(&engine, QUrl::fromLocalFile(sourceFolder() + "/PreviewWindow.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        window->resize(480, 360);
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowFocused(window));
+
+        QObject *view = nullptr;
+        QTRY_VERIFY((view = root->property("view").value<QObject *>())
+                    && view->property("contentHeight").toDouble() > view->property("height").toDouble());
+        QTest::keyClick(window, Qt::Key_Down);
+        const double read = view->property("contentY").toDouble();
+        QVERIFY(read > 0);
+
+        QObject *overlay = nullptr;
+        for (QObject *child : root->findChildren<QObject *>())
+            if (QByteArray(child->metaObject()->className()).startsWith("HelpOverlay"))
+                overlay = child;
+        QVERIFY(overlay);
+        // The preview's own rows fit even its smallest window, so the sheet gets thirty to scroll through.
+        QVariantList rows;
+        for (int i = 0; i < 30; ++i)
+            rows << QVariant(QVariantList{QString("K%1").arg(i), QString("Row %1").arg(i)});
+        overlay->setProperty("shortcuts", rows);
+        QQuickItem *sheet = nullptr, *bar = nullptr;
+        for (QQuickItem *child : overlay->findChildren<QQuickItem *>()) {
+            if (child->inherits("QQuickFlickable"))
+                sheet = child;
+            if (child->inherits("QQuickScrollBar"))
+                bar = child;
+        }
+        QVERIFY(sheet && bar);
+        root->setProperty("helpVisible", true);
+        QTRY_VERIFY(bar->property("size").toDouble() > 0 && bar->property("size").toDouble() < 1);
+
+        for (const Qt::Key key : {Qt::Key_Down, Qt::Key_PageDown, Qt::Key_Up, Qt::Key_Left, Qt::Key_Right})
+            QTest::keyClick(window, key);
+        QVERIFY(sheet->property("contentY").toDouble() > 0);
+        QCOMPARE(previewer.index(), 1);
+        QCOMPARE(view->property("contentY").toDouble(), read);
+        auto *handle = bar->property("contentItem").value<QQuickItem *>();
+        QVERIFY(!bar->property("active").toBool() && !bar->property("hovered").toBool());
+        QVERIFY(handle && handle->isVisible());
+
+        QTest::keyClick(window, Qt::Key_Escape);
+        QVERIFY(!root->property("helpVisible").toBool());
+        QTest::keyClick(window, Qt::Key_Right);
+        QCOMPARE(previewer.index(), 2);
+    }
+
     void themeFallsBack()
     {
         QTemporaryDir dir;
