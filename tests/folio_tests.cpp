@@ -6647,6 +6647,24 @@ private slots:
         QCOMPARE(model.count(), model.property("searchLimit").toInt());
     }
 
+    void themeFloorsTheSecondaryInk()
+    {
+        // Rose Pine Dawn's mix draws at 3.2:1 and under, Gruvbox's at 3.6:1 on a tile; Catppuccin Mocha's already reads.
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("theme");
+        for (const char *palette : {roseDawn, "background = \"#282828\"\ndark_background = \"#1e1e1e\"\n"
+                                              "lighter_background = \"#3c3836\"\nforeground = \"#d4be98\"\n"}) {
+            write(dir.filePath("theme/colors.toml"), palette);
+            Theme low(dir.path());
+            for (const QColor &ground : {low.background(), low.lighterBackground(), low.darkBackground()})
+                QVERIFY(contrast(low.secondaryForeground(), ground) >= 4.5);
+            QVERIFY(snug(low.secondaryForeground(), {low.background(), low.lighterBackground(), low.darkBackground()}, 4.5));
+        }
+        write(dir.filePath("theme/colors.toml"), mocha);
+        Theme passing(dir.path());
+        QCOMPARE(passing.secondaryForeground(), blend(QColor("#1e1e2e"), QColor("#cdd6f4"), 0.68));
+    }
+
 private:
     // Packs `items`, from `folder`, into `archive`, its kind from its name.
     static void pack(const QString &archive, const QString &folder, const QStringList &items)
@@ -6673,6 +6691,38 @@ private:
         QFile file(path);
         QVERIFY(file.open(QIODevice::WriteOnly));
         file.write(contents);
+    }
+
+    // Stock Omarchy palettes: Rose Pine (Dawn, light) and Catppuccin (Mocha, dark).
+    static constexpr const char *roseDawn = "mode = \"light\"\naccent = \"#56949f\"\nbackground = \"#faf4ed\"\n"
+        "dark_background = \"#ede7e1\"\nlighter_background = \"#f2e9e1\"\nforeground = \"#575279\"\nred = \"#b4637a\"\n";
+    static constexpr const char *mocha = "accent = \"#89b4fa\"\nbackground = \"#1e1e2e\"\ndark_background = \"#161622\"\n"
+        "lighter_background = \"#313244\"\nforeground = \"#cdd6f4\"\nred = \"#f38ba8\"\n";
+
+    static double contrast(const QColor &a, const QColor &b)
+    {
+        auto luminance = [](const QColor &c) {
+            auto linear = [](double v) { return v <= .04045 ? v / 12.92 : std::pow((v + .055) / 1.055, 2.4); };
+            return .2126 * linear(c.redF()) + .7152 * linear(c.greenF()) + .0722 * linear(c.blueF());
+        };
+        const double x = luminance(a), y = luminance(b);
+        return (std::max(x, y) + .05) / (std::min(x, y) + .05);
+    }
+
+    // A floored ink is the least that reads: it sits within 0.3 of the floor on at least one of its grounds.
+    static bool snug(const QColor &ink, std::initializer_list<QColor> grounds, double need)
+    {
+        for (const QColor &ground : grounds)
+            if (contrast(ink, ground) < need + 0.3)
+                return true;
+        return false;
+    }
+
+    // Theme's own mix, unrounded, so a passing theme is pinned to the exact color it had.
+    static QColor blend(const QColor &a, const QColor &b, double t)
+    {
+        return QColor::fromRgbF(a.redF() * (1 - t) + b.redF() * t, a.greenF() * (1 - t) + b.greenF() * t,
+                                a.blueF() * (1 - t) + b.blueF() * t);
     }
 };
 

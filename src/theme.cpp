@@ -9,6 +9,7 @@
 #include <QJsonObject>
 #include <QRegularExpression>
 #include <QStandardPaths>
+#include <algorithm>
 #include <cmath>
 
 namespace {
@@ -41,6 +42,49 @@ double luminance(const QColor &c) {
 QColor mix(const QColor &a, const QColor &b, double t) {
     return QColor::fromRgbF(a.redF() * (1 - t) + b.redF() * t, a.greenF() * (1 - t) + b.greenF() * t,
                             a.blueF() * (1 - t) + b.blueF() * t);
+}
+
+double ratio(const QColor &a, const QColor &b) {
+    const double x = luminance(a), y = luminance(b);
+    return (std::max(x, y) + .05) / (std::min(x, y) + .05);
+}
+
+// WCAG's minimum contrast for text.
+constexpr double textFloor = 4.5;
+// The ground luminance where black and white read equally.
+constexpr double midLuminance = .179;
+// Bisection steps in ensureRatio, finer than one eight-bit level.
+constexpr int bisectionSteps = 18;
+// One eight-bit channel's range, so the rounding repair can never step further.
+constexpr int channelRange = 255;
+
+// The ink when it already reads at need, else the least mix toward black or white that still does once rounded.
+QColor ensureRatio(const QColor &ink, const QColor &ground, double need) {
+    if (ratio(ink, ground) >= need)
+        return ink;
+    const QColor toward = luminance(ground) > midLuminance ? QColor(Qt::black) : QColor(Qt::white);
+    double low = 0, high = 1;
+    QColor best = toward;
+    for (int i = 0; i < bisectionSteps; ++i) {
+        const double middle = (low + high) / 2;
+        const QColor candidate = mix(ink, toward, middle);
+        if (ratio(candidate, ground) >= need) {
+            best = candidate;
+            high = middle;
+        } else {
+            low = middle;
+        }
+    }
+    best = QColor(best.red(), best.green(), best.blue());
+    const int step = toward == QColor(Qt::white) ? 1 : -1;
+    for (int i = 0; i < channelRange && ratio(best, ground) < need; ++i) {
+        const QColor next(qBound(0, best.red() + step, channelRange), qBound(0, best.green() + step, channelRange),
+                          qBound(0, best.blue() + step, channelRange));
+        if (next == best)
+            break;
+        best = next;
+    }
+    return best;
 }
 
 struct Palette {
@@ -157,11 +201,14 @@ QColor Theme::accentForeground() const {
     return luminance(accent()) > .179 ? QColor("black") : QColor("white");
 }
 
-// Themes' own dim foregrounds are often too faint for small text, so derive a
-// secondary color by mixing the foreground toward the background, keeping
-// roughly a 4.5:1 contrast for metadata and labels.
+// Metadata and labels: the foreground mixed toward the background, raised to textFloor on each ground they're on.
 QColor Theme::secondaryForeground() const {
-    return mix(background(), foreground(), 0.68);
+    // The foreground's share of the secondary ink before the floor.
+    constexpr double share = 0.68;
+    QColor ink = mix(background(), foreground(), share);
+    for (const QColor &ground : {background(), lighterBackground(), darkBackground()})
+        ink = ensureRatio(ink, ground, textFloor);
+    return ink;
 }
 
 void Theme::reload() {
@@ -190,3 +237,4 @@ void Theme::reload() {
         emit changed();
     }
 }
+
