@@ -132,7 +132,9 @@ public:
     static bool isView(const QString &path) { return path == recentPath() || path == tailnetPath(); }
     static QString kindForMime(const QString &mime);
     // Everything under `root` whose name contains `query` (ignoring case),
-    // named by its path from `root`. Stops at `limit` matches, at other
+    // named by its path from `root`. `ext:jpg,png` keeps only files with
+    // those extensions (alone or beside some text), and `re:<pattern>`
+    // matches names against a regular expression instead. Stops at `limit` matches, at other
     // filesystems and at symlinks, and as soon as `stop` returns true.
     static QVector<Entry> search(const QString &root, const QString &query, bool showHidden, const QString &sort,
                                  const std::function<bool()> &stop = {}, int limit = 1000);
