@@ -335,26 +335,28 @@ Item {
                 // An archive is the lidded box its row draws, not a page of text.
                 Glyph { anchors.centerIn: parent; visible: tile.kind === "archive"; name: "archive"; size: 32; color: tile.kindColor }
             }
-            Rectangle {
-                visible: tile.extension.length > 0
-                anchors.left: page.left
-                anchors.bottom: page.bottom
-                anchors.bottomMargin: 6
-                width: badge.implicitWidth + 8
-                height: badge.implicitHeight + 2
-                color: tile.kindColor
-                Text {
-                    id: badge
-                    anchors.centerIn: parent
-                    text: tile.extension.slice(0, 4)
-                    textFormat: Text.PlainText
-                    font.pixelSize: 9
-                    font.bold: true
-                    color: {
-                        theme.background // Re-read when the theme changes, not only the fill.
-                        return theme.inkOn(tile.kindColor)
-                    }
-                }
+            ExtensionBadge { anchors.left: page.left }
+        }
+    }
+
+    // The extension on a stand-in, as a chip in its kind's color at the foot's left.
+    component ExtensionBadge: Rectangle {
+        visible: tile.extension.length > 0
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 6
+        width: badge.implicitWidth + 8
+        height: badge.implicitHeight + 2
+        color: tile.kindColor
+        Text {
+            id: badge
+            anchors.centerIn: parent
+            text: tile.extension.slice(0, 4)
+            textFormat: Text.PlainText
+            font.pixelSize: 9
+            font.bold: true
+            color: {
+                theme.background // Re-read when the theme changes, not only the fill.
+                return theme.inkOn(tile.kindColor)
             }
         }
     }
@@ -365,6 +367,12 @@ Item {
         // Decorative, not the real waveform: bars seeded from the name so each
         // file keeps its own shape. Album art replaces it when the file has some.
         Rectangle {
+            id: wave
+            readonly property int seed: {
+                let h = 0
+                for (let i = 0; i < tile.name.length; ++i) h = (h * 31 + tile.name.charCodeAt(i)) % 997
+                return h
+            }
             color: theme.lighterBackground
             radius: tile.iconRadius
             Row {
@@ -374,18 +382,15 @@ Item {
                     model: 18
                     Rectangle {
                         required property int index
+                        readonly property int step: (wave.seed + index * 389) % 997
                         anchors.verticalCenter: parent.verticalCenter
                         width: 3
-                        height: {
-                            let h = 0
-                            for (let i = 0; i < tile.name.length; ++i) h = (h * 31 + tile.name.charCodeAt(i) + index * 7) % 997
-                            return 10 + (h % 40)
-                        }
+                        height: 20 + (step * step % 997) % 29
                         color: tile.kindColor
                     }
                 }
             }
-            Text { anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: 5; text: tile.extension; textFormat: Text.PlainText; font.pixelSize: 9; color: theme.secondaryForeground }
+            ExtensionBadge { anchors.left: parent.left }
         }
     }
 
