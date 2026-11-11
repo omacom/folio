@@ -15,7 +15,10 @@ Rectangle {
     property bool editing: false
     // The right pane of a split has a close button (Ctrl+W).
     property bool closable: false
+    // The window is split; the first pane's bar has the button that splits and joins it.
+    property bool split: false
     signal closeRequested()
+    signal toggleSplit()
     signal togglePreview()
     signal cycleView()
     signal editDone()
@@ -288,6 +291,14 @@ Rectangle {
             text: qsTr("Details")
             active: bar.previewVisible
             onClicked: bar.togglePreview()
+        }
+        IconButton {
+            visible: !bar.closable
+            glyph: "split"
+            toggle: true
+            text: bar.split ? qsTr("Close the split") : qsTr("Split")
+            active: bar.split
+            onClicked: bar.toggleSplit()
         }
         IconButton {
             visible: bar.closable

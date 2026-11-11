@@ -80,6 +80,7 @@
   "Check the server": "Check the server",
   "Choose": "Choose",
   "Close": "Close",
+  "Close the split": "Close the split",
   "Close the window": "Close the window",
   "Close this pane": "Close this pane",
   "Compress": "Compress",
@@ -390,6 +391,7 @@
   "Sort: name, kind, newest, oldest, size": "Sort: name, kind, newest, oldest, size",
   "Sorted by kind": "Sorted by kind",
   "Sorted by name": "Sorted by name",
+  "Split": "Split",
   "Split into two panes / close the right one": "Split into two panes / close the right one",
   "Stop the file work under way, or dismiss what went wrong": "Stop the file work under way, or dismiss what went wrong",
   "Stopped after %L1 of %Ln items.": {

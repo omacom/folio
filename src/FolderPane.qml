@@ -449,6 +449,8 @@ FocusScope {
         onTogglePreview: if (pane.host) pane.host.previewVisible = !pane.host.previewVisible
         onCycleView: pane.cycleView()
         onCloseRequested: pane.closeRequested()
+        split: !!pane.host && pane.host.split
+        onToggleSplit: if (pane.host) pane.host.split ? pane.host.closeSplit() : pane.host.openSplit()
     }
 
     // With two panes, a line along the top marks the one keys go to.
