@@ -231,7 +231,8 @@ FocusScope {
 
     Connections {
         target: view.item
-        function onContextMenu(item, folder, at) { fileMenu.show(item, folder, null, at) }
+        // A right click in the other pane makes it the one the keys and the menu act on, as a left click does.
+        function onContextMenu(item, folder, at) { pane.focusView(); fileMenu.show(item, folder, null, at) }
         function onCursorLetGo() { pane.cursorLetGo = true }
         // The cursor's item is remembered as the cursor moves, and once the
         // folder's loaded has placed it. Not when a re-read leaves the cursor
