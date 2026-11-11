@@ -484,7 +484,7 @@ std::pair<QString, QString> Plugins::split(const QString &itemPath) {
 
 void Plugins::refresh() {
     // F5 asks again about files too, for whatever changed without them.
-    m_details.clear();
+    forgetDetails({});
     reload(true);
 }
 
@@ -595,7 +595,7 @@ void Plugins::poll(const QString &plugin) {
         // the file doesn't (Dropbox finishing a sync), so a poll saying
         // something new has it asked again.
         if (m_outputs.value(plugin).printed != before && !now->details.isEmpty()) {
-            m_details.removeIf([&](const auto &it) { return it.key().startsWith(plugin + '\n'); });
+            forgetDetails(plugin);
             emit detailsChanged();
         }
         rebuild();
@@ -774,45 +774,84 @@ QVariantList Plugins::details(const QString &path, const QDateTime &modified) co
     return rows;
 }
 
-void Plugins::describe(const QString &path, const QString &mime, const QDateTime &modified,
+bool Plugins::describe(const QString &path, const QString &mime, const QDateTime &modified,
                        const std::function<bool()> &wanted, const std::function<void()> &done) {
+    bool asking = false;
     for (const Manifest &m : std::as_const(m_manifests)) {
         const QString key = detailsKey(m.id, path, modified);
         if (m.details.isEmpty() || m_details.contains(key) || !fits(m.detailsUnder, m.detailsTypes, path, mime))
             continue;
-        auto *watcher = new QFutureWatcher<std::optional<Run>>(this);
-        connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, plugin = m.id, key, done] {
-            watcher->deleteLater();
-            const std::optional<Run> run = watcher->result();
-            if (!run)
-                return;
-            // One that fails or takes too long has no rows for the file,
-            // and says why once each time it goes from working to failing.
-            const QJsonDocument said = run->ok() ? QJsonDocument::fromJson(run->out) : QJsonDocument();
-            if (said.isArray()) {
-                m_failingDetails.remove(plugin);
-            } else if (!m_failingDetails.contains(plugin)) {
-                complain(plugin, "its details command " + whyNot(*run));
-                m_failingDetails.insert(plugin);
-            }
-            // Enough for the folders gone through lately, without growing
-            // with every file ever looked at.
-            if (m_details.size() >= 5000)
-                m_details.clear();
-            m_details.insert(key, said.array());
-            done();
-        });
-        // Stepping through files faster than they're answered for queues
-        // commands; those overtaken before their turn aren't run, so they
-        // don't hold up the polls behind them.
-        watcher->setFuture(QtConcurrent::run(&m_pool, [plugin = m, command = m.details + QStringList{path},
-                                                       environment = environment(m), wanted,
-                                                       stop = m_stop]() -> std::optional<Run> {
-            if (!wanted())
-                return {};
-            return execute(plugin, command, environment, detailsTimeout, stop.get());
-        }));
+        asking = true;
+        // Asked again while its command runs (another window, or the
+        // folder read again), the caller waits for the same answer.
+        QList<Asker> &askers = m_asking[key];
+        askers << Asker{wanted, done};
+        if (askers.size() == 1)
+            ask(m, path, key);
     }
+    return asking;
+}
+
+void Plugins::ask(const Manifest &plugin, const QString &path, const QString &key) {
+    auto *watcher = new QFutureWatcher<std::optional<Run>>(this);
+    connect(watcher, &QFutureWatcherBase::finished, this,
+            [this, watcher, id = plugin.id, path, key, generation = m_detailsGeneration] {
+        watcher->deleteLater();
+        // What was said is forgotten meanwhile, so this answer may be
+        // older than the one that replaces it.
+        if (generation != m_detailsGeneration)
+            return;
+        const std::optional<Run> run = watcher->result();
+        if (!run) {
+            // Its first caller moved on before its turn; the next, if any,
+            // has it run for them.
+            QList<Asker> &askers = m_asking[key];
+            askers.removeFirst();
+            if (askers.isEmpty())
+                m_asking.remove(key);
+            else if (const Manifest *m = manifest(id))
+                ask(*m, path, key);
+            return;
+        }
+        // One that fails or takes too long has no rows for the file,
+        // and says why once each time it goes from working to failing.
+        const QJsonDocument said = run->ok() ? QJsonDocument::fromJson(run->out) : QJsonDocument();
+        if (said.isArray()) {
+            m_failingDetails.remove(id);
+        } else if (!m_failingDetails.contains(id)) {
+            complain(id, "its details command " + whyNot(*run));
+            m_failingDetails.insert(id);
+        }
+        // Enough for the folders gone through lately, without growing
+        // with every file ever looked at.
+        if (m_details.size() >= 5000)
+            m_details.clear();
+        m_details.insert(key, said.array());
+        for (const Asker &asker : m_asking.take(key))
+            asker.done();
+    });
+    // Stepping through files faster than they're answered for queues
+    // commands; those overtaken before their turn aren't run, so they
+    // don't hold up the polls behind them.
+    watcher->setFuture(QtConcurrent::run(&m_pool, [plugin, command = plugin.details + QStringList{path},
+                                                   environment = environment(plugin),
+                                                   wanted = m_asking.value(key).first().wanted,
+                                                   stop = m_stop]() -> std::optional<Run> {
+        if (!wanted())
+            return {};
+        return execute(plugin, command, environment, detailsTimeout, stop.get());
+    }));
+}
+
+void Plugins::forgetDetails(const QString &plugin) {
+    if (plugin.isEmpty())
+        m_details.clear();
+    else
+        m_details.removeIf([&](const auto &it) { return it.key().startsWith(plugin + '\n'); });
+    // Answers on their way are dropped too, and their callers asked to ask
+    // again (detailsChanged), so nothing waits on them.
+    m_asking.clear();
+    ++m_detailsGeneration;
 }
 
 void Plugins::run(const QString &itemPath, const Done &done) {

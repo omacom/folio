@@ -4033,12 +4033,13 @@ private slots:
     void pluginDetailsAreAskedForOnceAndKept()
     {
         QTemporaryDir folder, files;
-        for (const char *name : {"a.txt", "b.txt", "photo.png", "slow.txt", "broken.txt"})
+        for (const char *name : {"a.txt", "b.txt", "photo.png", "slow.txt", "broken.txt", "late.txt"})
             write(files.filePath(name), "x");
         writePlugin(folder.path(), "notes", "{\"folio\": 1, \"details\": {\"command\": [\"./describe\"], \"under\": [\""
                                                 + files.path().toUtf8() + "/\"], \"types\": [\"text/*\"]}}",
                     {{"describe", "#!/bin/sh\necho \"$1\" >> asked\ncase \"$1\" in\n"
                                   "  *slow*) exec sleep 5 ;;\n  *broken*) echo 'not json' ;;\n"
+                                  "  *late*) sleep 1; echo '[[\"Late\", \"yes\"]]' ;;\n"
                                   "  *) echo '[[\"Lines\", 3], [\"Kind\", \"Lines\"], \"not a row\"]' ;;\nesac\n"},
                      {"i18n/da.json", R"({"Lines": "Linjer"})"}});
         writePlugin(folder.path(), "alpha", R"({"folio": 1, "details": {"command": ["./describe"]}})",
@@ -4103,12 +4104,26 @@ private slots:
         QTest::qWait(300);
         QCOMPARE(answered, 9);
 
+        // Asked again while it runs, a command runs once and answers both.
+        int both = 0;
+        for (int i = 0; i < 2; ++i)
+            plugins.describe(files.filePath("b.txt"), "text/plain", when, [] { return true; }, [&] { ++both; });
+        QTRY_COMPARE(both, 4);
+        QCOMPARE(asked().count(files.filePath("b.txt")), 1);
+
         // F5 forgets what was said, and has it asked again.
         plugins.refresh();
         QVERIFY(plugins.details(files.filePath("a.txt"), when).isEmpty());
         QVERIFY(read.wait(5000));
         describe("a.txt", "text/plain", when);
         QTRY_COMPARE(plugins.details(files.filePath("a.txt"), when), rows);
+        // An answer begun before F5 might be older than what replaces it,
+        // so it's dropped.
+        describe("late.txt", "text/plain", when);
+        plugins.refresh();
+        QVERIFY(read.wait(5000));
+        QTest::qWait(1500);
+        QVERIFY(plugins.details(files.filePath("late.txt"), when).isEmpty());
     }
 
     void backendShowsPluginDetailsForTheSelectedItem()
@@ -4157,6 +4172,11 @@ private slots:
         QTRY_COMPARE(rows(), QVariantList({QVariantList{"State", "waiting"}}));
         backend.perform("sync", "sync", {home.filePath("a.txt")});
         QTRY_COMPARE(rows(), QVariantList({QVariantList{"State", "synced"}}));
+
+        // A plugin that stops saying anything takes its rows with it.
+        writePlugin(folder.path(), "sync", R"({"folio": 1})");
+        plugins.refresh();
+        QTRY_VERIFY(rows().isEmpty());
     }
 
     void pluginViewsListTheirItems()

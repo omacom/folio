@@ -146,7 +146,8 @@ private:
     // as their commands answer. While `keep`, rows already shown stay until
     // there are others, so the same item asked about again doesn't flicker.
     void showPluginRows(bool keep);
-    void askPlugins();
+    // Asks plugins about the item described; false when nothing's coming.
+    bool askPlugins();
     // A GVfs mount's name on screen: its plugin item's name, or its host.
     QString mountName(const QString &mount) const;
 

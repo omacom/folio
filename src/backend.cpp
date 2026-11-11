@@ -247,10 +247,7 @@ void Backend::setPlugins(Plugins *plugins) {
     m_plugins = plugins;
     // A view's title and a mount's name come from the plugins.
     connect(plugins, &Plugins::changed, this, &Backend::placeChanged);
-    connect(plugins, &Plugins::detailsChanged, this, [this] {
-        showPluginRows(true);
-        askPlugins();
-    });
+    connect(plugins, &Plugins::detailsChanged, this, [this] { showPluginRows(askPlugins()); });
 }
 
 void Backend::openItem(const QString &path) {
@@ -378,8 +375,7 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
     // Plugins say things about real files and folders, not trashed ones or
     // a plugin's own items.
     m_pluginItem = path.startsWith('/') && !inTrash ? item : QVariantMap();
-    showPluginRows(!m_pluginItem.isEmpty());
-    askPlugins();
+    showPluginRows(askPlugins());
     if (kind != "image" && kind != "text" && !inTrash)
         return;
 
@@ -444,14 +440,14 @@ void Backend::showPluginRows(bool keep) {
     emit detailsChanged();
 }
 
-void Backend::askPlugins() {
+bool Backend::askPlugins() {
     if (!m_plugins || m_pluginItem.isEmpty())
-        return;
+        return false;
     // Answers for an item the selection has since moved on from are
     // dropped, and its commands not yet started aren't run.
     const quint64 generation = *m_describing;
     QPointer<Backend> self(this);
-    m_plugins->describe(
+    return m_plugins->describe(
         m_pluginItem.value("path").toString(), m_pluginItem.value("mime").toString(),
         m_pluginItem.value("modified").toDateTime(), [latest = m_describing, generation] { return *latest == generation; },
         [self, generation] {
