@@ -29,9 +29,10 @@ class Backend : public QObject {
     Q_PROPERTY(bool previewing READ previewing NOTIFY previewingChanged)
     // What the details pane shows beyond the listing, for the item last
     // given to describe(), once they've been read in the background: a
-    // picture's dimensions, a text's opening lines, or a trashed item's
-    // origin and deletion time; and under `plugins`, plugins' rows about a
-    // file or folder, [[label, value]...].
+    // picture's dimensions, a text's opening lines (a Markdown file's as
+    // HTML, markdown), or a trashed item's origin and deletion time; and
+    // under `plugins`, plugins' rows about a file or folder,
+    // [[label, value]...].
     Q_PROPERTY(QVariantMap details READ details NOTIFY detailsChanged)
 
 public:

@@ -98,6 +98,32 @@ Rectangle {
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
                 }
+                // A Markdown file, rendered. Rich text can't elide, so the frame ends on the last line that fits whole.
+                Item {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 14
+                    readonly property real room: parent.height - 28
+                    height: {
+                        markdown.length, markdown.width, markdown.contentHeight
+                        const line = markdown.positionToRectangle(markdown.positionAt(0, room))
+                        return line.y + line.height > room ? Math.min(line.y, room) : room
+                    }
+                    clip: true
+                    TextEdit {
+                        id: markdown
+                        width: parent.width
+                        text: pane.info.markdown || ""
+                        textFormat: TextEdit.RichText
+                        color: theme.foreground
+                        font.pixelSize: 10
+                        wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere
+                        readOnly: true
+                        // Only shown: nothing to select, and its links aren't followed from here.
+                        enabled: false
+                    }
+                }
             }
 
             Glyph {

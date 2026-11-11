@@ -3406,6 +3406,51 @@ private slots:
         QVERIFY(!backend.details().contains("width"));
     }
 
+    void backendRendersMarkdownWithoutItsPictures()
+    {
+        // Drawing a Markdown file's picture would fetch it, a remote one too, just for selecting the file.
+        QTemporaryDir dir;
+        const QString notes = dir.filePath("notes.md"), plain = dir.filePath("notes.txt");
+        write(notes, "# Field notes\n\nThe *falling* tide, the **long** lens.\n\n- dusk\n- dawn\n\n"
+                     "![shoreline](shore.png) ![tidepool](http://example.com/tide.png) ![clifftop](https://example.com/cliff.png)"
+                     " ![](https://example.com/bare.png) ![emblem][logo]\n\n<img src=\"https://example.com/raw.png\">\n\n"
+                     "[logo]: https://example.com/logo.png\n");
+        write(plain, "# Field notes\n![shore](shore.png)\n");
+        Backend backend(dir.path());
+        backend.describe({{"path", notes}, {"kind", "text"}, {"mime", "text/markdown"}});
+        QTRY_VERIFY(backend.details().contains("markdown"));
+        QVERIFY(!backend.details().contains("text"));
+        const QString html = backend.details().value("markdown").toString();
+        QVERIFY2(!html.contains("<img", Qt::CaseInsensitive), qPrintable(html));
+        for (const char *url : {"shore.png", "tide.png", "cliff.png", "bare.png", "logo.png", "src=\""})
+            QVERIFY2(!html.contains(url), url);
+        // Each picture's alt text stands in for it, and raw HTML stays text.
+        for (const char *alt : {"shoreline", "tidepool", "clifftop", "emblem"})
+            QVERIFY2(html.contains(alt), alt);
+        QVERIFY(html.contains("&lt;img src=&quot;https://example.com/raw.png&quot;&gt;"));
+        QVERIFY(html.contains("<h1"));
+        QCOMPARE(html.count("<li"), 2);
+        QVERIFY(html.contains("font-style:italic"));
+        QVERIFY(html.contains("font-weight:700"));
+
+        // Any other text is its opening lines as written.
+        backend.describe({{"path", plain}, {"kind", "text"}, {"mime", "text/plain"}});
+        QTRY_COMPARE(backend.details().value("text").toString(), QString("# Field notes\n![shore](shore.png)\n"));
+        QVERIFY(!backend.details().contains("markdown"));
+
+        // A wide table, its 41 lines thousands of cells, stops where the card still lays it out in a frame.
+        QByteArray wide;
+        for (int row = 0; row < 41; ++row)
+            wide += QByteArray(row == 1 ? "|-" : "|x").repeated(72) + "|\n";
+        const QString table = dir.filePath("table.md");
+        write(table, wide);
+        backend.describe({{"path", table}, {"kind", "text"}, {"mime", "text/markdown"}});
+        QTRY_VERIFY(backend.details().contains("markdown"));
+        const QString cut = backend.details().value("markdown").toString();
+        QVERIFY(cut.count("<td") + cut.count("<th") > 0);
+        QVERIFY2(cut.count("<td") + cut.count("<th") <= 300, qPrintable(QString::number(cut.count("<td"))));
+    }
+
     void backendReadsTrashNotesOffTheUiThread()
     {
         // Finding a trashed item's note looks over every mounted drive, so

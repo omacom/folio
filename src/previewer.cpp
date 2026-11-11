@@ -6,6 +6,9 @@
 #include <QFutureWatcher>
 #include <QImageReader>
 #include <QMimeDatabase>
+#include <QRegularExpression>
+#include <QTextCursor>
+#include <QTextDocument>
 #include <QUrl>
 #include <QtConcurrent>
 #include <cstdio>
@@ -106,6 +109,21 @@ QString Previewer::markdownOpening(const QString &text, int cells) {
         at = end;
     }
     return text;
+}
+
+QString Previewer::markdownHtml(const QString &markdown) {
+    QTextDocument document;
+    document.setMarkdown(markdown, QTextDocument::MarkdownFeatures(QTextDocument::MarkdownDialectGitHub | QTextDocument::MarkdownNoHTML));
+    // Drawing a picture would fetch it, a remote one too, just because the file was selected.
+    QTextCursor cursor(&document);
+    while (!(cursor = document.find(QString(QChar::ObjectReplacementCharacter), cursor)).isNull()) {
+        const QTextCharFormat format = cursor.charFormat();
+        if (format.isImageFormat())
+            cursor.insertText(format.property(QTextFormat::ImageAltText).toString(), QTextCharFormat());
+    }
+    // toHtml writes <body style=" font-family:'Sans Serif'; font-size:9pt; font-weight:400; font-style:normal;">.
+    // Without the document's own font the text takes the one it's shown in.
+    return document.toHtml().replace(QRegularExpression(QStringLiteral("<body style=\"[^\"]*\">")), QStringLiteral("<body>"));
 }
 
 void Previewer::start(const QString &path, bool showHidden, const QString &sort) {

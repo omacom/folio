@@ -65,6 +65,8 @@ public:
     // `cells` cells: laid out, each costs the UI thread about as much as a
     // whole line of prose, and a long table froze the preview for seconds.
     static QString markdownOpening(const QString &text, int cells = 600);
+    // Markdown as HTML, each picture replaced by its alt text so showing it loads nothing; raw HTML stays text.
+    static QString markdownHtml(const QString &markdown);
 
 signals:
     void changed();
