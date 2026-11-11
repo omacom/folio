@@ -36,6 +36,8 @@ class FolderModel : public QAbstractListModel {
     Q_PROPERTY(QVariantList items READ items WRITE setItems NOTIFY itemsChanged)
     // How many match the query, shown or not; -1 until a search has answered.
     Q_PROPERTY(int matches READ matches NOTIFY matchesChanged)
+    // While a search is still reading the folders below.
+    Q_PROPERTY(bool reading READ reading NOTIFY readingChanged)
 
 public:
     enum Role {
@@ -95,6 +97,7 @@ public:
     QVariantList items() const { return m_items; }
     void setItems(const QVariantList &items);
     int matches() const { return m_matches; }
+    bool reading() const { return m_stillReading; }
 
     void setPath(const QString &path);
     Q_INVOKABLE void reload();
@@ -175,6 +178,7 @@ signals:
     void queryChanged();
     void itemsChanged();
     void matchesChanged();
+    void readingChanged();
     void selectionChanged();
     void loaded();
 
@@ -183,6 +187,9 @@ private:
     void read();
     void openSearch();
     void closeSearch();
+    void setReading(bool reading);
+    // Answers from what's been read so far, past the hold.
+    void readEarly();
     void setLoading(bool loading);
     void setEntries(const QVector<Entry> &entries);
     void clearEntries();
@@ -212,6 +219,7 @@ private:
     QVariantList m_items;
     int m_matches = -1;
     bool m_fetching = false;
+    bool m_stillReading = false;
     quint64 m_generation = 0;
     // The newest listing's generation, shared with the background listing,
     // search and folder counts, so work that's been overtaken (more typing,
@@ -232,4 +240,6 @@ private:
     QFileSystemWatcher m_watcher;
     QTimer m_debounce;
     QTimer m_staleClear;
+    QTimer m_hold;
+    QTimer m_refresh;
 };

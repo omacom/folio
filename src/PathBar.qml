@@ -96,8 +96,9 @@ Rectangle {
             leftPadding: LayoutMirroring.enabled ? scope.implicitWidth + 24 : 12
             rightPadding: LayoutMirroring.enabled ? 12 : scope.implicitWidth + 24
             // Where it searches, at the end of the field, and once it has
-            // answered, how many match. Unlike a placeholder, it stays while
-            // typing. Plugins' views have nothing below them.
+            // answered, how many match, so far while it's still reading.
+            // Unlike a placeholder, it stays while typing. Plugins' views
+            // have nothing below them.
             Text {
                 id: scope
                 // Recents, Trash and plugins' views are named in C++, which
@@ -111,7 +112,8 @@ Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 text: backend.path.startsWith("plugin:") ? qsTr("Search %1").arg(here)
                     : backend.folder.query.length > 0 && backend.folder.matches >= 0
-                    ? qsTr("%Ln matches in %1 and below", "", backend.folder.matches).arg(here)
+                    ? (backend.folder.reading ? qsTr("%Ln matches so far, still reading %1 and below", "", backend.folder.matches)
+                                              : qsTr("%Ln matches in %1 and below", "", backend.folder.matches)).arg(here)
                     : qsTr("Search %1 and below").arg(here)
                 color: theme.secondaryForeground
                 font.pixelSize: 12

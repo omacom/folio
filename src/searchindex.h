@@ -11,6 +11,7 @@
 #include <vector>
 
 class QMimeDatabase;
+class QMutex;
 
 // One query, matched against names a byte at a time: ASCII letters of either
 // case alike, other text compared once Qt has folded its case.
@@ -104,12 +105,17 @@ public:
         qsizetype names = 0; // names matched, each once a query however many rows share it
         qsizetype folders = 0; // folders matched along a path, each at most once a query
         qsizetype typos = 0; // passes looking for names a letter or two off
+        qsizetype answers = 0;
     };
 
     // Reads `root` and every folder below it, breadth first, staying on its
     // drive and out of symlinked folders. False, and empty, once `stop`
-    // returns true.
-    bool walk(const QString &root, bool showHidden, const std::function<bool()> &stop = {});
+    // returns true. Holding `lock` while it adds each folder, it can be
+    // answered from as it reads.
+    bool walk(const QString &root, bool showHidden, const std::function<bool()> &stop = {}, QMutex *lock = nullptr);
+    // Called with how many folders have been read, after each, so a test
+    // can hold a walk partway.
+    inline static std::function<void(qsizetype folders)> afterFolder;
     qsizetype size() const { return m_rows.size(); }
     // The memory it holds.
     qsizetype bytes() const;

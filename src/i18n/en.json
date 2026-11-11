@@ -44,6 +44,10 @@
     "one": "%Ln match in %1 and below",
     "other": "%Ln matches in %1 and below"
   },
+  "%Ln matches so far, still reading %1 and below": {
+    "one": "%Ln match so far, still reading %1 and below",
+    "other": "%Ln matches so far, still reading %1 and below"
+  },
   "A folder, or a server's address like sftp://host/": "A folder, or a server's address like sftp://host/",
   "A name can't contain \"/\".": "A name can't contain \"/\".",
   "Add or remove one from the selection": "Add or remove one from the selection",

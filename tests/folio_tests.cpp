@@ -24,6 +24,7 @@
 #include <QQmlPropertyMap>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QSemaphore>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QSocketNotifier>
@@ -1517,6 +1518,51 @@ private slots:
         QCOMPARE(index.path(rows[1]), QByteArray("projects/src/render_frame.rs"));
         QCOMPARE(QSet<QByteArray>({index.path(rows[2]), index.path(rows[3])}),
                  QSet<QByteArray>({"editor/render/pipeline.rs", "projects/src/thread_runner.rs"}));
+    }
+
+    void searchShowsMatchesWhileItsStillReading()
+    {
+        // A folder that takes a while to read shows its best matches so far
+        // (saying it's still reading) until it's all been read, and then
+        // all of them.
+        QTemporaryDir dir;
+        for (const char *folder : {"a", "b", "c"}) {
+            QDir(dir.path()).mkdir(folder);
+            write(dir.filePath(QString("%1/match.txt").arg(folder)), "x");
+        }
+        write(dir.filePath("match.txt"), "x");
+        QSemaphore held, resumed;
+        SearchIndex::afterFolder = [&](qsizetype folders) {
+            if (folders == 2) {
+                held.release();
+                resumed.acquire();
+            }
+        };
+        const auto restore = qScopeGuard([&] {
+            if (held.available() + resumed.available() == 0 && SearchIndex::afterFolder)
+                resumed.release();
+            SearchIndex::afterFolder = {};
+        });
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        loaded.clear();
+        model.setQuery("match");
+        QVERIFY(model.reading());
+        QVERIFY(held.tryAcquire(1, 3000));
+        QVERIFY(loaded.wait(3000));
+        QVERIFY(model.reading());
+        QVERIFY(model.loading());
+        QCOMPARE(model.matches(), 2);
+        QCOMPARE(model.count(), 2);
+        resumed.release();
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QCOMPARE(model.matches(), 4);
+        QCOMPARE(model.count(), 4);
+        QCOMPARE(model.searchIndex()->counts.walks, 1);
+        // One answer for each time it showed.
+        QCOMPARE(model.searchIndex()->counts.answers, loaded.count());
     }
 
     void folderModelSwapsFoldersWithoutAnEmptyFrame()

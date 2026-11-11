@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <QHash>
 #include <QMimeDatabase>
+#include <QMutex>
 #include <QVarLengthArray>
 #include <algorithm>
 #include <cstring>
@@ -206,43 +207,83 @@ int SearchMatcher::align(QByteArrayView text) const {
     return alignment.score(Named);
 }
 
-bool SearchIndex::walk(const QString &root, bool showHidden, const std::function<bool()> &stop) {
+bool SearchIndex::walk(const QString &root, bool showHidden, const std::function<bool()> &stop, QMutex *lock) {
     ++counts.walks;
     m_root = root;
     const QByteArray top = QFile::encodeName(root);
     dev_t drive = 0;
+    // Gone partway: nothing is kept.
+    const auto stopped = [&] {
+        QMutexLocker hold(lock);
+        const Counts spent = counts;
+        *this = SearchIndex();
+        counts = spent;
+        return false;
+    };
+    // A folder's names are read first and added all at once, so an answer
+    // given meanwhile sees whole folders. While an answer holds the lock,
+    // the folders already found are read on and wait here, in order.
+    struct Read {
+        quint32 parent;
+        QByteArray names;
+        QVector<qsizetype> ends;
+        QVector<bool> folders;
+        qsizetype asked = 0;
+    };
+    std::vector<Read> waiting;
+    const auto add = [&] {
+        for (const Read &read : waiting) {
+            ++counts.opens;
+            counts.stats += 1 + read.asked;
+            for (qsizetype i = 0, from = 0; i < read.ends.size(); from = read.ends[i++]) {
+                const quint32 id = intern(QByteArrayView(read.names).sliced(from, read.ends[i] - from));
+                if (m_rows.size() % 8 == 0)
+                    m_kinds.append('\0');
+                if (read.folders[i]) {
+                    m_kinds.back() = char(m_kinds.back() | (1 << (m_rows.size() % 8)));
+                    const quint32 above = read.parent == None ? 0 : m_folders[read.parent].length + 1;
+                    // A "/" after each folder, as in the path.
+                    const quint64 bits = m_names[id].bits | SearchMatcher::bitsOf("/")
+                        | (read.parent == None ? 0 : m_folders[read.parent].bits);
+                    m_folders.push_back({id, read.parent, above + m_names[id].length, bits});
+                }
+                m_rows.push_back({id, read.parent});
+            }
+        }
+        waiting.clear();
+    };
     // The folders found are the queue: each is read in the order it was
     // found, which is breadth first. -1 is the root.
-    for (qsizetype folder = -1; folder < m_folders.size(); ++folder) {
+    for (qsizetype folder = -1;; ++folder) {
+        // Out of folders to read, those waiting go in, and perhaps bring more.
+        if (folder >= m_folders.size() && !waiting.empty()) {
+            QMutexLocker hold(lock);
+            add();
+        }
+        if (folder >= m_folders.size())
+            break;
+        if (stop && stop())
+            return stopped();
         const quint32 parent = folder < 0 ? None : quint32(folder);
         const QByteArray at = folder < 0 ? top : top + '/' + joined(m_folders[folder].parent, name(m_folders[folder].name));
         // Below the root, a folder that's become a link since it was listed isn't followed.
         const int fd = ::open(at.constData(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | (folder < 0 ? 0 : O_NOFOLLOW));
         if (fd < 0)
             continue;
-        ++counts.opens;
-        ++counts.stats;
         struct stat st;
         // Other filesystems (a mounted drive, another machine, /proc from
         // /) are listed but not read.
-        if (::fstat(fd, &st) != 0 || (folder >= 0 && st.st_dev != drive)) {
-            ::close(fd);
-            continue;
-        }
+        const bool same = ::fstat(fd, &st) == 0 && (folder < 0 || st.st_dev == drive);
         if (folder < 0)
             drive = st.st_dev;
-        DIR *dir = ::fdopendir(fd);
-        if (!dir) {
+        DIR *dir = same ? ::fdopendir(fd) : nullptr;
+        if (!dir)
             ::close(fd);
-            continue;
-        }
-        while (const dirent *entry = ::readdir(dir)) {
+        Read read{parent, {}, {}, {}};
+        while (const dirent *entry = dir ? ::readdir(dir) : nullptr) {
             if (stop && stop()) {
                 ::closedir(dir);
-                const Counts spent = counts;
-                *this = SearchIndex();
-                counts = spent;
-                return false;
+                return stopped();
             }
             const char *text = entry->d_name;
             if (text[0] == '.' && (!showHidden || text[1] == 0 || (text[1] == '.' && text[2] == 0)))
@@ -251,26 +292,29 @@ bool SearchIndex::walk(const QString &root, bool showHidden, const std::function
             // say needs asking. Symlinked folders aren't walked into.
             bool isDir = entry->d_type == DT_DIR;
             if (entry->d_type == DT_UNKNOWN) {
-                ++counts.stats;
+                ++read.asked;
                 struct stat child;
                 isDir = ::fstatat(::dirfd(dir), text, &child, AT_SYMLINK_NOFOLLOW) == 0 && S_ISDIR(child.st_mode);
             }
-            const quint32 id = intern(QByteArrayView(text));
-            if (m_rows.size() % 8 == 0)
-                m_kinds.append('\0');
-            if (isDir) {
-                m_kinds.back() = char(m_kinds.back() | (1 << (m_rows.size() % 8)));
-                const quint32 above = parent == None ? 0 : m_folders[parent].length + 1;
-                // A "/" after each folder, as in the path.
-                const quint64 bits = m_names[id].bits | SearchMatcher::bitsOf("/") | (parent == None ? 0 : m_folders[parent].bits);
-                m_folders.push_back({id, parent, above + m_names[id].length, bits});
-            }
-            m_rows.push_back({id, parent});
+            read.names.append(text);
+            read.ends.push_back(read.names.size());
+            read.folders.push_back(isDir);
         }
-        ::closedir(dir);
+        if (dir)
+            ::closedir(dir);
+        waiting.push_back(std::move(read));
+        if (!lock) {
+            add();
+        } else if (lock->tryLock()) {
+            add();
+            lock->unlock();
+        }
+        if (afterFolder)
+            afterFolder(folder + 2);
     }
     // Names are only looked up while folders are read, and what's left
     // over from growing goes back.
+    QMutexLocker hold(lock);
     m_lookup = {};
     m_names.squeeze();
     m_folders.squeeze();
@@ -434,6 +478,7 @@ int SearchIndex::alongPath(quint32 row, int tier, QHash<quint32, SearchMatcher::
 }
 
 qsizetype SearchIndex::answer(const QString &query) {
+    ++counts.answers;
     // A longer query's matches are among the last one's, as long as
     // nothing's been read since.
     QVector<quint32> within;
