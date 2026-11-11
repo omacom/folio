@@ -133,6 +133,8 @@ public:
     // Matches `query`, best first, and gives how many rows match. The rows
     // themselves come from rows(), ordered only as far as they're asked for.
     qsizetype answer(const QString &query);
+    // The query the last answer was for.
+    const QString &query() const { return m_query; }
     // The answer's rows from `from`, at most `count` of them, best first:
     // a better class first, then a better score, a folder before a file,
     // the shorter path, and the paths in natural order.

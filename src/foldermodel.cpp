@@ -22,8 +22,7 @@
 #include <vector>
 #include <sys/stat.h>
 
-// How long a search of a big folder shows nothing: as long as a stale folder
-// stays up and as long as the path bar waits for typing to pause.
+// How long a search of a big folder shows nothing: as long as a stale folder stays up, and the path bar's pause.
 static constexpr int SearchHold = 150;
 // How often, after that, it shows its best matches so far.
 static constexpr int SearchRefresh = 100;
@@ -45,9 +44,7 @@ FolderModel::FolderModel(QObject *parent) : QAbstractListModel(parent) {
     m_staleClear.setSingleShot(true);
     m_staleClear.setInterval(150);
     connect(&m_staleClear, &QTimer::timeout, this, &FolderModel::clearEntries);
-    // A search of a big folder shows nothing for as long as a stale folder
-    // stays up, then its best matches so far, again a moment after each
-    // until it's all been read.
+    // A big folder's search holds, then shows its best matches so far, again a moment after each until it's all read.
     m_hold.setSingleShot(true);
     m_hold.setInterval(SearchHold);
     connect(&m_hold, &QTimer::timeout, this, &FolderModel::readEarly);
@@ -292,7 +289,9 @@ void FolderModel::setShowHidden(bool show) {
         return;
     m_showHidden = show;
     emit showHiddenChanged();
-    reload();
+    // A search's walk took or left the hidden files: it ends here, and the folders are read anew.
+    closeSearch();
+    read();
 }
 
 void FolderModel::setSortMode(const QString &sort) {
@@ -310,12 +309,13 @@ void FolderModel::setQuery(const QString &query) {
     m_shownRows = 0;
     emit queryChanged();
     setSelected({});
-    // Back to the folder: its remembered listing shows at once, and what
-    // the search read is let go of.
+    // Back to the folder: its remembered listing shows at once, and what the search read is let go of.
     if (m_query.isEmpty()) {
         closeSearch();
-        if (const auto *cached = recentListings().object(cacheKey()))
+        if (const auto *cached = recentListings().object(cacheKey())) {
             setEntries(*cached);
+            m_rowsQuery.clear();
+        }
     }
     read();
 }
@@ -340,6 +340,7 @@ void FolderModel::setPath(const QString &path) {
     if (!m_watcher.files().isEmpty())
         m_watcher.removePaths(m_watcher.files());
     m_path = clean;
+    m_rowsQuery.clear();
     emit pathChanged();
     // A search is of one folder; going elsewhere ends it.
     if (!m_query.isEmpty()) {
@@ -502,8 +503,7 @@ FolderModel::Entry FolderModel::entryFor(const QFileInfo &info, const QMimeDatab
 QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QString &query, bool showHidden,
                                                 const QString &sort, const std::function<bool()> &stop,
                                                 int limit, const QLocale &locale) {
-    // Best first, and of matches as good, what's near before what's deep
-    // when there are more than the limit.
+    // Best first, and of matches as good, what's near before what's deep.
     SearchIndex index;
     if (!index.walk(root, showHidden, stop))
         return {};
@@ -696,15 +696,12 @@ int FolderModel::itemCount(const QString &folder, bool showHidden) {
     return count;
 }
 
-// A search shows its best matches this many at a time, more as the view
-// scrolls to them.
+// A search shows its best matches this many at a time, more as the view scrolls to them.
 static constexpr int SearchWindow = 350;
-// Sorted another way than best first, it shows this many of the best, as
-// many as a search ever showed.
+// Sorted another way than best first, it shows this many of the best, as many as a search ever showed.
 static constexpr int SortedMatches = 1000;
 
-// What a read in the background brings back: the entries, what went wrong,
-// and how many match when it's a search.
+// What a read in the background brings back: the entries, what went wrong, and how many match a search.
 struct Listing {
     QVector<FolderModel::Entry> entries;
     QString error;
@@ -715,16 +712,21 @@ struct Listing {
     std::optional<QStringList> unshown;
 };
 
-// The open search: its index, read once in the background, and the lock
-// its answers take turns at.
+// The open search: its index, read once in the background, and the lock its answers take turns at.
 struct FolderModel::Search {
     SearchIndex index;
     QMutex lock;
     std::atomic<bool> closed{false};
-    // Set on the UI thread: the walk is done, or has gone on past the hold
-    // and is answered as it reads.
+    // Set on the UI thread: the walk is done, or has gone on past the hold and is answered as it reads.
     bool landed = false;
     bool early = false;
+    // Every match of a query, by path, from the answer in memory; a keystroke taken back before its answer landed leaves the index on another query, so it's asked again here.
+    QStringList everyMatch(const QString &query) {
+        QMutexLocker hold(&lock);
+        if (index.query() != query)
+            index.answer(query);
+        return SearchIndex::paths(index.root(), index.names(index.rows(0, index.size())));
+    }
 };
 
 std::shared_ptr<const SearchIndex> FolderModel::searchIndex() const {
@@ -732,29 +734,43 @@ std::shared_ptr<const SearchIndex> FolderModel::searchIndex() const {
 }
 
 void FolderModel::openSearch() {
-    m_search = std::make_shared<Search>();
-    const auto search = m_search;
+    // With a search landed, the folders are read again beside it, and it answers until the new walk has answered.
+    const bool again = m_search && m_search->landed;
+    const auto search = std::make_shared<Search>();
+    (again ? m_next : m_search) = search;
     const QString path = m_path;
     const bool showHidden = m_showHidden;
     auto *watcher = new QFutureWatcher<void>(this);
-    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, search] {
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, search, again] {
         watcher->deleteLater();
-        if (search != m_search)
+        if (search != (again ? m_next : m_search))
             return; // Ended, or another search started, while it was read.
-        m_hold.stop();
-        m_refresh.stop();
         search->landed = true;
-        setReading(false);
+        if (!again) {
+            m_hold.stop();
+            m_refresh.stop();
+            setReading(false);
+        }
         read();
+        // A change that came while the first walk ran is read now, beside it.
+        if (!again && std::exchange(m_again, false))
+            openSearch();
     });
     watcher->setFuture(QtConcurrent::run([search, path, showHidden] {
         search->index.walk(path, showHidden, [&] { return search->closed.load(); }, &search->lock);
     }));
+    if (again)
+        return;
     setReading(true);
+    m_refresh.stop();
     m_hold.start();
 }
 
 void FolderModel::closeSearch() {
+    if (m_next)
+        m_next->closed = true;
+    m_next.reset();
+    m_again = false;
     if (!m_search)
         return;
     m_search->closed = true;
@@ -762,6 +778,10 @@ void FolderModel::closeSearch() {
     m_hold.stop();
     m_refresh.stop();
     setReading(false);
+    if (m_matches != -1) {
+        m_matches = -1;
+        emit matchesChanged();
+    }
 }
 
 void FolderModel::readEarly() {
@@ -778,10 +798,14 @@ void FolderModel::setReading(bool reading) {
     emit readingChanged();
 }
 
-// What's on disk now: a search open reads its folders again.
+// What's on disk now: a search answers on while its folders are read again, one walk at a time; a change during a walk is read once it's whole.
 void FolderModel::reload() {
-    closeSearch();
-    read();
+    if (!m_search)
+        read();
+    else if (!m_search->landed || m_next)
+        m_again = true;
+    else
+        openSearch();
 }
 
 void FolderModel::read() {
@@ -808,22 +832,30 @@ void FolderModel::read() {
     m_asked.clear();
     *m_latest = generation;
     const auto latest = m_latest;
-    // A search's first letter starts reading the folders below; until
-    // they've been read, or the hold has passed, the landing asks again.
+    // A search's first letter starts reading the folders below; until they're read, or the hold has passed, the landing asks again.
     if (!query.isEmpty() && !isView(path) && !m_search)
         openSearch();
-    const auto search = query.isEmpty() || isView(path) ? nullptr : m_search;
+    // A walk read again answers from here on, and takes the old one's place as this answer lands.
+    const auto search = query.isEmpty() || isView(path) ? nullptr : m_next && m_next->landed ? m_next : m_search;
     if (search && !search->landed && !search->early)
         return;
     const bool partial = search && !search->landed;
     const qsizetype window = std::max<qsizetype>(SearchWindow, m_shownRows);
     const bool selecting = !m_selected.isEmpty();
+    const QString answers = search ? query : QString();
     auto *watcher = new QFutureWatcher<Listing>(this);
-    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation] {
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, answers, search] {
         watcher->deleteLater();
         if (generation != m_generation)
             return; // A newer listing replaced this one while it ran.
         m_staleClear.stop();
+        // The index, the rows and the count change in this one turn, so Select All never meets a walk that hasn't answered.
+        if (search && search == m_next) {
+            m_search = std::exchange(m_next, nullptr);
+            if (std::exchange(m_again, false))
+                openSearch();
+        }
+        m_rowsQuery = answers;
         auto [entries, error, matches, partial, unshown] = watcher->future().takeResult();
         // Unchanged (the usual case after showing a remembered listing):
         // leave the items alone, and only fill in folder counts still missing.
@@ -841,6 +873,9 @@ void FolderModel::read() {
             for (const Entry &e : std::as_const(m_entries))
                 if (m_selected.contains(e.path))
                     still.insert(e.path);
+            // Selected while this answer was on its way, so it brought no matches past the rows: they're asked for here, as Select All asks.
+            if (search && !unshown && still.size() != m_selected.size() && matches > m_entries.size())
+                unshown = search->everyMatch(answers);
             // A selected match that isn't a row stays selected while it still matches.
             QStringList past;
             for (const QString &path : unshown ? std::as_const(*unshown) : std::as_const(m_unshown)) {
@@ -898,7 +933,7 @@ void FolderModel::read() {
             // Best first, a window at a time; another order puts the best matches in it instead.
             const qsizetype shown = sort == "name" ? window : SortedMatches;
             names = search->index.names(search->index.rows(0, shown));
-            if (selecting && !partial && sort == "name" && listing.matches > shown)
+            if (selecting && !partial && listing.matches > shown)
                 listing.unshown = SearchIndex::paths(root, search->index.names(search->index.rows(shown, listing.matches - shown)));
             else if (selecting && !partial)
                 listing.unshown = QStringList();
@@ -1092,16 +1127,18 @@ void FolderModel::selectAll() {
     for (const Entry &e : std::as_const(m_entries))
         paths.insert(e.path);
     QStringList unshown;
-    // A search shows its matches a window at a time: the ones that aren't rows yet are taken by path from the answer in memory, at once.
-    if (m_search && m_search->landed && !m_loading && m_sort == "name" && m_entries.size() < m_matches) {
-        QMutexLocker hold(&m_search->lock);
-        const QVector<quint32> rows = m_search->index.rows(m_entries.size(), m_matches - m_entries.size());
-        unshown = SearchIndex::paths(m_search->index.root(), m_search->index.names(rows));
-        for (const QString &path : std::as_const(unshown))
-            paths.insert(path);
+    // Every match the count names, read or still reading, in any order: by path from the answer in memory, when it's the rows' own.
+    if (m_search && !m_rowsQuery.isEmpty() && m_rowsQuery == m_query) {
+        for (const QString &path : m_search->everyMatch(m_query)) {
+            if (!paths.contains(path)) {
+                unshown << path;
+                paths.insert(path);
+            }
+        }
     }
-    setSelected(paths);
+    // Before the selection says it changed, so what it names is whole.
     m_unshown = unshown;
+    setSelected(paths);
 }
 
 void FolderModel::clearSelection() {

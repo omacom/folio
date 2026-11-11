@@ -159,9 +159,7 @@ public:
     // Recents and plugins' views: lists of their own, not folders.
     static bool isView(const QString &path) { return path == recentPath() || isPluginView(path); }
     static QString kindForMime(const QString &mime);
-    // The best `limit` matches for `query` under `root` (see SearchIndex),
-    // named by their path from `root`. Stops at other filesystems and at
-    // symlinks, and as soon as `stop` returns true.
+    // The best `limit` matches for `query` under `root`, named from `root`; stops at other drives, symlinks and when `stop` says.
     static QVector<Entry> search(const QString &root, const QString &query, bool showHidden, const QString &sort,
                                  const std::function<bool()> &stop = {}, int limit = 1000,
                                  const QLocale &locale = QLocale());
@@ -238,9 +236,14 @@ private:
     mutable QSet<int> m_owed;
     // A get() answered without a size or date, so QML takes its snapshots again (on countChanged) once they're in.
     mutable bool m_snapshotWaiting = false;
-    // The folders below, read on a search's first letter and kept until it
-    // ends, the folder changes or hidden files are shown or hidden.
+    // The folders below, read on a search's first letter and kept until it ends, the folder changes or hidden files are shown or hidden.
     std::shared_ptr<Search> m_search;
+    // The same folders read again (F5, a change on disk) while m_search answers; it takes its place once it has answered.
+    std::shared_ptr<Search> m_next;
+    // A change on disk came while a walk ran: the folders are read once more when it's whole.
+    bool m_again = false;
+    // The query the rows are an answer to; empty while they're the folder's own.
+    QString m_rowsQuery;
     QFileSystemWatcher m_watcher;
     QTimer m_debounce;
     QTimer m_staleClear;

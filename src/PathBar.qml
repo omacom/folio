@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import "Format.js" as Format
 
 // The breadcrumb path from the left edge; view buttons on the right. Back and
 // forward are keys (Alt+← / Alt+→) and the mouse's thumb buttons.
@@ -95,10 +96,7 @@ Rectangle {
             // Room at the end for where it searches; padding isn't mirrored.
             leftPadding: LayoutMirroring.enabled ? scope.implicitWidth + 24 : 12
             rightPadding: LayoutMirroring.enabled ? 12 : scope.implicitWidth + 24
-            // Where it searches, at the end of the field, and once it has
-            // answered, how many match, so far while it's still reading.
-            // Unlike a placeholder, it stays while typing. Plugins' views
-            // have nothing below them.
+            // Where it searches and, once answered, how many match: unlike a placeholder it stays while typing.
             Text {
                 id: scope
                 // Recents, Trash and plugins' views are named in C++, which
@@ -112,8 +110,9 @@ Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 text: backend.path.startsWith("plugin:") ? qsTr("Search %1").arg(here)
                     : backend.folder.query.length > 0 && backend.folder.matches >= 0
-                    ? (backend.folder.reading ? qsTr("%Ln matches so far, still reading %1 and below", "", backend.folder.matches)
-                                              : qsTr("%Ln matches in %1 and below", "", backend.folder.matches)).arg(here)
+                    // Sorted another way than best first, the rows are the best of the matches, and it says so.
+                    ? Format.matches(backend.folder.matches, here, backend.folder.reading,
+                                     backend.folder.sortMode !== "name" && backend.folder.matches > backend.folder.count ? backend.folder.count : -1)
                     : qsTr("Search %1 and below").arg(here)
                 color: theme.secondaryForeground
                 font.pixelSize: 12

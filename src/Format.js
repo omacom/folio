@@ -40,6 +40,16 @@ function count(n) {
     return n === 0 ? qsTr("No items") : n > 0 ? qsTr("%Ln items", "", n) : ""
 }
 
+// How many match a search of `here` and below; `best` is how many of them are rows when another order cut the list, or -1.
+function matches(n, here, reading, best) {
+    if (reading)
+        return qsTr("%Ln matches so far, still reading %1 and below", "", n).arg(here)
+    // The count goes in first: a folder's name holding "%2" is then never filled in again.
+    if (best >= 0)
+        return qsTr("%Ln matches in %2 and below, the best %1 shown", "", n).arg(best.toLocaleString(Qt.locale(), "f", 0)).arg(here)
+    return qsTr("%Ln matches in %1 and below", "", n).arg(here)
+}
+
 // What an item is and how big, under its name in the details and the
 // preview; for a plugin's item, its subtitle.
 function summary(item, type) {
