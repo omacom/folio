@@ -290,3 +290,11 @@ QColor Theme::accentText() const {
 QColor Theme::yellowText() const {
     return ensureRatio(yellow(), background(), textFloor);
 }
+
+// Words on a palette fill (a tile's badge): the background where it reads, else the better of it and the foreground.
+QColor Theme::inkOn(const QColor &fill) const {
+    const QColor bg = background(), fg = foreground();
+    if (ratio(bg, fill) >= textFloor)
+        return bg;
+    return ensureRatio(ratio(bg, fill) >= ratio(fg, fill) ? bg : fg, fill, textFloor);
+}

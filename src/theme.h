@@ -61,6 +61,7 @@ public:
     QColor redText() const;
     QColor accentText() const;
     QColor yellowText() const;
+    Q_INVOKABLE QColor inkOn(const QColor &fill) const;
 
 signals:
     void changed();

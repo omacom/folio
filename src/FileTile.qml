@@ -336,7 +336,17 @@ Item {
                 width: badge.implicitWidth + 8
                 height: badge.implicitHeight + 2
                 color: tile.kindColor
-                Text { id: badge; anchors.centerIn: parent; text: tile.extension.slice(0, 4); font.pixelSize: 9; font.bold: true; color: theme.background }
+                Text {
+                    id: badge
+                    anchors.centerIn: parent
+                    text: tile.extension.slice(0, 4)
+                    font.pixelSize: 9
+                    font.bold: true
+                    color: {
+                        theme.background // Re-read when the theme changes, not only the fill.
+                        return theme.inkOn(tile.kindColor)
+                    }
+                }
             }
         }
     }

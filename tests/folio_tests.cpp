@@ -6495,21 +6495,18 @@ private slots:
     void searchResultTileKeepsAPercentInItsFolder()
     {
         // A "%2" in a result's folder stays as written, not taken for the size and date's place.
+        QTemporaryDir home;
+        Theme theme(home.filePath("theme"));
         FileOps ops;
-        const std::unique_ptr<QQmlPropertyMap> theme(QQmlPropertyMap::create());
         const std::unique_ptr<QQmlPropertyMap> translator(QQmlPropertyMap::create());
         const std::unique_ptr<QQmlPropertyMap> backend(QQmlPropertyMap::create());
         const std::unique_ptr<QQmlPropertyMap> folder(QQmlPropertyMap::create());
-        for (const char *role : {"accent", "accentMark", "quietMark", "foreground", "brightForeground", "secondaryForeground", "lighterBackground",
-                                 "darkBackground", "background", "red", "blue", "magenta", "orange", "yellow", "cyan"})
-            theme->insert(role, QColor(Qt::gray));
-        theme->insert("radius", 0);
         translator->insert("language", "en");
         folder->insert("selectedCount", 0);
         backend->insert("folder", QVariant::fromValue<QObject *>(folder.get()));
         QQmlEngine engine;
         engine.rootContext()->setContextProperty("fileOps", &ops);
-        engine.rootContext()->setContextProperty("theme", theme.get());
+        engine.rootContext()->setContextProperty("theme", &theme);
         engine.rootContext()->setContextProperty("translator", translator.get());
         engine.rootContext()->setContextProperty("backend", backend.get());
         QQmlComponent component(&engine);
@@ -6778,6 +6775,66 @@ private slots:
         QVERIFY(miasma.redText() != miasma.foreground());
         QVERIFY(contrast(miasma.redText(), miasma.background()) >= 4.5);
         QVERIFY(snug(miasma.redText(), {miasma.background()}, 4.5));
+    }
+
+    void themeWritesBadgesThatReadOnEveryKindColor()
+    {
+        // Every stock Omarchy theme (quattro at ceb30ed, plus osaka-jade): its kind colors and the "other" kind's ink.
+        const char *palettes[] = {
+            "background=#1e1e2e foreground=#cdd6f4 red=#f38ba8 blue=#89b4fa magenta=#f5c2e7 orange=#f6b6ab yellow=#f9e2af cyan=#94e2d5",  // catppuccin
+            "background=#eff1f5 foreground=#4c4f69 red=#d20f39 blue=#1e66f5 magenta=#ea76cb orange=#d84e2b yellow=#df8e1d cyan=#179299",  // catppuccin-latte
+            "background=#060B1E foreground=#ffcead red=#ED5B5A blue=#7d82d9 magenta=#c89dc1 orange=#eb8b54 yellow=#E9BB4F cyan=#a3bfd1",  // ethereal
+            "background=#2d353b foreground=#d3c6aa red=#e67e80 blue=#7fbbb3 magenta=#d699b6 orange=#e09d7f yellow=#dbbc7f cyan=#83c092",  // everforest
+            "background=#FFFCF0 foreground=#100F0F red=#D14D41 blue=#205EA6 magenta=#CE5D97 orange=#d0772b yellow=#D0A215 cyan=#3AA99F",  // flexoki-light
+            "background=#282828 foreground=#d4be98 red=#ea6962 blue=#7daea3 magenta=#d3869b orange=#e1875c yellow=#d8a657 cyan=#89b482",  // gruvbox
+            "background=#0B0C16 foreground=#ddf7ff red=#50f872 blue=#829dd4 magenta=#86a7df orange=#50f7a3 yellow=#50f7d4 cyan=#7cf8f7",  // hackerman
+            "background=#142620 foreground=#dfede5 red=#d88d91 blue=#96b7d0 magenta=#b7a1c8 orange=#d2ab8d yellow=#c5cc91 cyan=#86c7c5",  // jade-horse
+            "background=#1f1f28 foreground=#dcd7ba red=#c34043 blue=#7e9cd8 magenta=#957fb8 orange=#c17158 yellow=#c0a36e cyan=#6a9589",  // kanagawa
+            "background=#0c0b0c foreground=#FAFCFB red=#c38b7b blue=#b59790 magenta=#c4d8e2 yellow=#6B5E73 cyan=#a5a0b6",  // last-horizon
+            "background=#16242d foreground=#d6e2ee red=#4d86b0 blue=#6fb8e3 magenta=#8bc9eb orange=#8bc9eb yellow=#6fa4c9 cyan=#b4e4f6",  // lumon
+            "background=#fafafa foreground=#212121 red=#c900c4 blue=#3264eb magenta=#8a4ad7 orange=#026fde yellow=#026fde cyan=#0c67de",  // lupine
+            "background=#121212 foreground=#bebebe red=#D35F5F blue=#e68e0d magenta=#D35F5F orange=#c63d3d yellow=#b91c1c cyan=#bebebe",  // matte-black
+            "background=#222222 foreground=#c2c2b0 red=#685742 blue=#78824b magenta=#bb7744 orange=#8d6242 yellow=#b36d43 cyan=#c9a554",  // miasma
+            "background=#2e3440 foreground=#d8dee9 red=#bf616a blue=#81a1c1 magenta=#b48ead orange=#d5967a yellow=#ebcb8b cyan=#88c0d0",  // nord
+            "background=#111c18 foreground=#C1C497 red=#FF5345 blue=#509475 magenta=#D2689C orange=#a2734b yellow=#459451 cyan=#2DD5B7",  // osaka-jade
+            "background=#05182e foreground=#f6dcac red=#f85525 blue=#3f8f8a magenta=#3f8f8a orange=#faa968 yellow=#e97b3c cyan=#8cbfb8",  // retro-82
+            "background=#2c2525 foreground=#e6d9db red=#fd6883 blue=#f38d70 magenta=#a8a9eb orange=#fb9a77 yellow=#f9cc6c cyan=#85dacc",  // ristretto
+            "background=#faf4ed foreground=#575279 red=#b4637a blue=#56949f magenta=#907aa9 orange=#cf8057 yellow=#ea9d34 cyan=#d7827e",  // rose-pine
+            "background=#101315 foreground=#cacccc red=#565d60 blue=#798186 magenta=#aeaeae yellow=#d9dbdc cyan=#707070",  // solitude
+            "background=#1c1c1e foreground=#f5f5f7 red=#ff5f4a blue=#8fb8de magenta=#ff8fa3 orange=#ff6a3d yellow=#ffc27a cyan=#a6dcef",  // starship
+            "background=#1a1b26 foreground=#a9b1d6 red=#f7768e blue=#7aa2f7 magenta=#ad8ee6 orange=#eb927b yellow=#e0af68 cyan=#449dab",  // tokyo-night
+            "background=#000000 foreground=#ffffff red=#a4a4a4 blue=#8d8d8d magenta=#9b9b9b orange=#b9b9b9 yellow=#cecece cyan=#b0b0b0",  // vantablack
+            "background=#ffffff foreground=#000000 red=#2a2a2a blue=#1a1a1a magenta=#2e2e2e yellow=#4a4a4a cyan=#3e3e3e",  // white
+        };
+        // Flexoki Light's yellow is one fill where the background fails and the foreground reads; Rose Pine's needs a raised ink.
+        int foregroundInks = 0, raisedInks = 0;
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("theme");
+        for (const char *palette : palettes) {
+            QByteArray toml;
+            for (const QByteArray &pair : QByteArray(palette).split(' ')) {
+                const QList<QByteArray> parts = pair.split('=');
+                toml += parts[0] + " = \"" + parts[1] + "\"\n";
+            }
+            write(dir.filePath("theme/colors.toml"), toml);
+            Theme theme(dir.path());
+            for (const QColor &fill : {theme.red(), theme.blue(), theme.magenta(), theme.orange(), theme.yellow(),
+                                       theme.cyan(), theme.secondaryForeground()}) {
+                const QColor ink = theme.inkOn(fill);
+                QVERIFY2(contrast(ink, fill) >= 4.5, palette);
+                if (contrast(theme.background(), fill) >= 4.5) {
+                    QCOMPARE(ink, theme.background());
+                } else if (contrast(theme.foreground(), fill) >= 4.5) {
+                    QCOMPARE(ink, theme.foreground());
+                    ++foregroundInks;
+                } else {
+                    QVERIFY2(snug(ink, {fill}, 4.5), palette);
+                    ++raisedInks;
+                }
+            }
+        }
+        QVERIFY(foregroundInks > 0);
+        QVERIFY(raisedInks > 0);
     }
 
 private:
