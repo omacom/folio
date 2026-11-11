@@ -6760,6 +6760,26 @@ private slots:
         QCOMPARE(passing.yellowText(), QColor("#f9e2af"));
     }
 
+    void themeWritesAGreyRedInTheForeground()
+    {
+        // Vantablack's red is a grey that reads at 8.4:1, Solitude's a grey at 2.8:1; both write in the foreground.
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("theme");
+        write(dir.filePath("theme/colors.toml"), "background = \"#000000\"\nforeground = \"#ffffff\"\nred = \"#a4a4a4\"\n");
+        Theme vantablack(dir.path());
+        QCOMPARE(vantablack.redText(), QColor("#ffffff"));
+        QCOMPARE(vantablack.red(), QColor("#a4a4a4"));
+        write(dir.filePath("theme/colors.toml"), "background = \"#101315\"\nforeground = \"#cacccc\"\nred = \"#565d60\"\n");
+        Theme solitude(dir.path());
+        QCOMPARE(solitude.redText(), QColor("#cacccc"));
+        // A red with colour keeps the floor: Miasma's #685742 (saturation 0.37) is raised, not replaced.
+        write(dir.filePath("theme/colors.toml"), "background = \"#222222\"\nforeground = \"#c2c2b0\"\nred = \"#685742\"\n");
+        Theme miasma(dir.path());
+        QVERIFY(miasma.redText() != miasma.foreground());
+        QVERIFY(contrast(miasma.redText(), miasma.background()) >= 4.5);
+        QVERIFY(snug(miasma.redText(), {miasma.background()}, 4.5));
+    }
+
 private:
     // Packs `items`, from `folder`, into `archive`, its kind from its name.
     static void pack(const QString &archive, const QString &folder, const QStringList &items)

@@ -61,6 +61,8 @@ constexpr int channelRange = 255;
 constexpr double markFloor = 3;
 // The pin box's accent tint in Sidebar.qml while a drop hovers it, the strongest ground under its words.
 constexpr double strongestPinTint = 0.22;
+// At or under this saturation a theme's red is a grey.
+constexpr double greyRedSaturation = 0.2;
 
 // The ink when it already reads at need, else the least mix toward black or white that still does once rounded.
 QColor ensureRatio(const QColor &ink, const QColor &ground, double need) {
@@ -270,9 +272,9 @@ QColor Theme::disabledForeground() const {
     return ensureRatio(mix(background(), foreground(), share), background(), markFloor);
 }
 
-// Red as words, raised to 4.5:1 on the background; fills keep the theme's own red.
+// Red as words, raised to textFloor, or the foreground when the theme's red is a grey; fills keep the theme's red.
 QColor Theme::redText() const {
-    return ensureRatio(red(), background(), textFloor);
+    return red().hsvSaturationF() <= greyRedSaturation ? foreground() : ensureRatio(red(), background(), textFloor);
 }
 
 // The accent as words, raised to textFloor on the background, the preview window and the pin box's strongest tint.
