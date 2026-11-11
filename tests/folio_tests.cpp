@@ -576,43 +576,37 @@ private slots:
 
     void folderTypesOnlyWhatsAskedFor()
     {
-        // Two screens and more of plain files, beside one of every other sort of entry.
-        constexpr int files = 2000;
         QTemporaryDir dir;
-        for (int i = 0; i < files; ++i)
-            write(dir.filePath(QString("f%1.%2").arg(i).arg(i % 3 ? "txt" : "png")), QByteArray(i % 7, 'x'));
-        const auto named = {".bashrc", "a.tar.gz", "X.JpG", "noext", "CMakeLists.txt", "notes.md"};
-        for (const char *name : named)
-            write(dir.filePath(name), "x");
-        QDir(dir.path()).mkdir("folder.png");
-        QVERIFY(QFile::link("notes.md", dir.filePath("link.txt")));
-        constexpr int fileLinks = 1; // link.txt: a link to a regular file is listed as one
-        QVERIFY(QFile::link(dir.filePath("folder.png"), dir.filePath("linked")));
-        QVERIFY(QFile::link(dir.filePath("nowhere"), dir.filePath("broken.jpg")));
-        QCOMPARE(::mkfifo(QFile::encodeName(dir.filePath("pipe.txt")).constData(), 0600), 0);
-        constexpr int others = 4; // the folder, the link to it, the broken link and the pipe
-        const int all = files + int(named.size()) + fileLinks + others;
+        int all = 0;
+        oddEntries(dir, &all);
+        if (QTest::currentTestFailed())
+            return;
+        constexpr int lookedUp = 4; // the link to a file, the link to the folder, the broken link and the pipe
 
-        // Listed untyped, only what isn't a regular file has a type yet; asked, each entry is as typed listing has it.
+        // Listed untyped, only what the folder's listing can't tell has a type yet; asked, each entry is as typed listing has it.
         QString error;
         for (const QString &sort : FolderModel::sortModes()) {
             const auto untyped = FolderModel::list(dir.path(), true, sort, &error, {}, QLocale(), false);
             const auto whole = FolderModel::list(dir.path(), true, sort, &error);
             QCOMPARE(untyped.size(), all);
             const auto typedCount = std::count_if(untyped.cbegin(), untyped.cend(), [](const auto &e) { return !e.mime.isNull(); });
-            QCOMPARE(typedCount, sort == "kind" ? untyped.size() : others);
+            QCOMPARE(typedCount, sort == "kind" ? untyped.size() : lookedUp);
             for (int i = 0; i < whole.size(); ++i) {
                 QCOMPARE(untyped.at(i).path, whole.at(i).path);
-                QCOMPARE(untyped.at(i).size, whole.at(i).size);
-                QCOMPARE(untyped.at(i).modified, whole.at(i).modified);
+                QCOMPARE(untyped.at(i).isDir, whole.at(i).isDir);
+                if (!untyped.at(i).unread) {
+                    QCOMPARE(untyped.at(i).size, whole.at(i).size);
+                    QCOMPARE(untyped.at(i).modified, whole.at(i).modified);
+                }
                 const auto asked = FolderModel::typed(untyped.at(i));
                 QCOMPARE(asked.kind, whole.at(i).kind);
                 QCOMPARE(asked.mime, whole.at(i).mime);
                 QCOMPARE(asked.extension, whole.at(i).extension);
+                QCOMPARE(asked.extension.isNull(), whole.at(i).extension.isNull());
             }
         }
 
-        // Through the model, a row's name, size, date and type roles, and the types get() gives, match a whole entry.
+        // Through the model, a row's type roles, and the types get() gives, match a whole entry.
         FolderModel model;
         QSignalSpy loaded(&model, &FolderModel::loaded);
         model.setShowHidden(true);
@@ -625,8 +619,6 @@ private slots:
             const auto whole = FolderModel::entryFor(QFileInfo(at.data(FolderModel::PathRole).toString()), mimes);
             QCOMPARE(at.data(FolderModel::NameRole).toString(), whole.name);
             QCOMPARE(at.data(FolderModel::IsDirRole).toBool(), whole.isDir);
-            QCOMPARE(at.data(FolderModel::SizeRole).toLongLong(), whole.size);
-            QCOMPARE(at.data(FolderModel::ModifiedRole).toDateTime(), whole.modified);
             QCOMPARE(at.data(FolderModel::KindRole).toString(), whole.kind);
             QCOMPARE(at.data(FolderModel::MimeRole).toString(), whole.mime);
             QCOMPARE(at.data(FolderModel::ExtensionRole).toString(), whole.extension);
@@ -636,6 +628,320 @@ private slots:
             QCOMPARE(map.value("mime").toString(), whole.mime);
             QCOMPARE(map.value("extension").toString(), whole.extension);
         }
+    }
+
+    void folderReadsSizesAndDatesOfTheFirstRowsOnly()
+    {
+        // Listed for the model, a big folder reads the sizes and dates of its first window, by date or size every one.
+        QTemporaryDir big, small;
+        constexpr int files = 3000, folders = 5, all = files + folders;
+        for (int i = 0; i < files; ++i)
+            write(big.filePath(QString("f%1.txt").arg(i)), QByteArray(i % 7, 'x'));
+        for (int i = 0; i < folders; ++i)
+            QDir(big.path()).mkdir(QString("d%1").arg(i));
+        for (int i = 0; i < 10; ++i)
+            write(small.filePath(QString("%1.txt").arg(i)), "x");
+        QString error;
+        for (const QString &sort : FolderModel::sortModes()) {
+            const auto entries = FolderModel::list(big.path(), false, sort, &error, {}, QLocale(), false);
+            const bool bySize = sort == "modified" || sort == "oldest" || sort == "size";
+            const auto read = std::count_if(entries.cbegin(), entries.cend(), [](const auto &e) { return !e.unread; });
+            QCOMPARE(read, bySize ? all : FolderModel::firstRows);
+            // In sorted order: the first rows are the ones read.
+            for (int row = 0; row < entries.size(); ++row)
+                QCOMPARE(entries.at(row).unread, !bySize && row >= FolderModel::firstRows);
+            const auto few = FolderModel::list(small.path(), false, sort, &error, {}, QLocale(), false);
+            QCOMPARE(std::count_if(few.cbegin(), few.cend(), [](const auto &e) { return e.unread; }), 0);
+        }
+    }
+
+    void folderReadsALaterRowWhenAViewAsks()
+    {
+        QTemporaryDir dir;
+        constexpr int later = 10;
+        for (int i = 0; i < FolderModel::firstRows + later; ++i)
+            write(dir.filePath(QString("f%1.txt").arg(i, 4, 10, QChar('0'))), QByteArray(i % 9, 'x'));
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QTRY_COMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+
+        // Asked, a row not read yet answers nothing, never 0 B or 1970; every row asked in one turn is read in one batch.
+        QSignalSpy changed(&model, &QAbstractItemModel::dataChanged);
+        QSignalSpy counts(&model, &FolderModel::countChanged);
+        for (int row = FolderModel::firstRows; row < model.count(); ++row) {
+            QVERIFY(!model.index(row).data(FolderModel::SizeRole).isValid());
+            QVERIFY(!model.index(row).data(FolderModel::ModifiedRole).isValid());
+        }
+        QVERIFY(!model.get(FolderModel::firstRows).value("size").isValid());
+        QVERIFY(!model.get(FolderModel::firstRows).value("modified").isValid());
+        QCOMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+        QCoreApplication::sendPostedEvents(&model, QEvent::MetaCall);
+        QCOMPARE(model.findChildren<QFutureWatcherBase *>().size(), 1);
+
+        // One batch tells its rows in one step, never some of them first.
+        QTRY_VERIFY(changed.count() > 0);
+        QCOMPARE(changed.count(), later);
+        const QMimeDatabase mimes;
+        for (int i = 0; i < later; ++i) {
+            const int row = FolderModel::firstRows + i;
+            QCOMPARE(changed.at(i).at(0).toModelIndex().row(), row);
+            QCOMPARE(changed.at(i).at(1).toModelIndex().row(), row);
+            QCOMPARE(changed.at(i).at(2).value<QList<int>>(), QList<int>({FolderModel::SizeRole, FolderModel::ModifiedRole}));
+            const QModelIndex at = model.index(row);
+            const auto whole = FolderModel::entryFor(QFileInfo(at.data(FolderModel::PathRole).toString()), mimes);
+            QCOMPARE(at.data(FolderModel::SizeRole).toLongLong(), whole.size);
+            QCOMPARE(at.data(FolderModel::ModifiedRole).toDateTime(), whole.modified);
+            QCOMPARE(model.get(row).value("size").toLongLong(), whole.size);
+        }
+        // The get() answered without a size is taken again.
+        QCOMPARE(counts.count(), 1);
+        // Read once, a row stays read: asking again reads nothing.
+        const auto batches = model.findChildren<QFutureWatcherBase *>().size();
+        QVERIFY(model.index(FolderModel::firstRows).data(FolderModel::SizeRole).isValid());
+        QCoreApplication::sendPostedEvents(&model, QEvent::MetaCall);
+        QCOMPARE(model.findChildren<QFutureWatcherBase *>().size(), batches);
+    }
+
+    void folderShowsNothingForAFileGoneBeforeItsRead()
+    {
+        // Deleted between the listing and its row's read: no 0 B and no 1970 while the re-read that drops it comes.
+        QTemporaryDir dir;
+        for (int i = 0; i < FolderModel::firstRows + 10; ++i)
+            write(dir.filePath(QString("f%1.txt").arg(i, 4, 10, QChar('0'))), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QTRY_COMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+        const int row = FolderModel::firstRows + 4;
+        const QString path = model.index(row).data(FolderModel::PathRole).toString();
+        QVERIFY(QFile::remove(path));
+        QSignalSpy changed(&model, &QAbstractItemModel::dataChanged);
+        QVERIFY(!model.index(row).data(FolderModel::SizeRole).isValid());
+        QCoreApplication::sendPostedEvents(&model, QEvent::MetaCall);
+        QCOMPARE(model.findChildren<QFutureWatcherBase *>().size(), 1);
+        QTRY_COMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+        QCOMPARE(changed.count(), 0);
+        const int still = model.indexOfPath(path);
+        QVERIFY(still < 0 || !model.index(still).data(FolderModel::SizeRole).isValid());
+    }
+
+    void folderDropsWhatItReadForAFolderLeft()
+    {
+        QTemporaryDir a, b;
+        for (int i = 0; i < FolderModel::firstRows + 10; ++i)
+            write(a.filePath(QString("f%1.txt").arg(i, 4, 10, QChar('0'))), "x");
+        write(b.filePath("one.txt"), "x");
+        const int row = FolderModel::firstRows + 5;
+        {
+            FolderModel model;
+            QSignalSpy loaded(&model, &FolderModel::loaded);
+            model.setPath(a.path());
+            QVERIFY(loaded.wait(3000));
+            QTRY_COMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+
+            // Asked, then left and come back to before the read is in: what it read is for a listing that's gone.
+            QSignalSpy changed(&model, &QAbstractItemModel::dataChanged);
+            QVERIFY(!model.index(row).data(FolderModel::SizeRole).isValid());
+            QCoreApplication::sendPostedEvents(&model, QEvent::MetaCall);
+            QCOMPARE(model.findChildren<QFutureWatcherBase *>().size(), 1);
+            model.setPath(b.path());
+            model.setPath(a.path());
+            QTRY_COMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+            QVERIFY(!model.loading());
+            for (const auto &signal : std::as_const(changed))
+                QVERIFY(!signal.at(2).value<QList<int>>().contains(FolderModel::SizeRole));
+        }
+
+        // A model gone with a read on its way leaves the read nothing to land on.
+        auto model = std::make_unique<FolderModel>();
+        model->setPath(a.path());
+        QTRY_VERIFY(!model->loading());
+        QTRY_COMPARE(model->findChildren<QFutureWatcherBase *>().size(), 0);
+        QVERIFY(!model->index(row).data(FolderModel::SizeRole).isValid());
+        QCoreApplication::sendPostedEvents(model.get(), QEvent::MetaCall);
+        QCOMPARE(model->findChildren<QFutureWatcherBase *>().size(), 1);
+        model.reset();
+        QThreadPool::globalInstance()->waitForDone();
+        QCoreApplication::processEvents();
+    }
+
+    void folderTellsASnapshotWaitingBehindABatchThatReadNothing()
+    {
+        // With the folder's parent renamed away a row reads nothing, and the folder itself, which is watched, never changes.
+        QTemporaryDir dir;
+        const QString parent = dir.filePath("parent"), away = dir.filePath("away"), folder = parent + "/folder";
+        QVERIFY(QDir().mkpath(folder));
+        const int nothing = FolderModel::firstRows + 1, snapshot = FolderModel::firstRows + 2, all = FolderModel::firstRows + 10;
+        for (int i = 0; i < all; ++i)
+            write(folder + QString("/f%1.txt").arg(i, 4, 10, QChar('0')), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(folder);
+        QVERIFY(loaded.wait(3000));
+        QTRY_COMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+
+        // The first batch reads nothing; a snapshot taken before it lands is read by the next.
+        QSignalSpy counts(&model, &FolderModel::countChanged);
+        QVERIFY(QFile::rename(parent, away));
+        QVERIFY(!model.index(nothing).data(FolderModel::SizeRole).isValid());
+        QCoreApplication::sendPostedEvents(&model, QEvent::MetaCall);
+        QCOMPARE(model.findChildren<QFutureWatcherBase *>().size(), 1);
+        QThreadPool::globalInstance()->waitForDone();
+        QVERIFY(QFile::rename(away, parent));
+        QVERIFY(!model.get(snapshot).value("size").isValid());
+        QTRY_VERIFY(model.index(snapshot).data(FolderModel::SizeRole).isValid());
+        QCOMPARE(counts.count(), 1);
+        // No re-read stood in for it: the folder was listed once and holds every row.
+        QCOMPARE(loaded.count(), 1);
+        QCOMPARE(model.count(), all);
+    }
+
+    void folderShowsAFileThatGrewAfterItsRowWasRead()
+    {
+        QTemporaryDir dir;
+        for (int i = 0; i < FolderModel::firstRows + 10; ++i)
+            write(dir.filePath(QString("f%1.txt").arg(i, 4, 10, QChar('0'))), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QTRY_COMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+        // One row read with the listing, one read when asked, one never read.
+        const int first = 3, asked = FolderModel::firstRows + 2, never = FolderModel::firstRows + 7;
+        QSignalSpy changed(&model, &QAbstractItemModel::dataChanged);
+        QVERIFY(!model.index(asked).data(FolderModel::SizeRole).isValid());
+        QTRY_COMPARE(changed.count(), 1);
+        QCOMPARE(model.index(asked).data(FolderModel::SizeRole).toLongLong(), 1);
+
+        // Both grow, and get a date of their own; the re-read tells those two rows and resets nothing.
+        const QDateTime when = QDateTime::fromSecsSinceEpoch(1700000000);
+        for (int row : {first, asked, never}) {
+            QFile file(model.index(row).data(FolderModel::PathRole).toString());
+            QVERIFY(file.open(QIODevice::Append));
+            file.write("grown");
+            file.flush();
+            QVERIFY(file.setFileTime(when, QFileDevice::FileModificationTime));
+        }
+        changed.clear();
+        QSignalSpy resets(&model, &QAbstractItemModel::modelReset);
+        model.reload();
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(resets.count(), 0);
+        QSet<int> told;
+        for (const auto &signal : std::as_const(changed)) {
+            QCOMPARE(signal.at(0).toModelIndex().row(), signal.at(1).toModelIndex().row());
+            QCOMPARE(signal.at(2).value<QList<int>>(), QList<int>({FolderModel::SizeRole, FolderModel::ModifiedRole}));
+            told << signal.at(0).toModelIndex().row();
+        }
+        QCOMPARE(told, QSet<int>({first, asked}));
+        for (int row : {first, asked}) {
+            QCOMPARE(model.index(row).data(FolderModel::SizeRole).toLongLong(), 6);
+            QCOMPARE(model.index(row).data(FolderModel::ModifiedRole).toDateTime(), when);
+        }
+    }
+
+    void folderAsksEveryRowIntoAWholeListing()
+    {
+        // Every row asked for, the model holds what a whole listing does, in the same order, by name and by kind.
+        QTemporaryDir dir;
+        int all = 0;
+        oddEntries(dir, &all);
+        if (QTest::currentTestFailed())
+            return;
+        const QMimeDatabase mimes;
+        for (const QString &sort : {QStringLiteral("name"), QStringLiteral("kind")}) {
+            FolderModel model;
+            QSignalSpy loaded(&model, &FolderModel::loaded);
+            model.setShowHidden(true);
+            model.setSortMode(sort);
+            model.setPath(dir.path());
+            QVERIFY(loaded.wait(3000));
+            QCOMPARE(model.count(), all);
+            QTRY_COMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+            int unread = 0;
+            for (int row = 0; row < model.count(); ++row)
+                unread += !model.index(row).data(FolderModel::ModifiedRole).isValid();
+            QVERIFY(unread > 0);
+            QCoreApplication::sendPostedEvents(&model, QEvent::MetaCall);
+            QTRY_COMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+            QString error;
+            const auto whole = FolderModel::list(dir.path(), true, sort, &error);
+            QCOMPARE(whole.size(), all);
+            for (int row = 0; row < model.count(); ++row) {
+                const QModelIndex at = model.index(row);
+                const auto &e = whole.at(row);
+                QCOMPARE(at.data(FolderModel::PathRole).toString(), e.path);
+                QCOMPARE(at.data(FolderModel::NameRole).toString(), e.name);
+                QCOMPARE(at.data(FolderModel::IsDirRole).toBool(), e.isDir);
+                QCOMPARE(at.data(FolderModel::SizeRole).toLongLong(), e.size);
+                QCOMPARE(at.data(FolderModel::ModifiedRole).toDateTime(), e.modified);
+                QCOMPARE(at.data(FolderModel::KindRole).toString(), e.kind);
+                QCOMPARE(at.data(FolderModel::MimeRole).toString(), e.mime);
+                QCOMPARE(at.data(FolderModel::ExtensionRole).toString(), e.extension);
+                QCOMPARE(at.data(FolderModel::ExtensionRole).toString().isNull(), e.extension.isNull());
+                QCOMPARE(model.get(row).value("size").toLongLong(), e.size);
+                QCOMPARE(model.get(row).value("modified").toDateTime(), e.modified);
+            }
+        }
+    }
+
+    void folderRowShowsNoSizeOrDateUntilRead()
+    {
+        // As a view draws it: a row past the first window shows no size, no date and asks for no thumbnail, then the real ones.
+        QTemporaryDir dir;
+        for (int i = 0; i < FolderModel::firstRows + 10; ++i)
+            write(dir.filePath(QString("p%1.png").arg(i, 4, 10, QChar('0'))), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+
+        QQmlEngine engine;
+        QQmlComponent rows(&engine);
+        rows.setData("import QtQml\nimport \"Format.js\" as Format\n"
+                     "Instantiator { required property var folder; model: folder\n"
+                     "    delegate: QtObject { required property string path; required property string mime\n"
+                     "        required property var size; required property var modified\n"
+                     "        readonly property string line: Format.size(size) + \"|\" + Format.when(modified)\n"
+                     "        readonly property string thumb: Format.thumb(path, mime, 128, modified)\n"
+                     "        property var thumbs: []\n"
+                     "        Component.onCompleted: thumbs.push(thumb)\n"
+                     "        onThumbChanged: thumbs.push(thumb) } }",
+                     QUrl::fromLocalFile(QFINDTESTDATA("../src/Format.js")));
+        std::unique_ptr<QObject> view(rows.createWithInitialProperties({{"folder", QVariant::fromValue(&model)}}));
+        QVERIFY2(view, qPrintable(rows.errorString()));
+        QObject *read = nullptr, *later = nullptr;
+        QMetaObject::invokeMethod(view.get(), "objectAt", Q_RETURN_ARG(QObject *, read), Q_ARG(int, 0));
+        QMetaObject::invokeMethod(view.get(), "objectAt", Q_RETURN_ARG(QObject *, later), Q_ARG(int, FolderModel::firstRows + 5));
+        QVERIFY(read && later);
+        QVERIFY(read->property("line").toString().startsWith("1 B|"));
+        QCOMPARE(later->property("line").toString(), QString("|"));
+        QCOMPARE(later->property("thumb").toString(), QString());
+
+        QTRY_VERIFY(later->property("line").toString().startsWith("1 B|"));
+        const QDateTime modified = QFileInfo(dir.filePath(QString("p%1.png").arg(FolderModel::firstRows + 5, 4, 10, QChar('0')))).lastModified();
+        QVERIFY(later->property("line").toString().size() > 4);
+        const QString thumb = later->property("thumb").toString();
+        QVERIFY(thumb.startsWith(QString("image://thumb/128/%1/").arg(modified.toMSecsSinceEpoch())));
+        // The thumbnail is asked for once, with its date.
+        QCOMPARE(later->property("thumbs").toStringList(), QStringList({QString(), thumb}));
+
+        // Details without a size name the type alone.
+        QQmlComponent summary(&engine);
+        summary.setData("import QtQml\nimport \"Format.js\" as Format\n"
+                        "QtObject { readonly property string unread: Format.summary({path: \"/p.png\", isDir: false, mime: \"image/png\"}, \"\")\n"
+                        "    readonly property string read: Format.summary({path: \"/p.png\", isDir: false, mime: \"image/png\", size: 0}, \"\")\n"
+                        "    readonly property string undated: Format.thumb(\"/p.png\", \"image/png\", 256, null) }",
+                        QUrl::fromLocalFile(QFINDTESTDATA("../src/Format.js")));
+        std::unique_ptr<QObject> details(summary.create());
+        QVERIFY2(details, qPrintable(summary.errorString()));
+        QCOMPARE(details->property("unread").toString(), QString("image/png"));
+        QCOMPARE(details->property("read").toString(), QString("image/png · 0 B"));
+        // A caller with no time to give, as the preview's strip of a folder's pictures, still gets its picture.
+        QCOMPARE(details->property("undated").toString(), QString("image://thumb/256/0/image%2Fpng/%2Fp.png"));
     }
 
     void folderReportsMissingFolders()
@@ -6579,6 +6885,24 @@ private:
             if (line.startsWith(key))
                 return line.mid(qstrlen(key)).trimmed().split(' ').first().toLong();
         return -1;
+    }
+
+    // Two screens and more of plain files, beside one of every other sort of entry; `all` is how many are listed with hidden ones.
+    static void oddEntries(const QTemporaryDir &dir, int *all)
+    {
+        constexpr int files = 2000;
+        for (int i = 0; i < files; ++i)
+            write(dir.filePath(QString("f%1.%2").arg(i).arg(i % 3 ? "txt" : "png")), QByteArray(i % 7, 'x'));
+        const auto named = {".bashrc", "a.tar.gz", "X.JpG", "noext", "CMakeLists.txt", "notes.md"};
+        for (const char *name : named)
+            write(dir.filePath(name), "x");
+        QVERIFY(QDir(dir.path()).mkdir("folder.png"));
+        QVERIFY(QFile::link("notes.md", dir.filePath("link.txt")));
+        QVERIFY(QFile::link(dir.filePath("folder.png"), dir.filePath("linked")));
+        QVERIFY(QFile::link(dir.filePath("nowhere"), dir.filePath("broken.jpg")));
+        QCOMPARE(::mkfifo(QFile::encodeName(dir.filePath("pipe.txt")).constData(), 0600), 0);
+        constexpr int others = 5; // the folder, the link to a file, the link to the folder, the broken link and the pipe
+        *all = files + int(named.size()) + others;
     }
 
     // Entries with every kind of tie: names equal but for case, numbers written two ways, equal sizes and dates, folders among them.

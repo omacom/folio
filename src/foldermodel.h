@@ -52,9 +52,11 @@ public:
         QString name;
         QString path;
         bool isDir = false;
+        // Listed by name, with the size and date left for when a view asks for them.
+        bool unread = false;
         qint64 size = 0;
         QDateTime modified;
-        // Null for a regular file the model listed: typed() reads them from its name when they're asked for.
+        // Null for a file or folder the model listed: typed() reads them from its name when they're asked for.
         QString kind;
         QString mime;
         // A file's extension; a plugin item's subtitle.
@@ -107,14 +109,17 @@ public:
     Q_INVOKABLE bool isSelected(int row) const;
     Q_INVOKABLE QStringList selectedPaths() const;
 
+    // Rows a listing reads sizes and dates for: 13 rows of 22 smallest tiles fill a 4K screen and what a view builds ahead.
+    static constexpr int firstRows = 320;
+
     // Synchronous building blocks, used by the background passes and tests.
     // A listing stops, empty, as soon as `stop` returns true. Names sort
     // by `locale`'s alphabet; a background pass passes the one it was
     // started with, because the default locale may only be read on the
-    // thread that sets it. Untyped, it leaves a regular file's type to typed().
+    // thread that sets it. Not whole, it leaves types, and sizes and dates past firstRows, unread.
     static QVector<Entry> list(const QString &path, bool showHidden, const QString &sort, QString *error,
                                const std::function<bool()> &stop = {}, const QLocale &locale = QLocale(),
-                               bool typed = true);
+                               bool whole = true);
     static Entry entryFor(const QFileInfo &info, const QMimeDatabase &mimes);
     // The entry with its kind, MIME type and extension, read from its name when it was listed untyped.
     static Entry typed(const Entry &entry);
@@ -168,6 +173,9 @@ private:
     QString cacheKey() const;
     void remember();
     static bool sameListing(const QVector<Entry> &a, const QVector<Entry> &b);
+    void takeSizesAndDates(QVector<Entry> entries);
+    void ask(int row) const;
+    void readAsked();
     void setError(const QString &error);
     void countFolders(quint64 generation);
 
@@ -186,6 +194,11 @@ private:
     // search and folder counts, so work that's been overtaken (more typing,
     // another folder, the model gone) stops early.
     std::shared_ptr<std::atomic<quint64>> m_latest = std::make_shared<std::atomic<quint64>>(0);
+    // Rows a view asked for a size or date this turn, read together, and every row asked for and not back yet.
+    mutable QList<int> m_asked;
+    mutable QSet<int> m_reading;
+    // A get() answered without a size or date, so QML takes its snapshots again (on countChanged) once they're in.
+    mutable bool m_snapshotWaiting = false;
     QFileSystemWatcher m_watcher;
     QTimer m_debounce;
     QTimer m_staleClear;

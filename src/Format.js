@@ -8,8 +8,10 @@
 // refreshed with the rest of the strings.
 
 // Each unit is whole with its number, so a language can place and space it
-// its own way ("1,5 Mo").
+// its own way ("1,5 Mo"). Nothing for a size not read yet.
 function size(bytes) {
+    if (bytes === undefined)
+        return ""
     const units = [qsTr("%1 B"), qsTr("%1 KB"), qsTr("%1 MB"), qsTr("%1 GB"), qsTr("%1 TB")]
     let i = 0
     let value = bytes
@@ -47,13 +49,16 @@ function summary(item, type) {
         return item.extension
     if (item.isDir)
         return item.itemCount === 0 ? qsTr("Folder · No items") : item.itemCount > 0 ? qsTr("Folder · %Ln items", "", item.itemCount) : qsTr("Folder")
-    return qsTr("%1 · %2").arg(type || item.mime).arg(size(item.size))
+    return item.size === undefined ? (type || item.mime) : qsTr("%1 · %2").arg(type || item.mime).arg(size(item.size))
 }
 
 // The file's modified time is part of the URL: Qt keeps the images it has
 // shown by their URL, so a picture saved over would otherwise come back
 // with its old pixels.
 function thumb(path, mime, px, modified) {
+    // A time not read yet (undefined) gives no URL, or the picture would be asked for twice; null is a caller with no time.
+    if (modified === undefined)
+        return ""
     const changed = modified ? modified.getTime() : 0
     return "image://thumb/" + px + "/" + changed + "/" + encodeURIComponent(mime) + "/" + encodeURIComponent(path)
 }

@@ -8,7 +8,6 @@
 #include <QXmlStreamReader>
 #include <QUrl>
 #include <QStandardPaths>
-#include <QTimeZone>
 #include <QFile>
 #include <QFileInfo>
 #include <QFutureWatcher>
@@ -72,18 +71,52 @@ bool FolderModel::sameListing(const QVector<Entry> &a, const QVector<Entry> &b) 
     // By path, not name: a folder copied with cp -a or rsync lists the same
     // names, sizes and times as the one it came from.
     for (int i = 0; i < a.size(); ++i)
-        // Name, subtitle, icon and details too: a plugin's item keeps its
-        // path (its id) when they change.
-        if (a[i].path != b[i].path || a[i].size != b[i].size || a[i].modified != b[i].modified
-            || a[i].isDir != b[i].isDir || a[i].name != b[i].name || a[i].extension != b[i].extension
+        // A link read again can be another type. Name, subtitle, icon and
+        // details too: a plugin's item keeps its path (its id) when they change.
+        if (a[i].path != b[i].path || a[i].isDir != b[i].isDir || a[i].mime != b[i].mime
+            || a[i].name != b[i].name || a[i].extension != b[i].extension
             || a[i].icon != b[i].icon || a[i].details != b[i].details)
             return false;
     return true;
 }
 
+// The same rows read again: a size or date that changed, or was read for the first time, is taken and its row told.
+void FolderModel::takeSizesAndDates(QVector<Entry> entries) {
+    QList<int> changed;
+    for (int row = 0; row < entries.size(); ++row) {
+        Entry &next = entries[row];
+        const Entry &now = m_entries.at(row);
+        next.itemCount = now.itemCount;
+        if (next.unread && !now.unread) {
+            // Read since the re-read began.
+            next.unread = false;
+            next.size = now.size;
+            next.modified = now.modified;
+        } else if (!next.unread && (now.unread || m_reading.contains(row) || next.size != now.size
+                                    || next.modified != now.modified)) {
+            // A row this view asked for may have been read in place by another view of the listing.
+            changed << row;
+        }
+    }
+    // Nothing new keeps the listing as it is, shared with the remembered one.
+    if (changed.isEmpty())
+        return;
+    m_entries = std::move(entries);
+    for (int row : std::as_const(changed)) {
+        m_reading.remove(row);
+        const QModelIndex at = index(row);
+        emit dataChanged(at, at, {SizeRole, ModifiedRole});
+    }
+    // QML re-reads its get() snapshots on countChanged, as for the folder counts.
+    emit countChanged();
+}
+
 void FolderModel::setEntries(const QVector<Entry> &entries) {
     beginResetModel();
     m_entries = entries;
+    // What was asked for was of the rows before; the views ask again for what they show.
+    m_asked.clear();
+    m_reading.clear();
     endResetModel();
     emit countChanged();
 }
@@ -102,6 +135,11 @@ QVariant FolderModel::data(const QModelIndex &index, int role) const {
     if (!index.isValid() || index.row() >= m_entries.size())
         return {};
     const Entry &e = m_entries.at(index.row());
+    // Nothing until it's read, which asking starts: never a stat here, where a slow mount would freeze the window.
+    if (e.unread && (role == SizeRole || role == ModifiedRole)) {
+        ask(index.row());
+        return {};
+    }
     switch (role) {
     case NameRole: return e.name;
     case PathRole: return e.path;
@@ -125,6 +163,77 @@ QHash<int, QByteArray> FolderModel::roleNames() const {
         {ExtensionRole, "extension"}, {ItemCountRole, "itemCount"}, {SelectedRole, "selected"},
         {IconRole, "icon"},
     };
+}
+
+static bool sortsByDateOrSize(const QString &sort) {
+    return sort == "modified" || sort == "oldest" || sort == "size";
+}
+
+// A folder has no size of its own.
+static void setSizeAndDate(FolderModel::Entry &entry, const QFileInfo &info) {
+    entry.unread = false;
+    entry.size = entry.isDir ? 0 : info.size();
+    entry.modified = info.lastModified();
+}
+
+// A file gone since it was listed stays unread, with nothing wrong to show, until the folder's re-read drops it.
+static void readSizeAndDate(FolderModel::Entry &entry) {
+    const QFileInfo info(entry.path);
+    if (info.exists())
+        setSizeAndDate(entry, info);
+}
+
+void FolderModel::ask(int row) const {
+    if (m_reading.contains(row))
+        return;
+    m_reading.insert(row);
+    m_asked << row;
+    // Every row asked for in one turn of the event loop is read in one batch.
+    if (m_asked.size() == 1)
+        QMetaObject::invokeMethod(const_cast<FolderModel *>(this), &FolderModel::readAsked, Qt::QueuedConnection);
+}
+
+void FolderModel::readAsked() {
+    QVector<QPair<int, Entry>> rows;
+    for (int row : std::as_const(m_asked))
+        rows.push_back({row, m_entries.at(row)});
+    m_asked.clear();
+    if (rows.isEmpty())
+        return;
+
+    const quint64 generation = m_generation;
+    auto *watcher = new QFutureWatcher<QVector<QPair<int, Entry>>>(this);
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation] {
+        watcher->deleteLater();
+        if (generation != m_generation)
+            return; // Another folder, or a re-read, which reads these rows itself.
+        bool updated = false;
+        for (const auto &[row, read] : watcher->result()) {
+            m_reading.remove(row);
+            if (read.unread || row >= m_entries.size() || m_entries.at(row).path != read.path)
+                continue;
+            // In place, without a copy: the remembered listing and every view sharing it keep what's read.
+            Entry &e = const_cast<Entry &>(m_entries.at(row));
+            e.unread = false;
+            e.size = read.size;
+            e.modified = read.modified;
+            const QModelIndex at = index(row);
+            emit dataChanged(at, at, {SizeRole, ModifiedRole});
+            updated = true;
+        }
+        // A batch that read nothing leaves the wait for the one that does.
+        if (updated && std::exchange(m_snapshotWaiting, false))
+            emit countChanged();
+    });
+    const auto latest = m_latest;
+    watcher->setFuture(QtConcurrent::run([rows, latest, generation]() mutable {
+        for (auto &[row, entry] : rows) {
+            if (*latest != generation)
+                break;
+            readSizeAndDate(entry);
+        }
+        return rows;
+    }));
 }
 
 void FolderModel::setShowHidden(bool show) {
@@ -242,7 +351,7 @@ static QDir::Filters entryFilters(bool showHidden) {
 
 QVector<FolderModel::Entry> FolderModel::list(const QString &path, bool showHidden, const QString &sort,
                                               QString *error, const std::function<bool()> &stop,
-                                              const QLocale &locale, bool typed) {
+                                              const QLocale &locale, bool whole) {
     if (path == recentPath()) {
         // Recents are always most recently used first; that's what they're for.
         return listRecent(recentFile(), showHidden, 200, stop);
@@ -263,31 +372,46 @@ QVector<FolderModel::Entry> FolderModel::list(const QString &path, bool showHidd
     QMimeDatabase mimes;
     // One string per type and extension, shared by every entry that has it.
     QSet<QString> shared;
-    // Sorting by kind compares types, so they're read here.
-    const bool typing = typed || sort == "kind";
+    // Sorting by kind compares types, and by date or size those, so they're read here.
+    const bool byKind = sort == "kind";
+    const bool bySize = sortsByDateOrSize(sort);
     // Links unresolved, so broken ones, sockets and fifos are listed too, as entryFilters() has them.
     const auto flags = showHidden ? QDirListing::IteratorFlag::IncludeHidden : QDirListing::IteratorFlag::Default;
     for (const QDirListing::DirEntry &item : QDirListing(path, flags)) {
         if (stop && stop())
             return {};
         Entry e;
-        if (typing || !item.isFile()) {
+        // The folder's own listing tells a file or folder; a link, a fifo or an entry of no given type is looked up.
+        if (whole || item.isSymLink() || !(item.isFile() || item.isDir())) {
             e = entryFor(item.fileInfo(), mimes);
+        } else {
+            // A type comes from the name alone, so it can wait until it's asked for.
+            e.name = item.fileName();
+            e.path = item.absoluteFilePath();
+            e.isDir = item.isDir();
+            e.unread = true;
+            if (byKind)
+                e = typed(e);
+            if (bySize)
+                setSizeAndDate(e, item.fileInfo());
+        }
+        if (!e.mime.isNull()) {
             e.mime = *shared.insert(e.mime);
             if (!e.extension.isEmpty())
                 e.extension = *shared.insert(e.extension);
-        } else {
-            // A regular file's type comes from its name alone, so it can wait until it's asked for.
-            e.name = item.fileName();
-            e.path = item.absoluteFilePath();
-            e.size = item.size();
-            e.modified = item.lastModified(QTimeZone::LocalTime);
         }
         entries.push_back(std::move(e));
     }
     // Growing left room for many more entries than were read; the listing is kept, so give it back.
     entries.squeeze();
     sortEntries(entries, sort, locale);
+    // The first window shows whole; past it, a view asks for the rows it shows.
+    for (qsizetype row = 0; row < std::min<qsizetype>(firstRows, entries.size()); ++row) {
+        if (stop && stop())
+            return {};
+        if (entries.at(row).unread)
+            readSizeAndDate(entries[row]);
+    }
     return entries;
 }
 
@@ -296,9 +420,11 @@ FolderModel::Entry FolderModel::typed(const Entry &entry) {
     if (!entry.mime.isNull() || !entry.kind.isNull())
         return entry;
     Entry e = entry;
-    e.mime = QMimeDatabase().mimeTypeForFile(e.name, QMimeDatabase::MatchExtension).name();
+    e.mime = e.isDir ? QStringLiteral("inode/directory")
+                     : QMimeDatabase().mimeTypeForFile(e.name, QMimeDatabase::MatchExtension).name();
     e.kind = kindForMime(e.mime);
-    e.extension = QFileInfo(e.name).suffix().toUpper();
+    if (!e.isDir)
+        e.extension = QFileInfo(e.name).suffix().toUpper();
     return e;
 }
 
@@ -307,8 +433,7 @@ FolderModel::Entry FolderModel::entryFor(const QFileInfo &info, const QMimeDatab
     e.name = info.fileName();
     e.path = info.absoluteFilePath();
     e.isDir = info.isDir();
-    e.size = e.isDir ? 0 : info.size();
-    e.modified = info.lastModified();
+    setSizeAndDate(e, info);
     // A regular file is typed by its name alone; handing Qt the QFileInfo stats it once more first.
     e.mime = e.isDir ? QStringLiteral("inode/directory")
            : info.isFile() ? mimes.mimeTypeForFile(e.name, QMimeDatabase::MatchExtension).name()
@@ -556,6 +681,13 @@ void FolderModel::reload() {
     const QString query = m_query;
     const QLocale locale;
     const QVariantList items = m_items;
+    // Rows read or asked for are read again, so a change shows and nothing asked is lost (a search, or by date or size, reads all).
+    QSet<QString> read;
+    if (query.isEmpty() && !sortsByDateOrSize(sort))
+        for (int row = 0; row < m_entries.size(); ++row)
+            if (!m_entries.at(row).unread || m_reading.contains(row))
+                read.insert(m_entries.at(row).path);
+    m_asked.clear();
     *m_latest = generation;
     const auto latest = m_latest;
     auto *watcher = new QFutureWatcher<QPair<QVector<Entry>, QString>>(this);
@@ -564,12 +696,14 @@ void FolderModel::reload() {
         if (generation != m_generation)
             return; // A newer listing replaced this one while it ran.
         m_staleClear.stop();
-        const auto [entries, error] = watcher->result();
+        auto [entries, error] = watcher->future().takeResult();
         // Unchanged (the usual case after showing a remembered listing):
         // leave the items alone, and only fill in folder counts still missing.
         const bool same = error == m_error && !m_entries.isEmpty() && sameListing(m_entries, entries);
         if (!same)
             setEntries(entries);
+        else
+            takeSizesAndDates(std::move(entries));
         if (!m_selected.isEmpty()) {
             QSet<QString> still;
             for (const Entry &e : std::as_const(m_entries))
@@ -587,12 +721,19 @@ void FolderModel::reload() {
             remember();
         countFolders(generation);
     });
-    watcher->setFuture(QtConcurrent::run([path, showHidden, sort, query, items, latest, generation, locale] {
+    watcher->setFuture(QtConcurrent::run([path, showHidden, sort, query, items, latest, generation, locale, read] {
         QString error;
         const auto overtaken = [&] { return *latest != generation; };
         auto entries = isPluginView(path) ? listItems(items, query)
                      : query.isEmpty() || path == recentPath() ? list(path, showHidden, sort, &error, overtaken, locale, false)
                      : search(path, query, showHidden, sort, overtaken, 1000, locale);
+        for (Entry &e : entries) {
+            if (!e.unread || !read.contains(e.path))
+                continue;
+            if (overtaken())
+                break;
+            readSizeAndDate(e);
+        }
         return qMakePair(entries, error);
     }));
 }
@@ -646,6 +787,10 @@ QVariantMap FolderModel::get(int row) const {
     if (row < 0 || row >= m_entries.size())
         return {};
     const Entry &e = m_entries.at(row);
+    if (e.unread) {
+        ask(row);
+        m_snapshotWaiting = true;
+    }
     QVariantMap map = toMap(e);
     map.insert("selected", m_selected.contains(e.path));
     return map;
@@ -653,9 +798,11 @@ QVariantMap FolderModel::get(int row) const {
 
 QVariantMap FolderModel::toMap(const Entry &listed) {
     const Entry entry = typed(listed);
+    // Not read yet, the size and date are absent rather than 0 B and 1970.
     return {
-        {"name", entry.name}, {"path", entry.path}, {"isDir", entry.isDir}, {"size", entry.size},
-        {"modified", entry.modified}, {"kind", entry.kind}, {"mime", entry.mime},
+        {"name", entry.name}, {"path", entry.path}, {"isDir", entry.isDir},
+        {"size", entry.unread ? QVariant() : entry.size}, {"modified", entry.unread ? QVariant() : entry.modified},
+        {"kind", entry.kind}, {"mime", entry.mime},
         {"extension", entry.extension}, {"itemCount", entry.itemCount}, {"icon", entry.icon},
         {"details", entry.details},
     };
