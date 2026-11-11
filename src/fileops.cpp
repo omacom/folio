@@ -718,6 +718,7 @@ void FileOps::newFolder(const QString &folder) {
         return;
     }
     emit done(folder, name);
+    emit folderCreated(folder, name);
 }
 
 QString FileOps::defaultAppFor(const QString &path) {

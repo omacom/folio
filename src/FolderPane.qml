@@ -221,6 +221,12 @@ FocusScope {
             else
                 backend.expectSelection(name)
         }
+        // A new folder is asked a name at once, the way the rename dialog
+        // does (Escape keeps "Untitled Folder").
+        function onFolderCreated(folder, name) {
+            if (folder === backend.path)
+                rename.open({ path: folder + "/" + name, isDir: true })
+        }
         function onFailed(message) { backend.showMessage(message) }
         function onNotice(notice) { backend.showNotice(notice) }
     }
