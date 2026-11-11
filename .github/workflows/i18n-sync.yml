@@ -135,12 +135,12 @@ jobs:
           EXPECTED: ${{ needs.prepare.outputs.locales }}
         run: python3 scripts/i18n-sync.py collect "$RUNNER_TEMP/translations" --expected "$(jq -r 'join(",")' <<< "$EXPECTED")"
       - name: Validate with the catalog tests
-        # Built against Arch's Qt, like Folio's own CI, with the PKGBUILD's dependencies.
+        # Built against Arch's Qt, like Folio's own CI.
         run: |
           docker run --rm -v "$PWD:/folio" -w /folio archlinux:latest bash -euc '
-            source pkgbuild/PKGBUILD
-            deps=("${depends[@]}" "${makedepends[@]}")
-            pacman -Syu --noconfirm --needed base-devel cmake "${deps[@]%%[<>=]*}" >/dev/null
+            pacman -Syu --noconfirm --needed base-devel cmake \
+              glib2 libarchive zlib xdg-utils hicolor-icon-theme \
+              qt6-base qt6-declarative qt6-imageformats qt6-multimedia qt6-svg qt6-wayland >/dev/null
             cmake -S . -B build -DCMAKE_BUILD_TYPE=Release >/dev/null
             cmake --build build --target folio_tests -j"$(nproc)"
             QT_QPA_PLATFORM=offscreen build/folio_tests catalogsMatchTheEnglishOne everyCatalogIsCompiledIn bundledPluginsCatalogTheirText
