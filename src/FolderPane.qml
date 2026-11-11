@@ -312,6 +312,25 @@ FocusScope {
         // Room for the path bar, which is drawn on top so it can reach over
         // the details column.
         Item { Layout.fillWidth: true; implicitHeight: pathBar.implicitHeight }
+        // Work that ends within a second, as most deletes and copies do,
+        // never flashes the banner: what's under way shows once it has
+        // taken a second. The timer starts when the work does, so progress
+        // updates don't keep putting it off.
+        Timer {
+            id: slowWork
+            interval: 1000
+            readonly property string working: backend.busy || fileOps.busy
+            property bool shown: false
+            onWorkingChanged: {
+                if (!working) {
+                    stop()
+                    shown = false
+                } else if (!shown && !running) {
+                    start()
+                }
+            }
+            onTriggered: shown = working.length > 0
+        }
         // Problems and slow work are said in the window, not swallowed.
         Rectangle {
             Layout.fillWidth: true
@@ -325,7 +344,7 @@ FocusScope {
                 Text {
                     id: bannerText
                     Layout.fillWidth: true
-                    text: backend.message || backend.folder.error || backend.busy || fileOps.busy || backend.notice
+                    text: backend.message || backend.folder.error || (slowWork.shown ? slowWork.working : "") || backend.notice
                     color: theme.brightForeground
                     elide: Text.ElideRight
                 }
