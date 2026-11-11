@@ -1,5 +1,6 @@
 #include <QClipboard>
 #include <QDir>
+#include <QEventLoopLocker>
 #include <QMimeData>
 #include <QPageSize>
 #include <QPainter>
@@ -1783,6 +1784,40 @@ private slots:
         QCOMPARE(notice.count(), 1);
         QCOMPARE(notice.first().first().toString(), QString("Stopped after 1 of 2 items."));
         QVERIFY(!QFileInfo::exists(again.filePath("pipe")));
+    }
+
+    void fileOpsKeepFolioRunningUntilDone()
+    {
+        // Closing the last window mid-copy leaves Folio running until the
+        // copy is done, rather than quitting under it. The copy reads a pipe,
+        // so it's under way until the test closes the pipe's writer.
+        QTemporaryDir from, to;
+        const QByteArray pipe = QFile::encodeName(from.filePath("pipe"));
+        QVERIFY(mkfifo(pipe.constData(), 0600) == 0);
+        FileOps ops;
+        ops.copy({from.filePath("pipe")});
+        ops.paste(to.path());
+        QVERIFY(!ops.busy().isEmpty());
+        int writer = -1;
+        const auto finish = qScopeGuard([&] {
+            if (writer >= 0)
+                close(writer);
+            QTRY_VERIFY(ops.busy().isEmpty());
+        });
+        QVERIFY(QTest::qWaitFor([&] { return (writer = open(pipe.constData(), O_WRONLY | O_NONBLOCK)) >= 0; }));
+
+        // The last window closing lets go of the application, as a locker
+        // does when it goes; the copy is done once its writer closes.
+        QObject scope;
+        QTimer::singleShot(0, &scope, [] { QEventLoopLocker lastWindow; });
+        QTimer::singleShot(300, &scope, [&] { close(std::exchange(writer, -1)); });
+        QTimer failsafe;
+        failsafe.setSingleShot(true);
+        connect(&failsafe, &QTimer::timeout, qApp, [] { QCoreApplication::exit(1); });
+        failsafe.start(10000);
+        QCOMPARE(QCoreApplication::exec(), 0);
+        QVERIFY(ops.busy().isEmpty());
+        QVERIFY(QFileInfo::exists(to.filePath("pipe")));
     }
 
     void fileOpsCancelledMoveAcrossDrivesKeepsOriginals()
