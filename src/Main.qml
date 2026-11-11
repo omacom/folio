@@ -36,6 +36,9 @@ ApplicationWindow {
     LayoutMirroring.childrenInherit: true
 
     property bool helpVisible: false
+    // The shortcuts take the keyboard while they're shown, and give it back
+    // to the files.
+    onHelpVisibleChanged: helpVisible ? help.forceActiveFocus() : activePane.focusView()
     property bool previewVisible: true
     // Columns on a first launch; after that, whichever view was used last.
     property string viewMode: "columns"
@@ -97,18 +100,20 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+Alt+N"; enabled: !win.typing; onActivated: win.openSplit() }
     Shortcut { sequence: "Ctrl+W"; enabled: win.split; onActivated: win.closeSplit() }
     Shortcut { sequence: "Ctrl+I"; onActivated: win.previewVisible = !win.previewVisible }
-    // Tab moves the keyboard: sidebar, left pane, right pane, and around.
-    Shortcut {
-        sequences: ["Tab", "Backtab"]
-        enabled: !win.typing
-        onActivated: {
-            if (sidebar.activeFocus)
-                leftPane.focusView()
-            else if (win.split && win.activePane === leftPane)
-                win.rightPane.focusView()
-            else
-                sidebar.focusSidebar()
-        }
+    // Tab moves the keyboard: sidebar, left pane, right pane, the details
+    // (while there's an app to pick there), and around. Shift+Tab goes back.
+    Shortcut { sequence: "Tab"; enabled: !win.typing; onActivated: win.moveKeyboard(1) }
+    Shortcut { sequence: "Shift+Backtab"; enabled: !win.typing; onActivated: win.moveKeyboard(-1) }
+    function moveKeyboard(step) {
+        const stops = [sidebar, leftPane].concat(split ? [rightPane] : [], details.takesKeyboard ? [details] : [])
+        const here = sidebar.activeFocus ? sidebar : details.hasKeyboard ? details : activePane
+        const next = stops[(stops.indexOf(here) + step + stops.length) % stops.length]
+        if (next === sidebar)
+            sidebar.focusSidebar()
+        else if (next === details)
+            details.focusKeyboard()
+        else
+            next.focusView()
     }
 
     Item {
@@ -166,10 +171,12 @@ ApplicationWindow {
                 Layout.preferredWidth: 300
                 Layout.fillHeight: true
                 folderPane: win.activePane
+                onFinished: win.activePane.focusView()
             }
         }
 
         HelpOverlay {
+            id: help
             anchors.fill: parent
             visible: win.helpVisible
             onDismissed: win.helpVisible = false

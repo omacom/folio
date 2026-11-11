@@ -19,9 +19,13 @@ FolioDialog {
     // Each request starts fresh, whichever way the last one closed
     // (Connect, Cancel, Escape or GVfs giving up), so a password typed for
     // one machine is never offered to the next, nor kept once it's closed.
+    // A question takes the keyboard with none of its answers picked, so Tab
+    // goes to them and nothing is answered by a stray Enter.
     onVisibleChanged: {
         password.text = ""
-        if (visible && !question) {
+        if (visible && question) {
+            forceActiveFocus()
+        } else if (visible) {
             user.text = mounter.user
             password.forceActiveFocus()
         }

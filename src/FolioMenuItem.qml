@@ -9,9 +9,10 @@ MenuItem {
     id: entry
 
     property string keys
-    // Said on hover, for an entry that needs a word more than its label.
+    // Said while it's highlighted, by the pointer or the arrow keys, for an
+    // entry that needs a word more than its label.
     property string tip
-    ToolTip.visible: tip.length > 0 && hovered
+    ToolTip.visible: tip.length > 0 && highlighted
     ToolTip.delay: 600
     ToolTip.text: tip
     // Hidden entries take no room, and the arrow keys pass over them: Menu
