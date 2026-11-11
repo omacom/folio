@@ -1161,6 +1161,33 @@ private slots:
         QTRY_COMPARE(model.get(1).value("itemCount").toInt(), 1);
     }
 
+    void folderModelCountsAFolderAgainWhenItChanged()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("Photos");
+        write(dir.filePath("Photos/a.jpg"), "x");
+        write(dir.filePath("notes.txt"), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QTRY_COMPARE(model.get(0).value("itemCount").toInt(), 1);
+        // The parent lists the same names; only the date of Photos says it holds one more.
+        write(dir.filePath("Photos/b.jpg"), "x");
+        const timespec later[2] = {{0, UTIME_OMIT}, {QDateTime::currentSecsSinceEpoch() + 60, 0}};
+        QCOMPARE(::utimensat(AT_FDCWD, QFile::encodeName(dir.filePath("Photos")).constData(), later, 0), 0);
+        QSignalSpy told(&model, &QAbstractItemModel::dataChanged);
+        model.reload();
+        QVERIFY(loaded.wait(3000));
+        // Its row is told that the count it showed no longer holds, before the new count comes in.
+        const QList<int> uncounted{FolderModel::SizeRole, FolderModel::ModifiedRole, FolderModel::ItemCountRole};
+        QVERIFY(std::any_of(told.cbegin(), told.cend(), [&](const auto &signal) {
+            return signal.at(0).toModelIndex().row() == 0 && signal.at(2).template value<QList<int>>() == uncounted;
+        }));
+        QTRY_COMPARE(model.get(0).value("itemCount").toInt(), 2);
+        QCOMPARE(model.get(0).value("name").toString(), QString("Photos"));
+    }
+
     void folderModelForgetsAFolderLeftWhileLoading()
     {
         QTemporaryDir dir;

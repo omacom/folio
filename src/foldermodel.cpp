@@ -96,6 +96,9 @@ void FolderModel::takeSizesAndDates(QVector<Entry> entries) {
                                     || next.modified != now.modified)) {
             // A row this view asked for may have been read in place by another view of the listing.
             changed << row;
+            // A folder whose size or date moved may hold other items now, so it is counted again.
+            if (next.isDir)
+                next.itemCount = -1;
         }
     }
     // Nothing new keeps the listing as it is, shared with the remembered one.
@@ -105,7 +108,7 @@ void FolderModel::takeSizesAndDates(QVector<Entry> entries) {
     for (int row : std::as_const(changed)) {
         m_reading.remove(row);
         const QModelIndex at = index(row);
-        emit dataChanged(at, at, {SizeRole, ModifiedRole});
+        emit dataChanged(at, at, m_entries.at(row).isDir ? QList<int>{SizeRole, ModifiedRole, ItemCountRole} : QList<int>{SizeRole, ModifiedRole});
     }
     // QML re-reads its get() snapshots on countChanged, as for the folder counts.
     emit countChanged();
