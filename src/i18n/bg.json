@@ -128,6 +128,7 @@
   "Cut": "Изрежи",
   "Delete": "Изтрий",
   "Delete for good?": "Окончателно изтриване?",
+  "Delete in the sidebar": "Изтрий в страничната лента",
   "Delete permanently (asks first)": "Окончателно изтриване (с потвърждение)",
   "Deleted": "Изтрито",
   "Delete…": "Изтрий…",
@@ -218,7 +219,7 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "При обединяване съдържанието на тази папка се добавя към това на другата. Елементите със същото име се заменят, а заменените отиват в кошчето.",
   "Modified": "Променено",
   "Mount": "Монтирай",
-  "Move between the sidebar and the panes": "Преминаване между страничната лента и панелите",
+  "Move between the sidebar, the panes and the details": "Преминавай между страничната лента, панелите и подробностите",
   "Move the selection": "Преместване на избора",
   "Move to the trash": "Премести в кошчето",
   "Moved only part of %1: %2": "Преместена е само част от %1: %2",
@@ -340,7 +341,7 @@
     "one": "Възстановяване на %Ln елемент…",
     "other": "Възстановяване на %Ln елемента…"
   },
-  "Right-click / Alt+⏎": "Десен бутон / Alt+⏎",
+  "Right-click / Alt+⏎ / Menu": "Щракни с десен бутон / Alt+⏎ / Меню",
   "Scroll": "Превъртане",
   "Search %1": "Търсене в %1",
   "Search %1 and below": "Търсене в %1 и подпапките",
@@ -366,7 +367,7 @@
   "Sorted by kind": "Сортирано по вид",
   "Sorted by name": "Сортирано по име",
   "Split into two panes / close the right one": "Раздели на два панела / затвори десния",
-  "Stop the file work under way": "Спри текущата работа с файлове",
+  "Stop the file work under way, or dismiss what went wrong": "Спри текущата работа с файлове или затвори грешката",
   "Stopped after %L1 of %Ln items.": {
     "one": "Спряно след %L1 от %Ln елемент.",
     "other": "Спряно след %L1 от %Ln елемента."
@@ -433,6 +434,7 @@
   "Undoing…": "Отмяна…",
   "Unmount": "Демонтирай",
   "Unpin": "Откачи",
+  "Unpin the folder, or take the item off the sidebar": "Откачи папката или премахни елемента от страничната лента",
   "Untitled Folder": "Папка без име",
   "Untitled Folder %1": "Папка без име %1",
   "User": "Потребител",

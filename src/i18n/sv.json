@@ -128,6 +128,7 @@
   "Cut": "Klipp ut",
   "Delete": "Ta bort",
   "Delete for good?": "Ta bort permanent?",
+  "Delete in the sidebar": "Ta bort i sidopanelen",
   "Delete permanently (asks first)": "Ta bort permanent (frågar först)",
   "Deleted": "Borttaget",
   "Delete…": "Ta bort…",
@@ -218,7 +219,7 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "Vid sammanslagning läggs innehållet i den här mappen till i mappen där. Objekt med samma namn ersätts, och de ersatta objekten flyttas till papperskorgen.",
   "Modified": "Ändrad",
   "Mount": "Montera",
-  "Move between the sidebar and the panes": "Flytta mellan sidofältet och rutorna",
+  "Move between the sidebar, the panes and the details": "Flytta mellan sidopanelen, panelerna och detaljerna",
   "Move the selection": "Flytta markeringen",
   "Move to the trash": "Flytta till papperskorgen",
   "Moved only part of %1: %2": "Flyttade bara en del av %1: %2",
@@ -340,7 +341,7 @@
     "one": "Återställer %Ln objekt…",
     "other": "Återställer %Ln objekt…"
   },
-  "Right-click / Alt+⏎": "Högerklick / Alt+⏎",
+  "Right-click / Alt+⏎ / Menu": "Högerklicka / Alt+⏎ / Menu",
   "Scroll": "Rulla",
   "Search %1": "Sök i %1",
   "Search %1 and below": "Sök i %1 och nedanför",
@@ -366,7 +367,7 @@
   "Sorted by kind": "Sorterat efter typ",
   "Sorted by name": "Sorterat efter namn",
   "Split into two panes / close the right one": "Dela i två paneler / stäng den högra",
-  "Stop the file work under way": "Stoppa pågående filarbete",
+  "Stop the file work under way, or dismiss what went wrong": "Avbryt pågående filarbete, eller avfärda felet",
   "Stopped after %L1 of %Ln items.": {
     "one": "Avbröts efter %L1 av %Ln objekt.",
     "other": "Avbröts efter %L1 av %Ln objekt."
@@ -433,6 +434,7 @@
   "Undoing…": "Ångrar…",
   "Unmount": "Avmontera",
   "Unpin": "Lossa",
+  "Unpin the folder, or take the item off the sidebar": "Lossa mappen, eller ta bort objektet från sidopanelen",
   "Untitled Folder": "Namnlös mapp",
   "Untitled Folder %1": "Namnlös mapp %1",
   "User": "Användare",

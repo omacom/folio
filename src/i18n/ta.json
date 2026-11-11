@@ -128,6 +128,7 @@
   "Cut": "வெட்டு",
   "Delete": "நீக்கு",
   "Delete for good?": "நிரந்தரமாக நீக்கவா?",
+  "Delete in the sidebar": "பக்கப்பட்டியில் நீக்கு",
   "Delete permanently (asks first)": "நிரந்தரமாக நீக்கு (முதலில் கேட்கும்)",
   "Deleted": "நீக்கப்பட்டது",
   "Delete…": "நீக்கு…",
@@ -218,7 +219,7 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "ஒன்றிணைப்பது இந்தக் கோப்புறையில் உள்ளதை அங்குள்ள கோப்புறையில் சேர்க்கும். உள்ளே ஒரே பெயரில் உள்ளவை மாற்றப்படும், மாற்றப்பட்ட உருப்படிகள் குப்பைக்குச் செல்லும்.",
   "Modified": "மாற்றப்பட்டது",
   "Mount": "ஏற்று",
-  "Move between the sidebar and the panes": "பக்கப்பட்டிக்கும் பலகங்களுக்கும் இடையே நகர்",
+  "Move between the sidebar, the panes and the details": "பக்கப்பட்டி, பலகங்கள் மற்றும் விவரங்களுக்கு இடையில் நகரு",
   "Move the selection": "தேர்வை நகர்த்து",
   "Move to the trash": "குப்பைக்கு நகர்த்து",
   "Moved only part of %1: %2": "%1 இன் ஒரு பகுதி மட்டுமே நகர்த்தப்பட்டது: %2",
@@ -340,7 +341,7 @@
     "one": "ஒரு உருப்படியை மீட்டமைக்கிறது…",
     "other": "%Ln உருப்படிகளை மீட்டமைக்கிறது…"
   },
-  "Right-click / Alt+⏎": "வலது-சொடுக்கு / Alt+⏎",
+  "Right-click / Alt+⏎ / Menu": "வலது சொடுக்கு / Alt+⏎ / Menu",
   "Scroll": "உருட்டு",
   "Search %1": "%1 ஐத் தேடு",
   "Search %1 and below": "%1 இலும் அதன் கீழும் தேடு",
@@ -366,7 +367,7 @@
   "Sorted by kind": "வகையின்படி வரிசைப்படுத்தப்பட்டது",
   "Sorted by name": "பெயரின்படி வரிசைப்படுத்தப்பட்டது",
   "Split into two panes / close the right one": "இரண்டு பலகங்களாகப் பிரி / வலது பலகத்தை மூடு",
-  "Stop the file work under way": "நடந்துகொண்டிருக்கும் கோப்பு வேலையை நிறுத்து",
+  "Stop the file work under way, or dismiss what went wrong": "நடந்துகொண்டிருக்கும் கோப்பு வேலையை நிறுத்து, அல்லது பிழையை மூடு",
   "Stopped after %L1 of %Ln items.": {
     "one": "ஒரு உருப்படியில் %L1 க்குப் பிறகு நின்றுவிட்டது.",
     "other": "%Ln உருப்படிகளில் %L1 க்குப் பிறகு நின்றுவிட்டது."
@@ -433,6 +434,7 @@
   "Undoing…": "செயல்தவிர்க்கிறது…",
   "Unmount": "இறக்கு",
   "Unpin": "பொருத்தியதை நீக்கு",
+  "Unpin the folder, or take the item off the sidebar": "கோப்புறையைப் பொருத்தியதை நீக்கு, அல்லது உருப்படியைப் பக்கப்பட்டியிலிருந்து அகற்று",
   "Untitled Folder": "பெயரிடப்படாத கோப்புறை",
   "Untitled Folder %1": "பெயரிடப்படாத கோப்புறை %1",
   "User": "பயனர்",

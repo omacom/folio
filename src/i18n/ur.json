@@ -128,6 +128,7 @@
   "Cut": "کاٹیں",
   "Delete": "حذف کریں",
   "Delete for good?": "مستقل طور پر حذف کریں؟",
+  "Delete in the sidebar": "سائیڈ بار میں حذف کریں",
   "Delete permanently (asks first)": "مستقل طور پر حذف کریں (پہلے پوچھتا ہے)",
   "Deleted": "حذف ہو گیا",
   "Delete…": "حذف کریں…",
@@ -218,7 +219,7 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "ضم کرنے سے اس فولڈر میں موجود چیزیں اس فولڈر میں شامل ہو جاتی ہیں۔ اندر ایک ہی نام والی چیزیں بدل دی جائیں گی، اور بدلی گئی چیزیں ردی کی ٹوکری میں چلی جائیں گی۔",
   "Modified": "تبدیل شدہ",
   "Mount": "ماؤنٹ کریں",
-  "Move between the sidebar and the panes": "سائیڈ بار اور پینز کے درمیان جائیں",
+  "Move between the sidebar, the panes and the details": "سائیڈ بار، پینز اور تفصیلات کے درمیان جائیں",
   "Move the selection": "انتخاب کو حرکت دیں",
   "Move to the trash": "ردی کی ٹوکری میں منتقل کریں",
   "Moved only part of %1: %2": "%1 کا صرف کچھ حصہ منتقل ہوا: %2",
@@ -340,7 +341,7 @@
     "one": "ایک آئٹم بحال کیا جا رہا ہے…",
     "other": "%Ln آئٹمز بحال کیے جا رہے ہیں…"
   },
-  "Right-click / Alt+⏎": "دائیں کلک / Alt+⏎",
+  "Right-click / Alt+⏎ / Menu": "دائیں کلک / Alt+⏎ / مینیو",
   "Scroll": "اسکرول کریں",
   "Search %1": "%1 میں تلاش کریں",
   "Search %1 and below": "%1 اور اس کے نیچے تلاش کریں",
@@ -366,7 +367,7 @@
   "Sorted by kind": "قسم کے مطابق ترتیب شدہ",
   "Sorted by name": "نام کے مطابق ترتیب شدہ",
   "Split into two panes / close the right one": "دو پینلز میں تقسیم کریں / دائیں والا بند کریں",
-  "Stop the file work under way": "جاری فائل کا کام روکیں",
+  "Stop the file work under way, or dismiss what went wrong": "جاری فائل کا کام روکیں، یا خرابی کا پیغام بند کریں",
   "Stopped after %L1 of %Ln items.": {
     "one": "ایک آئٹم میں سے %L1 کے بعد روک دیا گیا۔",
     "other": "%Ln آئٹمز میں سے %L1 کے بعد روک دیا گیا۔"
@@ -433,6 +434,7 @@
   "Undoing…": "کالعدم کیا جا رہا ہے…",
   "Unmount": "ان ماؤنٹ کریں",
   "Unpin": "پن ہٹائیں",
+  "Unpin the folder, or take the item off the sidebar": "فولڈر کا پن ہٹائیں، یا آئٹم کو سائیڈ بار سے ہٹائیں",
   "Untitled Folder": "بے نام فولڈر",
   "Untitled Folder %1": "بے نام فولڈر %1",
   "User": "صارف",

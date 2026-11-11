@@ -122,6 +122,7 @@
   "Cut": "잘라내기",
   "Delete": "삭제",
   "Delete for good?": "영구히 삭제할까요?",
+  "Delete in the sidebar": "사이드바에서 삭제",
   "Delete permanently (asks first)": "영구히 삭제 (먼저 확인)",
   "Deleted": "삭제됨",
   "Delete…": "삭제…",
@@ -203,7 +204,7 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "병합하면 이 폴더의 내용이 저쪽 폴더에 추가됩니다. 이름이 같은 항목은 교체되며, 교체된 항목은 휴지통으로 이동합니다.",
   "Modified": "수정일",
   "Mount": "마운트",
-  "Move between the sidebar and the panes": "사이드바와 패널 간 이동",
+  "Move between the sidebar, the panes and the details": "사이드바, 패널, 세부 정보 간 이동",
   "Move the selection": "선택 이동",
   "Move to the trash": "휴지통으로 이동",
   "Moved only part of %1: %2": "%1의 일부만 이동했습니다: %2",
@@ -312,7 +313,7 @@
   "Restoring %Ln items…": {
     "other": "%Ln개 항목 복원 중…"
   },
-  "Right-click / Alt+⏎": "오른쪽 클릭 / Alt+⏎",
+  "Right-click / Alt+⏎ / Menu": "오른쪽 클릭 / Alt+⏎ / 메뉴",
   "Scroll": "스크롤",
   "Search %1": "%1에서 검색",
   "Search %1 and below": "%1 및 하위 폴더에서 검색",
@@ -338,7 +339,7 @@
   "Sorted by kind": "종류순으로 정렬됨",
   "Sorted by name": "이름순으로 정렬됨",
   "Split into two panes / close the right one": "두 개의 창으로 분할 / 오른쪽 창 닫기",
-  "Stop the file work under way": "진행 중인 파일 작업 중지",
+  "Stop the file work under way, or dismiss what went wrong": "진행 중인 파일 작업 중지 또는 오류 닫기",
   "Stopped after %L1 of %Ln items.": {
     "other": "%Ln개 항목 중 %L1개를 마친 뒤 중지했습니다."
   },
@@ -399,6 +400,7 @@
   "Undoing…": "실행 취소 중…",
   "Unmount": "마운트 해제",
   "Unpin": "고정 해제",
+  "Unpin the folder, or take the item off the sidebar": "폴더 고정 해제 또는 사이드바에서 항목 제거",
   "Untitled Folder": "제목 없는 폴더",
   "Untitled Folder %1": "제목 없는 폴더 %1",
   "User": "사용자",

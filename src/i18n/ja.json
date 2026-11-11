@@ -122,6 +122,7 @@
   "Cut": "切り取り",
   "Delete": "削除",
   "Delete for good?": "完全に削除しますか？",
+  "Delete in the sidebar": "サイドバーで削除",
   "Delete permanently (asks first)": "完全に削除（確認あり）",
   "Deleted": "削除しました",
   "Delete…": "削除…",
@@ -203,7 +204,7 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "統合すると、このフォルダーの内容がもう一方のフォルダーに追加されます。同名の項目は置き換えられ、置き換えられた項目はゴミ箱へ移動します。",
   "Modified": "変更日時",
   "Mount": "マウント",
-  "Move between the sidebar and the panes": "サイドバーとペインの間を移動",
+  "Move between the sidebar, the panes and the details": "サイドバー、ペイン、詳細の間を移動",
   "Move the selection": "選択を移動",
   "Move to the trash": "ゴミ箱へ移動",
   "Moved only part of %1: %2": "%1 の一部のみ移動しました: %2",
@@ -312,7 +313,7 @@
   "Restoring %Ln items…": {
     "other": "%Ln 項目を元に戻し中…"
   },
-  "Right-click / Alt+⏎": "右クリック / Alt+⏎",
+  "Right-click / Alt+⏎ / Menu": "右クリック / Alt+⏎ / メニュー",
   "Scroll": "スクロール",
   "Search %1": "%1 を検索",
   "Search %1 and below": "%1 とその中を検索",
@@ -338,7 +339,7 @@
   "Sorted by kind": "種類順",
   "Sorted by name": "名前順",
   "Split into two panes / close the right one": "2 ペインに分割 / 右ペインを閉じる",
-  "Stop the file work under way": "進行中のファイル操作を停止",
+  "Stop the file work under way, or dismiss what went wrong": "進行中のファイル操作を停止するか、エラーを閉じる",
   "Stopped after %L1 of %Ln items.": {
     "other": "%Ln 項目のうち %L1 項目で停止しました。"
   },
@@ -399,6 +400,7 @@
   "Undoing…": "取り消し中…",
   "Unmount": "アンマウント",
   "Unpin": "ピン留めを外す",
+  "Unpin the folder, or take the item off the sidebar": "フォルダーのピン留めを外すか、項目をサイドバーから外す",
   "Untitled Folder": "無題のフォルダー",
   "Untitled Folder %1": "無題のフォルダー %1",
   "User": "ユーザー",

@@ -122,6 +122,7 @@
   "Cut": "Potong",
   "Delete": "Padam",
   "Delete for good?": "Padam secara kekal?",
+  "Delete in the sidebar": "Padam dalam bar sisi",
   "Delete permanently (asks first)": "Padam secara kekal (tanya dahulu)",
   "Deleted": "Dipadam",
   "Delete…": "Padam…",
@@ -203,7 +204,7 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "Penggabungan menambahkan kandungan folder ini ke folder di sana. Item yang sama nama di dalamnya akan diganti, dan item yang diganti akan dipindahkan ke tong sampah.",
   "Modified": "Diubah suai",
   "Mount": "Lekap",
-  "Move between the sidebar and the panes": "Berpindah antara bar sisi dan panel",
+  "Move between the sidebar, the panes and the details": "Berpindah antara bar sisi, panel dan butiran",
   "Move the selection": "Gerakkan pilihan",
   "Move to the trash": "Pindahkan ke tong sampah",
   "Moved only part of %1: %2": "Hanya sebahagian daripada %1 dipindahkan: %2",
@@ -312,7 +313,7 @@
   "Restoring %Ln items…": {
     "other": "Memulihkan %Ln item…"
   },
-  "Right-click / Alt+⏎": "Klik kanan / Alt+⏎",
+  "Right-click / Alt+⏎ / Menu": "Klik kanan / Alt+⏎ / Menu",
   "Scroll": "Tatal",
   "Search %1": "Cari %1",
   "Search %1 and below": "Cari dalam %1 dan subfoldernya",
@@ -338,7 +339,7 @@
   "Sorted by kind": "Diisih mengikut jenis",
   "Sorted by name": "Diisih mengikut nama",
   "Split into two panes / close the right one": "Bahagikan kepada dua panel / tutup panel kanan",
-  "Stop the file work under way": "Hentikan kerja fail yang sedang berjalan",
+  "Stop the file work under way, or dismiss what went wrong": "Hentikan kerja fail yang sedang berjalan, atau abaikan mesej ralat",
   "Stopped after %L1 of %Ln items.": {
     "other": "Berhenti selepas %L1 daripada %Ln item."
   },
@@ -399,6 +400,7 @@
   "Undoing…": "Membuat asal…",
   "Unmount": "Nyahlekap",
   "Unpin": "Nyahsemat",
+  "Unpin the folder, or take the item off the sidebar": "Nyahsemat folder, atau keluarkan item daripada bar sisi",
   "Untitled Folder": "Folder Tanpa Tajuk",
   "Untitled Folder %1": "Folder Tanpa Tajuk %1",
   "User": "Pengguna",

@@ -122,6 +122,7 @@
   "Cut": "剪下",
   "Delete": "刪除",
   "Delete for good?": "要永久刪除嗎？",
+  "Delete in the sidebar": "在側邊欄中刪除",
   "Delete permanently (asks first)": "永久刪除（會先詢問）",
   "Deleted": "已刪除",
   "Delete…": "刪除…",
@@ -203,7 +204,7 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "合併會將此資料夾中的內容加入該資料夾。其中同名的項目會被取代，被取代的項目會移至垃圾桶。",
   "Modified": "修改時間",
   "Mount": "掛載",
-  "Move between the sidebar and the panes": "在側邊欄與窗格之間移動",
+  "Move between the sidebar, the panes and the details": "在側邊欄、窗格與詳細資料之間移動",
   "Move the selection": "移動選取範圍",
   "Move to the trash": "移至垃圾桶",
   "Moved only part of %1: %2": "只移動了 %1 的一部分：%2",
@@ -312,7 +313,7 @@
   "Restoring %Ln items…": {
     "other": "正在還原 %Ln 個項目…"
   },
-  "Right-click / Alt+⏎": "右鍵 / Alt+⏎",
+  "Right-click / Alt+⏎ / Menu": "按右鍵 / Alt+⏎ / Menu",
   "Scroll": "捲動",
   "Search %1": "搜尋 %1",
   "Search %1 and below": "搜尋 %1 及其子資料夾",
@@ -338,7 +339,7 @@
   "Sorted by kind": "依類型排序",
   "Sorted by name": "依名稱排序",
   "Split into two panes / close the right one": "分割為兩個窗格 / 關閉右側窗格",
-  "Stop the file work under way": "停止進行中的檔案作業",
+  "Stop the file work under way, or dismiss what went wrong": "停止進行中的檔案作業，或關閉錯誤提示",
   "Stopped after %L1 of %Ln items.": {
     "other": "已在 %Ln 個項目中的第 %L1 個後停止。"
   },
@@ -399,6 +400,7 @@
   "Undoing…": "正在復原…",
   "Unmount": "卸載",
   "Unpin": "取消釘選",
+  "Unpin the folder, or take the item off the sidebar": "取消釘選資料夾，或從側邊欄移除該項目",
   "Untitled Folder": "未命名資料夾",
   "Untitled Folder %1": "未命名資料夾 %1",
   "User": "使用者",

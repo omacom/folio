@@ -128,6 +128,7 @@
   "Cut": "Ausschneiden",
   "Delete": "Löschen",
   "Delete for good?": "Endgültig löschen?",
+  "Delete in the sidebar": "In der Seitenleiste löschen",
   "Delete permanently (asks first)": "Endgültig löschen (mit Rückfrage)",
   "Deleted": "Gelöscht",
   "Delete…": "Löschen…",
@@ -218,7 +219,7 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "Beim Zusammenführen wird der Inhalt dieses Ordners in den dortigen Ordner übernommen. Gleichnamige Elemente werden ersetzt, und die ersetzten Elemente werden in den Papierkorb verschoben.",
   "Modified": "Geändert",
   "Mount": "Einhängen",
-  "Move between the sidebar and the panes": "Zwischen Seitenleiste und Bereichen wechseln",
+  "Move between the sidebar, the panes and the details": "Zwischen Seitenleiste, Bereichen und Details wechseln",
   "Move the selection": "Auswahl bewegen",
   "Move to the trash": "In den Papierkorb verschieben",
   "Moved only part of %1: %2": "Nur ein Teil von %1 wurde verschoben: %2",
@@ -340,7 +341,7 @@
     "one": "%Ln Element wird wiederhergestellt…",
     "other": "%Ln Elemente werden wiederhergestellt…"
   },
-  "Right-click / Alt+⏎": "Rechtsklick / Alt+⏎",
+  "Right-click / Alt+⏎ / Menu": "Rechtsklick / Alt+⏎ / Menütaste",
   "Scroll": "Scrollen",
   "Search %1": "%1 durchsuchen",
   "Search %1 and below": "%1 und Unterordner durchsuchen",
@@ -366,7 +367,7 @@
   "Sorted by kind": "Nach Art sortiert",
   "Sorted by name": "Nach Name sortiert",
   "Split into two panes / close the right one": "In zwei Bereiche teilen / rechten Bereich schließen",
-  "Stop the file work under way": "Laufenden Dateivorgang stoppen",
+  "Stop the file work under way, or dismiss what went wrong": "Laufenden Dateivorgang stoppen oder Fehlermeldung schließen",
   "Stopped after %L1 of %Ln items.": {
     "one": "Nach %L1 von %Ln Element abgebrochen.",
     "other": "Nach %L1 von %Ln Elementen abgebrochen."
@@ -433,6 +434,7 @@
   "Undoing…": "Wird rückgängig gemacht…",
   "Unmount": "Aushängen",
   "Unpin": "Lösen",
+  "Unpin the folder, or take the item off the sidebar": "Ordner lösen oder Element aus der Seitenleiste entfernen",
   "Untitled Folder": "Unbenannter Ordner",
   "Untitled Folder %1": "Unbenannter Ordner %1",
   "User": "Benutzer",

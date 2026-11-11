@@ -128,6 +128,7 @@
   "Cut": "Lõika",
   "Delete": "Kustuta",
   "Delete for good?": "Kas kustutada jäädavalt?",
+  "Delete in the sidebar": "Kustuta külgribal",
   "Delete permanently (asks first)": "Kustuta jäädavalt (küsib enne)",
   "Deleted": "Kustutatud",
   "Delete…": "Kustuta…",
@@ -218,7 +219,7 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "Ühendamisel lisatakse selle kausta sisu sealolevasse kausta. Sama nimega üksused asendatakse ja asendatud üksused teisaldatakse prügikasti.",
   "Modified": "Muudetud",
   "Mount": "Ühenda",
-  "Move between the sidebar and the panes": "Liigu külgriba ja paanide vahel",
+  "Move between the sidebar, the panes and the details": "Liigu külgriba, paanide ja üksikasjade vahel",
   "Move the selection": "Liiguta valikut",
   "Move to the trash": "Teisalda prügikasti",
   "Moved only part of %1: %2": "%1 teisaldati ainult osaliselt: %2",
@@ -340,7 +341,7 @@
     "one": "%Ln üksuse taastamine…",
     "other": "%Ln üksuste taastamine…"
   },
-  "Right-click / Alt+⏎": "Paremklõps / Alt+⏎",
+  "Right-click / Alt+⏎ / Menu": "Paremklõps / Alt+⏎ / Menüü",
   "Scroll": "Keri",
   "Search %1": "Otsi kaustast %1",
   "Search %1 and below": "Otsi kaustast %1 ja alamkaustadest",
@@ -366,7 +367,7 @@
   "Sorted by kind": "Sorteeritud tüübi järgi",
   "Sorted by name": "Sorteeritud nime järgi",
   "Split into two panes / close the right one": "Jaga kaheks paaniks / sulge parem paan",
-  "Stop the file work under way": "Peata käimasolev failitoiming",
+  "Stop the file work under way, or dismiss what went wrong": "Peata käimasolev failitoiming või sulge veateade",
   "Stopped after %L1 of %Ln items.": {
     "one": "Peatati %L1 / %Ln üksuse järel.",
     "other": "Peatati %L1 / %Ln üksuste järel."
@@ -433,6 +434,7 @@
   "Undoing…": "Tagasivõtmine…",
   "Unmount": "Ühenda lahti",
   "Unpin": "Eemalda kinnitus",
+  "Unpin the folder, or take the item off the sidebar": "Eemalda kausta kinnitus või eemalda üksus külgribalt",
   "Untitled Folder": "Nimetu kaust",
   "Untitled Folder %1": "Nimetu kaust %1",
   "User": "Kasutaja",

@@ -128,6 +128,7 @@
   "Cut": "Kata",
   "Delete": "Futa",
   "Delete for good?": "Futa kabisa?",
+  "Delete in the sidebar": "Futa kwenye upau wa kando",
   "Delete permanently (asks first)": "Futa kabisa (huuliza kwanza)",
   "Deleted": "Imefutwa",
   "Delete…": "Futa…",
@@ -218,7 +219,7 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "Kuunganisha huongeza yaliyomo kwenye folda hii kwenye ile iliyopo pale. Vipengee vyenye jina moja ndani yake hubadilishwa, na vipengee vilivyobadilishwa hupelekwa kwenye takataka.",
   "Modified": "Imerekebishwa",
   "Mount": "Panda",
-  "Move between the sidebar and the panes": "Hamia kati ya upau wa pembeni na paneli",
+  "Move between the sidebar, the panes and the details": "Sogea kati ya upau wa kando, paneli na maelezo",
   "Move the selection": "Sogeza uteuzi",
   "Move to the trash": "Hamishia kwenye takataka",
   "Moved only part of %1: %2": "Sehemu tu ya %1 ndiyo iliyohamishwa: %2",
@@ -340,7 +341,7 @@
     "one": "Inarejesha %Ln kipengee…",
     "other": "Inarejesha %Ln vipengee…"
   },
-  "Right-click / Alt+⏎": "Bofya kulia / Alt+⏎",
+  "Right-click / Alt+⏎ / Menu": "Bofya kulia / Alt+⏎ / Menu",
   "Scroll": "Sogeza",
   "Search %1": "Tafuta %1",
   "Search %1 and below": "Tafuta %1 na chini yake",
@@ -366,7 +367,7 @@
   "Sorted by kind": "Imepangwa kwa aina",
   "Sorted by name": "Imepangwa kwa jina",
   "Split into two panes / close the right one": "Gawanya katika vidirisha viwili / funga cha kulia",
-  "Stop the file work under way": "Sitisha kazi ya faili inayoendelea",
+  "Stop the file work under way, or dismiss what went wrong": "Sitisha kazi ya faili inayoendelea, au ondoa hitilafu iliyotokea",
   "Stopped after %L1 of %Ln items.": {
     "one": "Imesitishwa baada ya %L1 kati ya %Ln kipengee.",
     "other": "Imesitishwa baada ya %L1 kati ya %Ln vipengee."
@@ -433,6 +434,7 @@
   "Undoing…": "Inatendua…",
   "Unmount": "Ondoa kiendeshi",
   "Unpin": "Bandua",
+  "Unpin the folder, or take the item off the sidebar": "Bandua folda, au ondoa kipengee kwenye upau wa kando",
   "Untitled Folder": "Folda isiyo na jina",
   "Untitled Folder %1": "Folda isiyo na jina %1",
   "User": "Mtumiaji",

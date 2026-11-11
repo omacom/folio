@@ -128,6 +128,7 @@
   "Cut": "Αποκοπή",
   "Delete": "Διαγραφή",
   "Delete for good?": "Οριστική διαγραφή;",
+  "Delete in the sidebar": "Διαγραφή στην πλευρική γραμμή",
   "Delete permanently (asks first)": "Οριστική διαγραφή (με επιβεβαίωση)",
   "Deleted": "Διαγράφηκε",
   "Delete…": "Διαγραφή…",
@@ -218,7 +219,7 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "Η συγχώνευση προσθέτει τα περιεχόμενα αυτού του φακέλου στον άλλον. Τα στοιχεία με το ίδιο όνομα αντικαθίστανται, και τα αντικατασταθέντα μεταφέρονται στα απορρίμματα.",
   "Modified": "Τροποποιήθηκε",
   "Mount": "Προσάρτηση",
-  "Move between the sidebar and the panes": "Μετακίνηση μεταξύ πλευρικής γραμμής και πλαισίων",
+  "Move between the sidebar, the panes and the details": "Μετακίνηση ανάμεσα στην πλευρική γραμμή, τα πλαίσια και τις λεπτομέρειες",
   "Move the selection": "Μετακίνηση της επιλογής",
   "Move to the trash": "Μετακίνηση στα απορρίμματα",
   "Moved only part of %1: %2": "Μετακινήθηκε μόνο μέρος του %1: %2",
@@ -340,7 +341,7 @@
     "one": "Επαναφορά ενός στοιχείου…",
     "other": "Επαναφορά %Ln στοιχείων…"
   },
-  "Right-click / Alt+⏎": "Δεξί κλικ / Alt+⏎",
+  "Right-click / Alt+⏎ / Menu": "Δεξί κλικ / Alt+⏎ / Μενού",
   "Scroll": "Κύλιση",
   "Search %1": "Αναζήτηση %1",
   "Search %1 and below": "Αναζήτηση στο %1 και στους υποφακέλους",
@@ -366,7 +367,7 @@
   "Sorted by kind": "Ταξινομημένα κατά είδος",
   "Sorted by name": "Ταξινομημένα κατά όνομα",
   "Split into two panes / close the right one": "Διαχωρισμός σε δύο πλαίσια / κλείσιμο του δεξιού",
-  "Stop the file work under way": "Διακοπή της εργασίας αρχείων σε εξέλιξη",
+  "Stop the file work under way, or dismiss what went wrong": "Διακοπή της εργασίας αρχείων σε εξέλιξη ή απόρριψη του σφάλματος",
   "Stopped after %L1 of %Ln items.": {
     "one": "Διακόπηκε μετά το %L1 από ένα στοιχείο.",
     "other": "Διακόπηκε μετά το %L1 από %Ln στοιχεία."
@@ -433,6 +434,7 @@
   "Undoing…": "Αναίρεση…",
   "Unmount": "Αποπροσάρτηση",
   "Unpin": "Ξεκαρφίτσωμα",
+  "Unpin the folder, or take the item off the sidebar": "Ξεκαρφίτσωμα του φακέλου ή αφαίρεση του στοιχείου από την πλευρική γραμμή",
   "Untitled Folder": "Φάκελος χωρίς τίτλο",
   "Untitled Folder %1": "Φάκελος χωρίς τίτλο %1",
   "User": "Χρήστης",

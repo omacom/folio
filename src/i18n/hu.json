@@ -128,6 +128,7 @@
   "Cut": "Kivágás",
   "Delete": "Törlés",
   "Delete for good?": "Végleges törlés?",
+  "Delete in the sidebar": "Törlés az oldalsávban",
   "Delete permanently (asks first)": "Végleges törlés (előbb rákérdez)",
   "Deleted": "Törölve",
   "Delete…": "Törlés…",
@@ -218,7 +219,7 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "Az egyesítés hozzáadja ennek a mappának a tartalmát az ott lévőhöz. Az azonos nevű elemek lecserélődnek, a lecserélt elemek pedig a Kukába kerülnek.",
   "Modified": "Módosítva",
   "Mount": "Csatolás",
-  "Move between the sidebar and the panes": "Váltás az oldalsáv és a panelek között",
+  "Move between the sidebar, the panes and the details": "Váltás az oldalsáv, a panelek és a részletek között",
   "Move the selection": "Kijelölés mozgatása",
   "Move to the trash": "Áthelyezés a Kukába",
   "Moved only part of %1: %2": "%1 csak részben lett áthelyezve: %2",
@@ -340,7 +341,7 @@
     "one": "%Ln elem visszaállítása…",
     "other": "%Ln elem visszaállítása…"
   },
-  "Right-click / Alt+⏎": "Jobb kattintás / Alt+⏎",
+  "Right-click / Alt+⏎ / Menu": "Jobb kattintás / Alt+⏎ / Menü",
   "Scroll": "Görgetés",
   "Search %1": "Keresés: %1",
   "Search %1 and below": "Keresés: %1 és alatta",
@@ -366,7 +367,7 @@
   "Sorted by kind": "Típus szerint rendezve",
   "Sorted by name": "Név szerint rendezve",
   "Split into two panes / close the right one": "Kettéosztás / jobb oldali panel bezárása",
-  "Stop the file work under way": "A folyamatban lévő fájlművelet leállítása",
+  "Stop the file work under way, or dismiss what went wrong": "A folyamatban lévő fájlművelet leállítása vagy a hibaüzenet bezárása",
   "Stopped after %L1 of %Ln items.": {
     "one": "%L1 / %Ln elem után leállt.",
     "other": "%L1 / %Ln elem után leállt."
@@ -433,6 +434,7 @@
   "Undoing…": "Visszavonás…",
   "Unmount": "Leválasztás",
   "Unpin": "Kitűzés feloldása",
+  "Unpin the folder, or take the item off the sidebar": "A mappa kitűzésének feloldása vagy az elem eltávolítása az oldalsávról",
   "Untitled Folder": "Névtelen mappa",
   "Untitled Folder %1": "Névtelen mappa %1",
   "User": "Felhasználó",

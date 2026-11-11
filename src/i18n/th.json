@@ -122,6 +122,7 @@
   "Cut": "ตัด",
   "Delete": "ลบ",
   "Delete for good?": "ลบถาวรหรือไม่?",
+  "Delete in the sidebar": "ลบในแถบด้านข้าง",
   "Delete permanently (asks first)": "ลบถาวร (ถามก่อน)",
   "Deleted": "ลบแล้ว",
   "Delete…": "ลบ…",
@@ -203,7 +204,7 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "การรวมจะนำสิ่งในโฟลเดอร์นี้ไปเพิ่มในโฟลเดอร์นั้น รายการที่มีชื่อเดียวกันด้านในจะถูกแทนที่ และรายการที่ถูกแทนที่จะถูกย้ายไปถังขยะ",
   "Modified": "แก้ไขเมื่อ",
   "Mount": "เมานต์",
-  "Move between the sidebar and the panes": "สลับระหว่างแถบข้างกับบานหน้าต่าง",
+  "Move between the sidebar, the panes and the details": "สลับระหว่างแถบด้านข้าง บานหน้าต่าง และรายละเอียด",
   "Move the selection": "เลื่อนสิ่งที่เลือก",
   "Move to the trash": "ย้ายไปถังขยะ",
   "Moved only part of %1: %2": "ย้าย %1 ได้เพียงบางส่วน: %2",
@@ -312,7 +313,7 @@
   "Restoring %Ln items…": {
     "other": "กำลังกู้คืน %Ln รายการ…"
   },
-  "Right-click / Alt+⏎": "คลิกขวา / Alt+⏎",
+  "Right-click / Alt+⏎ / Menu": "คลิกขวา / Alt+⏎ / เมนู",
   "Scroll": "เลื่อน",
   "Search %1": "ค้นหา %1",
   "Search %1 and below": "ค้นหา %1 และโฟลเดอร์ย่อย",
@@ -338,7 +339,7 @@
   "Sorted by kind": "จัดเรียงตามประเภท",
   "Sorted by name": "จัดเรียงตามชื่อ",
   "Split into two panes / close the right one": "แยกเป็นสองแผง / ปิดแผงขวา",
-  "Stop the file work under way": "หยุดงานไฟล์ที่กำลังทำอยู่",
+  "Stop the file work under way, or dismiss what went wrong": "หยุดงานไฟล์ที่กำลังทำอยู่ หรือปิดข้อผิดพลาด",
   "Stopped after %L1 of %Ln items.": {
     "other": "หยุดหลังจากทำไป %L1 จาก %Ln รายการ"
   },
@@ -399,6 +400,7 @@
   "Undoing…": "กำลังเลิกทำ…",
   "Unmount": "ถอดการเชื่อมต่อ",
   "Unpin": "เลิกปักหมุด",
+  "Unpin the folder, or take the item off the sidebar": "เลิกปักหมุดโฟลเดอร์ หรือนำรายการออกจากแถบด้านข้าง",
   "Untitled Folder": "โฟลเดอร์ไม่มีชื่อ",
   "Untitled Folder %1": "โฟลเดอร์ไม่มีชื่อ %1",
   "User": "ผู้ใช้",

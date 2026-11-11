@@ -128,6 +128,7 @@
   "Cut": "Leikkaa",
   "Delete": "Poista",
   "Delete for good?": "Poistetaanko pysyvästi?",
+  "Delete in the sidebar": "Poista sivupalkissa",
   "Delete permanently (asks first)": "Poista pysyvästi (kysyy ensin)",
   "Deleted": "Poistettu",
   "Delete…": "Poista…",
@@ -218,7 +219,7 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "Yhdistäminen lisää tämän kansion sisällön kohdekansioon. Samannimiset kohteet korvataan, ja korvatut kohteet siirretään roskakoriin.",
   "Modified": "Muokattu",
   "Mount": "Liitä",
-  "Move between the sidebar and the panes": "Siirry sivupalkin ja ruutujen välillä",
+  "Move between the sidebar, the panes and the details": "Siirry sivupalkin, ruutujen ja tietojen välillä",
   "Move the selection": "Siirrä valintaa",
   "Move to the trash": "Siirrä roskakoriin",
   "Moved only part of %1: %2": "%1:stä siirrettiin vain osa: %2",
@@ -340,7 +341,7 @@
     "one": "Palautetaan %Ln kohde…",
     "other": "Palautetaan %Ln kohdetta…"
   },
-  "Right-click / Alt+⏎": "Oikea napsautus / Alt+⏎",
+  "Right-click / Alt+⏎ / Menu": "Napsauta oikealla / Alt+⏎ / Valikko",
   "Scroll": "Vieritä",
   "Search %1": "Hae kohteesta %1",
   "Search %1 and below": "Hae kohteesta %1 ja sen alta",
@@ -366,7 +367,7 @@
   "Sorted by kind": "Lajiteltu tyypin mukaan",
   "Sorted by name": "Lajiteltu nimen mukaan",
   "Split into two panes / close the right one": "Jaa kahteen paneeliin / sulje oikea paneeli",
-  "Stop the file work under way": "Pysäytä käynnissä oleva tiedostotyö",
+  "Stop the file work under way, or dismiss what went wrong": "Keskeytä käynnissä oleva tiedostotyö tai sulje virheilmoitus",
   "Stopped after %L1 of %Ln items.": {
     "one": "Keskeytettiin, kun %L1 / %Ln kohde oli käsitelty.",
     "other": "Keskeytettiin, kun %L1 / %Ln kohdetta oli käsitelty."
@@ -433,6 +434,7 @@
   "Undoing…": "Kumotaan…",
   "Unmount": "Irrota",
   "Unpin": "Poista kiinnitys",
+  "Unpin the folder, or take the item off the sidebar": "Poista kansion kiinnitys tai poista kohde sivupalkista",
   "Untitled Folder": "Nimetön kansio",
   "Untitled Folder %1": "Nimetön kansio %1",
   "User": "Käyttäjä",

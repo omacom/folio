@@ -128,6 +128,7 @@
   "Cut": "কাটুন",
   "Delete": "মুছুন",
   "Delete for good?": "স্থায়ীভাবে মুছবেন?",
+  "Delete in the sidebar": "সাইডবারে মুছে ফেলুন",
   "Delete permanently (asks first)": "স্থায়ীভাবে মুছুন (আগে জিজ্ঞেস করা হয়)",
   "Deleted": "মোছা হয়েছে",
   "Delete…": "মুছুন…",
@@ -218,7 +219,7 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "একত্র করলে এই ফোল্ডারে যা আছে তা ওখানকার ফোল্ডারে যোগ হয়। ভিতরে একই নামের যা আছে তা প্রতিস্থাপিত হয়, আর প্রতিস্থাপিত আইটেমগুলো ট্র্যাশে যায়।",
   "Modified": "পরিবর্তিত",
   "Mount": "মাউন্ট করুন",
-  "Move between the sidebar and the panes": "সাইডবার ও পেনের মধ্যে যান",
+  "Move between the sidebar, the panes and the details": "সাইডবার, প্যানগুলো ও বিবরণের মধ্যে যান",
   "Move the selection": "নির্বাচন সরান",
   "Move to the trash": "ট্র্যাশে সরান",
   "Moved only part of %1: %2": "%1 আংশিকভাবে সরানো হয়েছে: %2",
@@ -340,7 +341,7 @@
     "one": "%Lnটি আইটেম পুনরুদ্ধার করা হচ্ছে…",
     "other": "%Lnটি আইটেম পুনরুদ্ধার করা হচ্ছে…"
   },
-  "Right-click / Alt+⏎": "ডান-ক্লিক / Alt+⏎",
+  "Right-click / Alt+⏎ / Menu": "ডান-ক্লিক / Alt+⏎ / মেনু",
   "Scroll": "স্ক্রল করুন",
   "Search %1": "%1-এ খুঁজুন",
   "Search %1 and below": "%1 ও তার নিচে খুঁজুন",
@@ -366,7 +367,7 @@
   "Sorted by kind": "ধরন অনুযায়ী সাজানো",
   "Sorted by name": "নাম অনুযায়ী সাজানো",
   "Split into two panes / close the right one": "দুটি প্যানেলে ভাগ করুন / ডানদিকেরটি বন্ধ করুন",
-  "Stop the file work under way": "চলমান ফাইলের কাজ বন্ধ করুন",
+  "Stop the file work under way, or dismiss what went wrong": "চলমান ফাইলের কাজ বন্ধ করুন, বা ত্রুটিটি এড়িয়ে যান",
   "Stopped after %L1 of %Ln items.": {
     "one": "%Lnটি আইটেমের মধ্যে %L1টির পর বন্ধ হয়েছে।",
     "other": "%Lnটি আইটেমের মধ্যে %L1টির পর বন্ধ হয়েছে।"
@@ -433,6 +434,7 @@
   "Undoing…": "পূর্বাবস্থায় ফেরানো হচ্ছে…",
   "Unmount": "আনমাউন্ট করুন",
   "Unpin": "আনপিন করুন",
+  "Unpin the folder, or take the item off the sidebar": "ফোল্ডারটি আনপিন করুন, বা আইটেমটি সাইডবার থেকে সরান",
   "Untitled Folder": "শিরোনামহীন ফোল্ডার",
   "Untitled Folder %1": "শিরোনামহীন ফোল্ডার %1",
   "User": "ব্যবহারকারী",

@@ -128,6 +128,7 @@
   "Cut": "काटें",
   "Delete": "हटाएँ",
   "Delete for good?": "स्थायी रूप से हटाएँ?",
+  "Delete in the sidebar": "साइडबार में हटाएँ",
   "Delete permanently (asks first)": "स्थायी रूप से हटाएँ (पहले पूछा जाएगा)",
   "Deleted": "हटा दिया गया",
   "Delete…": "हटाएँ…",
@@ -218,7 +219,7 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "मर्ज करने से इस फ़ोल्डर में मौजूद चीज़ें वहाँ वाले फ़ोल्डर में जुड़ जाती हैं। अंदर समान नाम वाले आइटम बदल दिए जाते हैं, और बदले गए आइटम रद्दी में चले जाते हैं।",
   "Modified": "संशोधित",
   "Mount": "माउंट करें",
-  "Move between the sidebar and the panes": "साइडबार और पैनों के बीच जाएँ",
+  "Move between the sidebar, the panes and the details": "साइडबार, फलकों और विवरण के बीच जाएँ",
   "Move the selection": "चयन बदलें",
   "Move to the trash": "रद्दी में डालें",
   "Moved only part of %1: %2": "%1 का कुछ भाग ही ले जाया जा सका: %2",
@@ -340,7 +341,7 @@
     "one": "एक आइटम पुनर्स्थापित किया जा रहा है…",
     "other": "%Ln आइटम पुनर्स्थापित किए जा रहे हैं…"
   },
-  "Right-click / Alt+⏎": "राइट-क्लिक / Alt+⏎",
+  "Right-click / Alt+⏎ / Menu": "दायाँ-क्लिक / Alt+⏎ / मेनू",
   "Scroll": "स्क्रॉल करें",
   "Search %1": "%1 में खोजें",
   "Search %1 and below": "%1 और उसके उपफ़ोल्डरों में खोजें",
@@ -366,7 +367,7 @@
   "Sorted by kind": "प्रकार के अनुसार छाँटा गया",
   "Sorted by name": "नाम के अनुसार छाँटा गया",
   "Split into two panes / close the right one": "दो फलकों में बाँटें / दायाँ बंद करें",
-  "Stop the file work under way": "चल रहा फ़ाइल कार्य रोकें",
+  "Stop the file work under way, or dismiss what went wrong": "चल रहा फ़ाइल कार्य रोकें, या आई त्रुटि को खारिज करें",
   "Stopped after %L1 of %Ln items.": {
     "one": "एक आइटम में से %L1 के बाद रुका।",
     "other": "%Ln आइटम में से %L1 के बाद रुका।"
@@ -433,6 +434,7 @@
   "Undoing…": "पूर्ववत किया जा रहा है…",
   "Unmount": "अनमाउंट करें",
   "Unpin": "अनपिन करें",
+  "Unpin the folder, or take the item off the sidebar": "फ़ोल्डर को अनपिन करें, या आइटम को साइडबार से हटाएँ",
   "Untitled Folder": "बिना नाम का फ़ोल्डर",
   "Untitled Folder %1": "बिना नाम का फ़ोल्डर %1",
   "User": "उपयोगकर्ता",

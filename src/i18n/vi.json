@@ -122,6 +122,7 @@
   "Cut": "Cắt",
   "Delete": "Xóa",
   "Delete for good?": "Xóa vĩnh viễn?",
+  "Delete in the sidebar": "Xóa trong thanh bên",
   "Delete permanently (asks first)": "Xóa vĩnh viễn (hỏi trước)",
   "Deleted": "Đã xóa",
   "Delete…": "Xóa…",
@@ -203,7 +204,7 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "Gộp sẽ thêm nội dung của thư mục này vào thư mục kia. Các mục trùng tên bên trong sẽ bị thay thế, và các mục bị thay thế sẽ được chuyển vào thùng rác.",
   "Modified": "Đã sửa đổi",
   "Mount": "Kết nối",
-  "Move between the sidebar and the panes": "Di chuyển giữa thanh bên và các ngăn",
+  "Move between the sidebar, the panes and the details": "Di chuyển giữa thanh bên, các ngăn và phần chi tiết",
   "Move the selection": "Di chuyển lựa chọn",
   "Move to the trash": "Chuyển vào thùng rác",
   "Moved only part of %1: %2": "Chỉ di chuyển được một phần của %1: %2",
@@ -312,7 +313,7 @@
   "Restoring %Ln items…": {
     "other": "Đang khôi phục %Ln mục…"
   },
-  "Right-click / Alt+⏎": "Nhấp chuột phải / Alt+⏎",
+  "Right-click / Alt+⏎ / Menu": "Chuột phải / Alt+⏎ / Menu",
   "Scroll": "Cuộn",
   "Search %1": "Tìm trong %1",
   "Search %1 and below": "Tìm trong %1 và bên dưới",
@@ -338,7 +339,7 @@
   "Sorted by kind": "Đã sắp xếp theo loại",
   "Sorted by name": "Đã sắp xếp theo tên",
   "Split into two panes / close the right one": "Chia thành hai ngăn / đóng ngăn bên phải",
-  "Stop the file work under way": "Dừng tác vụ tệp đang thực hiện",
+  "Stop the file work under way, or dismiss what went wrong": "Dừng tác vụ tệp đang thực hiện, hoặc đóng thông báo lỗi",
   "Stopped after %L1 of %Ln items.": {
     "other": "Đã dừng sau %L1 trong số %Ln mục."
   },
@@ -399,6 +400,7 @@
   "Undoing…": "Đang hoàn tác…",
   "Unmount": "Tháo gắn kết",
   "Unpin": "Bỏ ghim",
+  "Unpin the folder, or take the item off the sidebar": "Bỏ ghim thư mục, hoặc gỡ mục khỏi thanh bên",
   "Untitled Folder": "Thư mục chưa đặt tên",
   "Untitled Folder %1": "Thư mục chưa đặt tên %1",
   "User": "Người dùng",

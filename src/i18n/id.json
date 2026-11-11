@@ -122,6 +122,7 @@
   "Cut": "Potong",
   "Delete": "Hapus",
   "Delete for good?": "Hapus permanen?",
+  "Delete in the sidebar": "Hapus di bilah samping",
   "Delete permanently (asks first)": "Hapus permanen (tanya dulu)",
   "Deleted": "Terhapus",
   "Delete…": "Hapus…",
@@ -203,7 +204,7 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "Penggabungan menambahkan isi folder ini ke folder di sana. Item dengan nama yang sama di dalamnya akan diganti, dan item yang diganti akan dipindahkan ke tempat sampah.",
   "Modified": "Dimodifikasi",
   "Mount": "Pasang",
-  "Move between the sidebar and the panes": "Berpindah antara bilah sisi dan panel",
+  "Move between the sidebar, the panes and the details": "Berpindah antara bilah samping, panel, dan detail",
   "Move the selection": "Gerakkan pilihan",
   "Move to the trash": "Pindahkan ke Tempat Sampah",
   "Moved only part of %1: %2": "Hanya sebagian %1 yang dipindahkan: %2",
@@ -312,7 +313,7 @@
   "Restoring %Ln items…": {
     "other": "Memulihkan %Ln item…"
   },
-  "Right-click / Alt+⏎": "Klik kanan / Alt+⏎",
+  "Right-click / Alt+⏎ / Menu": "Klik kanan / Alt+⏎ / Menu",
   "Scroll": "Gulir",
   "Search %1": "Cari %1",
   "Search %1 and below": "Cari di %1 dan subfoldernya",
@@ -338,7 +339,7 @@
   "Sorted by kind": "Diurutkan berdasarkan jenis",
   "Sorted by name": "Diurutkan berdasarkan nama",
   "Split into two panes / close the right one": "Bagi jadi dua panel / tutup panel kanan",
-  "Stop the file work under way": "Hentikan pekerjaan berkas yang sedang berlangsung",
+  "Stop the file work under way, or dismiss what went wrong": "Hentikan pekerjaan berkas yang sedang berlangsung, atau tutup pesan kesalahan",
   "Stopped after %L1 of %Ln items.": {
     "other": "Berhenti setelah %L1 dari %Ln item."
   },
@@ -399,6 +400,7 @@
   "Undoing…": "Mengurungkan…",
   "Unmount": "Lepas Kait",
   "Unpin": "Lepas Sematan",
+  "Unpin the folder, or take the item off the sidebar": "Lepas sematan folder, atau hapus item dari bilah samping",
   "Untitled Folder": "Folder Tanpa Nama",
   "Untitled Folder %1": "Folder Tanpa Nama %1",
   "User": "Pengguna",

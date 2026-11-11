@@ -128,6 +128,7 @@
   "Cut": "Klippa",
   "Delete": "Eyða",
   "Delete for good?": "Eyða varanlega?",
+  "Delete in the sidebar": "Eyða í hliðarstikunni",
   "Delete permanently (asks first)": "Eyða varanlega (spyr fyrst)",
   "Deleted": "Eytt",
   "Delete…": "Eyða…",
@@ -218,7 +219,7 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "Sameining bætir efni þessarar möppu við efni hinnar. Atriðum með sama nafni þar inni er skipt út, og atriðin sem skipt er út fara í ruslið.",
   "Modified": "Breytt",
   "Mount": "Tengja",
-  "Move between the sidebar and the panes": "Fara á milli hliðarstiku og rúða",
+  "Move between the sidebar, the panes and the details": "Fara á milli hliðarstikunnar, glugganna og upplýsinganna",
   "Move the selection": "Færa valið",
   "Move to the trash": "Flytja í ruslið",
   "Moved only part of %1: %2": "Flutti aðeins hluta af %1: %2",
@@ -340,7 +341,7 @@
     "one": "Endurheimtir %Ln atriði…",
     "other": "Endurheimtir %Ln atriði…"
   },
-  "Right-click / Alt+⏎": "Hægrismellur / Alt+⏎",
+  "Right-click / Alt+⏎ / Menu": "Hægrismellur / Alt+⏎ / Menu",
   "Scroll": "Skruna",
   "Search %1": "Leita í %1",
   "Search %1 and below": "Leita í %1 og undirmöppum",
@@ -366,7 +367,7 @@
   "Sorted by kind": "Raðað eftir tegund",
   "Sorted by name": "Raðað eftir nafni",
   "Split into two panes / close the right one": "Skipta í tvo reiti / loka hægri reitnum",
-  "Stop the file work under way": "Stöðva skráarvinnu í gangi",
+  "Stop the file work under way, or dismiss what went wrong": "Stöðva skráavinnu í gangi eða vísa frá því sem fór úrskeiðis",
   "Stopped after %L1 of %Ln items.": {
     "one": "Hætt eftir %L1 af %Ln atriði.",
     "other": "Hætt eftir %L1 af %Ln atriðum."
@@ -433,6 +434,7 @@
   "Undoing…": "Afturkalla…",
   "Unmount": "Aftengja",
   "Unpin": "Losa",
+  "Unpin the folder, or take the item off the sidebar": "Losa möppuna eða taka atriðið af hliðarstikunni",
   "Untitled Folder": "Ónefnd mappa",
   "Untitled Folder %1": "Ónefnd mappa %1",
   "User": "Notandi",

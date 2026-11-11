@@ -128,6 +128,7 @@
   "Cut": "Gupitin",
   "Delete": "Burahin",
   "Delete for good?": "Burahin nang tuluyan?",
+  "Delete in the sidebar": "Tanggalin sa sidebar",
   "Delete permanently (asks first)": "Permanenteng burahin (magtatanong muna)",
   "Deleted": "Nabura",
   "Delete…": "Burahin…",
@@ -218,7 +219,7 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "Idaragdag sa folder doon ang laman ng folder na ito kapag pinagsama. Papalitan ang anumang may kaparehong pangalan sa loob, at mapupunta sa Basurahan ang mga pinalitang item.",
   "Modified": "Binago",
   "Mount": "I-mount",
-  "Move between the sidebar and the panes": "Lumipat sa pagitan ng sidebar at mga pane",
+  "Move between the sidebar, the panes and the details": "Lumipat-lipat sa sidebar, mga pane at detalye",
   "Move the selection": "Ilipat ang napili",
   "Move to the trash": "Ilipat sa Basurahan",
   "Moved only part of %1: %2": "Bahagi lang ng %1 ang nailipat: %2",
@@ -340,7 +341,7 @@
     "one": "Ibinabalik ang isang item…",
     "other": "Ibinabalik ang %Ln item…"
   },
-  "Right-click / Alt+⏎": "I-right-click / Alt+⏎",
+  "Right-click / Alt+⏎ / Menu": "Mag-right-click / Alt+⏎ / Menu",
   "Scroll": "Mag-scroll",
   "Search %1": "Maghanap sa %1",
   "Search %1 and below": "Maghanap sa %1 at mga subfolder nito",
@@ -366,7 +367,7 @@
   "Sorted by kind": "Nakaayos ayon sa uri",
   "Sorted by name": "Nakaayos ayon sa pangalan",
   "Split into two panes / close the right one": "Hatiin sa dalawang pane / isara ang kanang pane",
-  "Stop the file work under way": "Itigil ang kasalukuyang trabaho sa mga file",
+  "Stop the file work under way, or dismiss what went wrong": "Itigil ang kasalukuyang trabaho sa file, o isantabi ang error",
   "Stopped after %L1 of %Ln items.": {
     "one": "Huminto pagkatapos ng %L1 ng isang item.",
     "other": "Huminto pagkatapos ng %L1 ng %Ln item."
@@ -433,6 +434,7 @@
   "Undoing…": "Binabawi…",
   "Unmount": "I-unmount",
   "Unpin": "I-unpin",
+  "Unpin the folder, or take the item off the sidebar": "I-unpin ang folder, o tanggalin ang item sa sidebar",
   "Untitled Folder": "Folder na Walang Pamagat",
   "Untitled Folder %1": "Folder na Walang Pamagat %1",
   "User": "Gumagamit",

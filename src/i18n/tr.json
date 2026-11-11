@@ -128,6 +128,7 @@
   "Cut": "Kes",
   "Delete": "Sil",
   "Delete for good?": "Kalıcı olarak silinsin mi?",
+  "Delete in the sidebar": "Kenar çubuğunda sil",
   "Delete permanently (asks first)": "Kalıcı olarak sil (önce sor)",
   "Deleted": "Silindi",
   "Delete…": "Sil…",
@@ -218,7 +219,7 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "Birleştirme, bu klasördekileri oradaki klasöre ekler. Aynı adı taşıyan ögeler değiştirilir ve değiştirilen ögeler çöpe gider.",
   "Modified": "Değiştirilme",
   "Mount": "Bağla",
-  "Move between the sidebar and the panes": "Kenar çubuğu ile bölmeler arasında geçiş yap",
+  "Move between the sidebar, the panes and the details": "Kenar çubuğu, bölmeler ve ayrıntılar arasında gezin",
   "Move the selection": "Seçimi kaydır",
   "Move to the trash": "Çöpe taşı",
   "Moved only part of %1: %2": "%1 yalnızca kısmen taşındı: %2",
@@ -340,7 +341,7 @@
     "one": "%Ln öge geri yükleniyor…",
     "other": "%Ln öge geri yükleniyor…"
   },
-  "Right-click / Alt+⏎": "Sağ tık / Alt+⏎",
+  "Right-click / Alt+⏎ / Menu": "Sağ tık / Alt+⏎ / Menü",
   "Scroll": "Kaydır",
   "Search %1": "%1 içinde ara",
   "Search %1 and below": "%1 ve alt klasörlerinde ara",
@@ -366,7 +367,7 @@
   "Sorted by kind": "Türe göre sıralandı",
   "Sorted by name": "Ada göre sıralandı",
   "Split into two panes / close the right one": "İki bölmeye ayır / sağdakini kapat",
-  "Stop the file work under way": "Devam eden dosya işlemini durdur",
+  "Stop the file work under way, or dismiss what went wrong": "Devam eden dosya işlemini durdur veya hatayı kapat",
   "Stopped after %L1 of %Ln items.": {
     "one": "%Ln ögeden %L1 tanesi tamamlandıktan sonra durduruldu.",
     "other": "%Ln ögeden %L1 tanesi tamamlandıktan sonra durduruldu."
@@ -433,6 +434,7 @@
   "Undoing…": "Geri alınıyor…",
   "Unmount": "Bağlantıyı Kes",
   "Unpin": "Sabitlemeyi Kaldır",
+  "Unpin the folder, or take the item off the sidebar": "Klasörün sabitlemesini kaldır veya öğeyi kenar çubuğundan kaldır",
   "Untitled Folder": "Adsız Klasör",
   "Untitled Folder %1": "Adsız Klasör %1",
   "User": "Kullanıcı",

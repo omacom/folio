@@ -128,6 +128,7 @@
   "Cut": "කපන්න",
   "Delete": "මකන්න",
   "Delete for good?": "ස්ථිරවම මකන්නද?",
+  "Delete in the sidebar": "පැති තීරුවේ මකන්න",
   "Delete permanently (asks first)": "ස්ථිරවම මකන්න (පළමුව විමසයි)",
   "Deleted": "මකා දමන ලදි",
   "Delete…": "මකන්න…",
@@ -218,7 +219,7 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "ඒකාබද්ධ කිරීමෙන් මෙම ෆෝල්ඩරයේ ඇති දේ එහි ඇති ෆෝල්ඩරයට එක් වේ. ඇතුළත එකම නම ඇති අයිතම ප්‍රතිස්ථාපනය වන අතර, ප්‍රතිස්ථාපනය වූ අයිතම කුණු බඳුනට යයි.",
   "Modified": "වෙනස් කළ",
   "Mount": "සවි කරන්න",
-  "Move between the sidebar and the panes": "පැති තීරුව සහ පැනල අතර මාරු වන්න",
+  "Move between the sidebar, the panes and the details": "පැති තීරුව, පැනල සහ විස්තර අතර මාරු වන්න",
   "Move the selection": "තේරීම මාරු කරන්න",
   "Move to the trash": "කුණු බඳුනට ගෙන යන්න",
   "Moved only part of %1: %2": "%1 හි කොටසක් පමණක් ගෙන යන ලදි: %2",
@@ -340,7 +341,7 @@
     "one": "%Ln අයිතමයක් ප්‍රතිස්ථාපනය කරමින්…",
     "other": "%Ln අයිතම ප්‍රතිස්ථාපනය කරමින්…"
   },
-  "Right-click / Alt+⏎": "දකුණු-ක්ලික් / Alt+⏎",
+  "Right-click / Alt+⏎ / Menu": "දකුණු ක්ලික් කරන්න / Alt+⏎ / මෙනුව",
   "Scroll": "අනුචලනය කරන්න",
   "Search %1": "%1 සොයන්න",
   "Search %1 and below": "%1 සහ ඊට පහළ සොයන්න",
@@ -366,7 +367,7 @@
   "Sorted by kind": "වර්ගය අනුව පෙළගස්වා ඇත",
   "Sorted by name": "නම අනුව පෙළගස්වා ඇත",
   "Split into two panes / close the right one": "පුවරු දෙකකට බෙදන්න / දකුණු එක වසන්න",
-  "Stop the file work under way": "සිදු වෙමින් පවතින ගොනු කාර්යය නවත්වන්න",
+  "Stop the file work under way, or dismiss what went wrong": "සිදු වෙමින් පවතින ගොනු කටයුතු නවත්වන්න, නැතහොත් ඇති වූ දෝෂය ඉවත් කරන්න",
   "Stopped after %L1 of %Ln items.": {
     "one": "අයිතම %Ln න් %L1 වන එකෙන් පසුව නැවතුණි.",
     "other": "අයිතම %Ln න් %L1 කින් පසුව නැවතුණි."
@@ -433,6 +434,7 @@
   "Undoing…": "අවලංගු කරමින්…",
   "Unmount": "ගලවන්න",
   "Unpin": "ඇණ ඉවත් කරන්න",
+  "Unpin the folder, or take the item off the sidebar": "ෆෝල්ඩරයේ ඇණය ඉවත් කරන්න, නැතහොත් අයිතමය පැති තීරුවෙන් ඉවත් කරන්න",
   "Untitled Folder": "නම් නොකළ ෆෝල්ඩරය",
   "Untitled Folder %1": "නම් නොකළ ෆෝල්ඩරය %1",
   "User": "පරිශීලක",

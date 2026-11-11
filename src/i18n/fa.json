@@ -128,6 +128,7 @@
   "Cut": "برش",
   "Delete": "حذف",
   "Delete for good?": "برای همیشه حذف شود؟",
+  "Delete in the sidebar": "حذف در نوار کناری",
   "Delete permanently (asks first)": "حذف دائمی (اول می‌پرسد)",
   "Deleted": "حذف شد",
   "Delete…": "حذف…",
@@ -218,7 +219,7 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "با ادغام، محتویات این پوشه به پوشهٔ مقصد افزوده می‌شود. موارد هم‌نام جایگزین می‌شوند و موارد جایگزین‌شده به زباله‌دان می‌روند.",
   "Modified": "تاریخ تغییر",
   "Mount": "سوار کردن",
-  "Move between the sidebar and the panes": "جابه‌جایی میان نوار کناری و قاب‌ها",
+  "Move between the sidebar, the panes and the details": "جابه‌جایی بین نوار کناری، قاب‌ها و جزئیات",
   "Move the selection": "جابه‌جا کردن انتخاب",
   "Move to the trash": "انتقال به زباله‌دان",
   "Moved only part of %1: %2": "فقط بخشی از %1 منتقل شد: %2",
@@ -340,7 +341,7 @@
     "one": "در حال بازگردانی %Ln مورد…",
     "other": "در حال بازگردانی %Ln مورد…"
   },
-  "Right-click / Alt+⏎": "راست‌کلیک / Alt+⏎",
+  "Right-click / Alt+⏎ / Menu": "راست‌کلیک / Alt+⏎ / منو",
   "Scroll": "پیمایش",
   "Search %1": "جستجو در %1",
   "Search %1 and below": "جستجو در %1 و زیرپوشه‌ها",
@@ -366,7 +367,7 @@
   "Sorted by kind": "مرتب‌شده بر اساس نوع",
   "Sorted by name": "مرتب‌شده بر اساس نام",
   "Split into two panes / close the right one": "تقسیم به دو پنل / بستن پنل راست",
-  "Stop the file work under way": "توقف کار در حال انجام پرونده‌ها",
+  "Stop the file work under way, or dismiss what went wrong": "توقف کار در حال انجام پرونده‌ها، یا رد کردن خطا",
   "Stopped after %L1 of %Ln items.": {
     "one": "پس از %L1 از %Ln مورد متوقف شد.",
     "other": "پس از %L1 از %Ln مورد متوقف شد."
@@ -433,6 +434,7 @@
   "Undoing…": "در حال واگردانی…",
   "Unmount": "پیاده کردن",
   "Unpin": "برداشتن سنجاق",
+  "Unpin the folder, or take the item off the sidebar": "برداشتن سنجاق پوشه، یا برداشتن مورد از نوار کناری",
   "Untitled Folder": "پوشهٔ بدون عنوان",
   "Untitled Folder %1": "پوشهٔ بدون عنوان %1",
   "User": "کاربر",

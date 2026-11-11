@@ -128,6 +128,7 @@
   "Cut": "Kesish",
   "Delete": "Oʻchirish",
   "Delete for good?": "Butunlay oʻchirilsinmi?",
+  "Delete in the sidebar": "Yon panelda oʻchirish",
   "Delete permanently (asks first)": "Butunlay oʻchirish (avval soʻraydi)",
   "Deleted": "Oʻchirildi",
   "Delete…": "Oʻchirish…",
@@ -218,7 +219,7 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "Birlashtirishda bu papkadagi narsalar u yerdagiga qoʻshiladi. Bir xil nomdagilar almashtiriladi va almashtirilgan elementlar chiqindi qutisiga tashlanadi.",
   "Modified": "Oʻzgartirilgan",
   "Mount": "Ulash",
-  "Move between the sidebar and the panes": "Yon panel bilan panellar orasida oʻtish",
+  "Move between the sidebar, the panes and the details": "Yon panel, panellar va tafsilotlar orasida harakatlanish",
   "Move the selection": "Tanlovni siljitish",
   "Move to the trash": "Chiqindi qutisiga koʻchirish",
   "Moved only part of %1: %2": "%1ning faqat bir qismi koʻchirildi: %2",
@@ -340,7 +341,7 @@
     "one": "%Ln ta element tiklanmoqda…",
     "other": "%Ln ta element tiklanmoqda…"
   },
-  "Right-click / Alt+⏎": "Oʻng bosish / Alt+⏎",
+  "Right-click / Alt+⏎ / Menu": "Oʻng tugmani bosish / Alt+⏎ / Menyu",
   "Scroll": "Aylantirish",
   "Search %1": "%1da qidirish",
   "Search %1 and below": "%1 va uning ichidagilarda qidirish",
@@ -366,7 +367,7 @@
   "Sorted by kind": "Turi boʻyicha saralangan",
   "Sorted by name": "Nomi boʻyicha saralangan",
   "Split into two panes / close the right one": "Ikki panelga boʻlish / oʻng panelni yopish",
-  "Stop the file work under way": "Davom etayotgan fayl ishini toʻxtatish",
+  "Stop the file work under way, or dismiss what went wrong": "Davom etayotgan fayl ishini toʻxtatish yoki xato xabarini yopish",
   "Stopped after %L1 of %Ln items.": {
     "one": "%Ln ta elementdan %L1 tasi bajarilgach toʻxtatildi.",
     "other": "%Ln ta elementdan %L1 tasi bajarilgach toʻxtatildi."
@@ -433,6 +434,7 @@
   "Undoing…": "Bekor qilinmoqda…",
   "Unmount": "Ajratish",
   "Unpin": "Mahkamlashni bekor qilish",
+  "Unpin the folder, or take the item off the sidebar": "Papkaning mahkamlanishini bekor qilish yoki elementni yon paneldan olib tashlash",
   "Untitled Folder": "Nomsiz papka",
   "Untitled Folder %1": "Nomsiz papka %1",
   "User": "Foydalanuvchi",

@@ -128,6 +128,7 @@
   "Cut": "Klipp ut",
   "Delete": "Slett",
   "Delete for good?": "Slett permanent?",
+  "Delete in the sidebar": "Slett i sidepanelet",
   "Delete permanently (asks first)": "Slett permanent (spør først)",
   "Deleted": "Slettet",
   "Delete…": "Slett…",
@@ -218,7 +219,7 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "Sammenslåing legger innholdet i denne mappen til i den andre. Elementer med samme navn blir erstattet, og de erstattede elementene flyttes til papirkurven.",
   "Modified": "Endret",
   "Mount": "Monter",
-  "Move between the sidebar and the panes": "Bytt mellom sidepanelet og rutene",
+  "Move between the sidebar, the panes and the details": "Flytt mellom sidepanelet, panelene og detaljene",
   "Move the selection": "Flytt markeringen",
   "Move to the trash": "Flytt til papirkurven",
   "Moved only part of %1: %2": "Flyttet bare deler av %1: %2",
@@ -340,7 +341,7 @@
     "one": "Gjenoppretter %Ln element…",
     "other": "Gjenoppretter %Ln elementer…"
   },
-  "Right-click / Alt+⏎": "Høyreklikk / Alt+⏎",
+  "Right-click / Alt+⏎ / Menu": "Høyreklikk / Alt+⏎ / Meny",
   "Scroll": "Rull",
   "Search %1": "Søk i %1",
   "Search %1 and below": "Søk i %1 og undermapper",
@@ -366,7 +367,7 @@
   "Sorted by kind": "Sortert etter type",
   "Sorted by name": "Sortert etter navn",
   "Split into two panes / close the right one": "Del i to paneler / lukk det høyre",
-  "Stop the file work under way": "Stopp pågående filarbeid",
+  "Stop the file work under way, or dismiss what went wrong": "Stopp pågående filarbeid, eller lukk det som gikk galt",
   "Stopped after %L1 of %Ln items.": {
     "one": "Stoppet etter %L1 av %Ln element.",
     "other": "Stoppet etter %L1 av %Ln elementer."
@@ -433,6 +434,7 @@
   "Undoing…": "Angrer…",
   "Unmount": "Avmonter",
   "Unpin": "Løsne",
+  "Unpin the folder, or take the item off the sidebar": "Løsne mappen, eller fjern elementet fra sidepanelet",
   "Untitled Folder": "Mappe uten navn",
   "Untitled Folder %1": "Mappe uten navn %1",
   "User": "Bruker",

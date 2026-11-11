@@ -122,6 +122,7 @@
   "Cut": "剪切",
   "Delete": "删除",
   "Delete for good?": "永久删除？",
+  "Delete in the sidebar": "在侧边栏中删除",
   "Delete permanently (asks first)": "永久删除（会先询问）",
   "Deleted": "已删除",
   "Delete…": "删除…",
@@ -203,7 +204,7 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "合并会把此文件夹中的内容添加到目标文件夹中。内部同名的项目会被替换，被替换的项目会移到回收站。",
   "Modified": "修改时间",
   "Mount": "挂载",
-  "Move between the sidebar and the panes": "在侧边栏和窗格之间切换",
+  "Move between the sidebar, the panes and the details": "在侧边栏、窗格和详细信息之间切换",
   "Move the selection": "移动选择",
   "Move to the trash": "移到回收站",
   "Moved only part of %1: %2": "仅移动了 %1 的一部分：%2",
@@ -312,7 +313,7 @@
   "Restoring %Ln items…": {
     "other": "正在还原 %Ln 个项目…"
   },
-  "Right-click / Alt+⏎": "右击 / Alt+⏎",
+  "Right-click / Alt+⏎ / Menu": "右键单击 / Alt+⏎ / 菜单键",
   "Scroll": "滚动",
   "Search %1": "搜索 %1",
   "Search %1 and below": "搜索 %1 及其子文件夹",
@@ -338,7 +339,7 @@
   "Sorted by kind": "按类型排序",
   "Sorted by name": "按名称排序",
   "Split into two panes / close the right one": "拆分为两个窗格 / 关闭右侧窗格",
-  "Stop the file work under way": "停止正在进行的文件操作",
+  "Stop the file work under way, or dismiss what went wrong": "停止正在进行的文件操作，或关闭错误提示",
   "Stopped after %L1 of %Ln items.": {
     "other": "在第 %L1 个后已停止，共 %Ln 个项目。"
   },
@@ -399,6 +400,7 @@
   "Undoing…": "正在撤销…",
   "Unmount": "卸载",
   "Unpin": "取消固定",
+  "Unpin the folder, or take the item off the sidebar": "取消固定文件夹，或从侧边栏移除该项",
   "Untitled Folder": "未命名文件夹",
   "Untitled Folder %1": "未命名文件夹 %1",
   "User": "用户",
