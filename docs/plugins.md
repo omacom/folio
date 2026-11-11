@@ -431,7 +431,7 @@ item instead, and the chosen item comes in `FOLIO_TARGET` and
 | `detach` | `true` to start it and not wait (see [Running commands](#running-commands)). |
 
 Actions show on files and folders wherever Folio lists real ones, never in a
-view. Those in the menu itself come together after Compress (or Extract, and
+view or in the trash. Those in the menu itself come together after Compress (or Extract, and
 Burn), just before Share; the others are Share's entries. Each lot comes in
 plugin id order, plain entries first and submenus after them, and Share
 itself is left out when none of its entries applies.

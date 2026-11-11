@@ -6,7 +6,7 @@ import QtQuick
 // it, Share (whatever plugins offer for it), Pin, Terminal, Trash. On empty
 // space: Undo, Paste, New Folder, Copy Path, Terminal, hidden files. In the
 // trash: Restore, Empty Trash and Delete…, without the entries that change
-// files. On a plugin's item: Open, and nothing for files. Entries show their
+// files or plugins' actions. On a plugin's item: Open, and nothing for files. Entries show their
 // keys, so the menu also teaches the shortcuts.
 FolioMenu {
     id: fileMenu
@@ -54,7 +54,8 @@ FolioMenu {
         target = clicked
         folder = where
         shifted = fileOps.shiftHeld()
-        actions = forItem && forFiles ? plugins.actionsFor(paths) : []
+        // Not in the trash, where the menu is about getting things back.
+        actions = forItem && forFiles && !trashView ? plugins.actionsFor(paths) : []
         // Empty space among a plugin's items has nothing to offer.
         if (!forItem && !forFiles)
             return
