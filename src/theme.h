@@ -2,9 +2,11 @@
 
 #include <QColor>
 #include <QFileSystemWatcher>
+#include <QFutureWatcher>
 #include <QHash>
 #include <QObject>
 #include <QProcess>
+#include <QSet>
 #include <QTimer>
 
 // The Omarchy palette, followed live. A file manager draws far more surface
@@ -68,6 +70,7 @@ private:
     QColor ink(const QString &key) const { return m_inks.value(key, color(key)); }
     void reload();
     void refreshRounding();
+    void followTransparency();
 
     QString m_directory;
     QHash<QString, QColor> m_colors;
@@ -81,4 +84,8 @@ private:
     int m_radius = 0;
     QProcess m_roundingProcess;
     QTimer m_roundingPoll, m_roundingTimeout;
+    bool m_transparent = false;
+    QSet<QString> m_tagged;
+    QFutureWatcher<QSet<QString>> m_tagging;
+    bool m_tagBusy = false, m_tagAgain = false;
 };

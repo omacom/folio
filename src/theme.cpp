@@ -5,12 +5,15 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
 #include <QStandardPaths>
+#include <QtConcurrent>
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace {
 
@@ -57,6 +60,7 @@ constexpr int lowestAlpha = 192;
 constexpr double readable = 4.5;
 // How far secondary text stays from the foreground, so it still reads quieter.
 constexpr double quieterContrast = 1.25;
+constexpr int hyprctlWaitMs = 1000;
 
 // The worst contrast of `ink` on each ground at `alpha`, over the blur's brightest and darkest backdrop.
 double worstContrast(const QColor &ink, const QList<QColor> &grounds, double alpha, const QColor &tint = {},
@@ -115,6 +119,46 @@ Glass glassFor(QHash<QString, QColor> inks, const QList<QColor> &grounds, const 
         }
     }
     return {};
+}
+
+// Tags Folio's solid windows "transparent" as Omarchy's key does, and untags only those it tagged.
+// hyprctl -j clients: [{"address": "0x55d0c3a1", "pid": 4242, ...}]; getprop: 1 or 0.985; dispatch: ok.
+QSet<QString> tagWindows(const QString &hyprctl, bool transparent, const QSet<QString> &tagged) {
+    const auto run = [&](const QStringList &args) {
+        QProcess process;
+        process.start(hyprctl, args);
+        if (!process.waitForFinished(hyprctlWaitMs)) {
+            process.kill();
+            process.waitForFinished();
+        }
+        return process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0
+                   ? process.readAllStandardOutput().trimmed() : QByteArray();
+    };
+    // Hyprland's Lua dispatcher first, and the classic one on older builds.
+    const auto tag = [&](const QString &window, const QString &change) {
+        return run({"dispatch", QString(R"(hl.dsp.window.tag({ window = "%1", tag = "%2" }))").arg(window, change)}) == "ok"
+               || run({"dispatch", "tagwindow", change, window}) == "ok";
+    };
+    const QJsonDocument clients = QJsonDocument::fromJson(run({"-j", "clients"}));
+    if (!clients.isArray())
+        return tagged;
+    static const QRegularExpression valid("^0x[0-9a-f]+$");
+    QSet<QString> next;
+    for (const auto &value : clients.array()) {
+        const QJsonObject client = value.toObject();
+        const QString address = client.value("address").toString();
+        if (client.value("pid").toInteger() != QCoreApplication::applicationPid() || !valid.match(address).hasMatch())
+            continue;
+        const QString window = "address:" + address;
+        if (tagged.contains(address)) {
+            if (transparent || !tag(window, "-transparent"))
+                next.insert(address);
+        } else if (transparent && run({"getprop", window, "opacity"}).toDouble() == 1
+                   && run({"getprop", window, "opacity_inactive"}).toDouble() == 1 && tag(window, "+transparent")) {
+            next.insert(address);
+        }
+    }
+    return next;
 }
 
 struct Palette {
@@ -176,6 +220,12 @@ Theme::Theme(const QString &directory, QObject *parent, const QString &hyprctl)
             emit changed();
         }
     });
+    connect(&m_tagging, &QFutureWatcher<QSet<QString>>::finished, this, [this] {
+        m_tagged = m_tagging.result();
+        m_tagBusy = false;
+        if (std::exchange(m_tagAgain, false))
+            followTransparency();
+    });
     m_roundingPoll.setInterval(1000);
     connect(&m_roundingPoll, &QTimer::timeout, this, &Theme::refreshRounding);
     if (!m_hyprctl.isEmpty()) {
@@ -190,15 +240,32 @@ Theme::Theme(const QString &directory, QObject *parent, const QString &hyprctl)
                 m_roundingPoll.stop();
             }
         });
+        // A new window is in Hyprland's client list by the time it takes the keyboard.
+        connect(qGuiApp, &QGuiApplication::focusWindowChanged, this, [this](QWindow *window) {
+            if (window)
+                followTransparency();
+        });
     }
     reload();
 }
 
 Theme::~Theme() {
+    m_tagging.waitForFinished();
     if (m_roundingProcess.state() != QProcess::NotRunning) {
         m_roundingProcess.kill();
         m_roundingProcess.waitForFinished(1000);
     }
+}
+
+void Theme::followTransparency() {
+    if (m_hyprctl.isEmpty())
+        return;
+    if (m_tagBusy) {
+        m_tagAgain = true;
+        return;
+    }
+    m_tagBusy = true;
+    m_tagging.setFuture(QtConcurrent::run(tagWindows, m_hyprctl, m_transparent, m_tagged));
 }
 
 void Theme::refreshRounding() {
@@ -272,9 +339,11 @@ void Theme::reload() {
     m_colors = palette.colors;
     m_light = palette.light;
 
-    // Omarchy's own reading of its two files: opaque wins over glassy.
+    // Omarchy's own reading of its two files: opaque wins over glassy, and neither means transparent.
     const bool opaque = QFileInfo::exists(m_toggles + "/window-opaque.lua");
     const bool glassy = !opaque && QFileInfo::exists(m_toggles + "/window-glassy.lua");
+    m_transparent = !opaque && !glassy;
+    followTransparency();
     Glass glass;
     if (glassy)
         glass = glassFor({{"foreground", color("foreground")}, {"bright_foreground", color("bright_foreground")},

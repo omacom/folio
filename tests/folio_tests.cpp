@@ -5916,6 +5916,57 @@ private slots:
         QTRY_VERIFY(theme.glass() < 1);
     }
 
+    void themeOptsItsWindowsInToOmarchysTransparency()
+    {
+        QTemporaryDir root;
+        QVERIFY(QDir(root.path()).mkpath("current/theme") && QDir(root.path()).mkpath("toggles/hypr")
+                && QDir(root.path()).mkpath("bin"));
+        const QString log = root.filePath("bin/log"), clients = root.filePath("bin/clients.json");
+        const QString command = root.filePath("bin/hyprctl");
+        // Folio's see-through 0xb2, another app's 0xc3, Folio's 0xd4 on an older Hyprland, and 0xa1 last.
+        const QByteArray pid = QByteArray::number(QCoreApplication::applicationPid());
+        const QByteArray other = QByteArray::number(QCoreApplication::applicationPid() + 1);
+        write(clients, R"([{"address":"0xb2","pid":)" + pid + R"(},{"address":"0xc3","pid":)" + other
+                           + R"(},{"address":"0xd4","pid":)" + pid + R"(},{"address":"0xa1","pid":)" + pid + "}]");
+        write(command, QString(R"(#!/bin/sh
+echo "$*" >> '%1'
+case "$1 $2" in
+"-j clients") cat '%2' ;;
+"getprop address:0xb2") echo 0.985 ;;
+"getprop address:0xa1") echo 1.0 ;;
+getprop*) echo 1 ;;
+"dispatch hl.dsp"*0xd4*) ;;
+"dispatch tagwindow") [ "$3 $4" = "-transparent address:0xd4" ] || echo ok ;;
+dispatch*) echo ok ;;
+esac
+)").arg(log, clients).toUtf8());
+        QVERIFY(QFile::setPermissions(command, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+
+        Theme theme(root.filePath("current"), nullptr, command);
+        const QByteArray added = R"(window = "address:0xa1", tag = "+transparent")";
+        // 0xa1 comes last, so once its tag is in the log the whole pass is.
+        QTRY_VERIFY(contents(log).contains(added));
+        QVERIFY(contents(log).contains("dispatch tagwindow +transparent address:0xd4"));
+        QVERIFY(!contents(log).contains("0xb2\", tag"));
+        QVERIFY(!contents(log).contains("0xc3"));
+
+        // Glassy takes Folio's tags off again, and only from the windows it tagged.
+        write(root.filePath("toggles/hypr/window-glassy.lua"), "-- glassy\n");
+        QTRY_VERIFY(contents(log).contains(R"(window = "address:0xa1", tag = "-transparent")"));
+        QVERIFY(contents(log).contains("dispatch tagwindow -transparent address:0xd4"));
+        QCOMPARE(contents(log).count(added), 1);
+        QVERIFY(!contents(log).contains("0xb2\", tag"));
+        QVERIFY(!contents(log).contains("0xc3"));
+
+        // Hyprland refused 0xd4's removal, so Folio keeps it as tagged and tries again on the next pass.
+        write(root.filePath("toggles/hypr/window-opaque.lua"), "-- opaque\n");
+        QTRY_VERIFY(contents(log).count("dispatch tagwindow -transparent address:0xd4") > 1);
+        // Passes run one at a time, so 0xd4's third removal means the pass before it is done; 0xa1's held at once.
+        QVERIFY(QFile::remove(root.filePath("toggles/hypr/window-glassy.lua")));
+        QTRY_VERIFY(contents(log).count("dispatch tagwindow -transparent address:0xd4") > 2);
+        QCOMPARE(contents(log).count(R"(window = "address:0xa1", tag = "-transparent")"), 1);
+    }
+
     void translatorFallsBackToEnglish()
     {
         QTemporaryDir dir;
