@@ -298,3 +298,13 @@ QColor Theme::inkOn(const QColor &fill) const {
         return bg;
     return ensureRatio(ratio(bg, fill) >= ratio(fg, fill) ? bg : fg, fill, textFloor);
 }
+
+void Theme::grayText(const std::function<void()> &firstWindow) {
+    // Qt reads it once per process, as the first window is made, so apps opened from Folio don't inherit it.
+    const bool ask = !qEnvironmentVariableIsSet("QSG_DISTANCEFIELD_ANTIALIASING");
+    if (ask)
+        qputenv("QSG_DISTANCEFIELD_ANTIALIASING", "gray");
+    firstWindow();
+    if (ask)
+        qunsetenv("QSG_DISTANCEFIELD_ANTIALIASING");
+}

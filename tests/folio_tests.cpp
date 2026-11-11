@@ -6885,6 +6885,31 @@ private slots:
         QVERIFY(raisedInks > 0);
     }
 
+    void themeAsksForGrayTextOnlyWhileTheFirstWindowIsMade()
+    {
+        const char *name = "QSG_DISTANCEFIELD_ANTIALIASING";
+        const bool wasSet = qEnvironmentVariableIsSet(name);
+        const QByteArray was = qgetenv(name);
+        qunsetenv(name);
+        QByteArray seen;
+        Theme::grayText([&] {
+            seen = qgetenv(name);
+            QQuickWindow window;
+        });
+        QCOMPARE(seen, QByteArray("gray"));
+        QVERIFY(!qEnvironmentVariableIsSet(name));
+
+        // A value set before Folio starts stays, during the first window and after.
+        qputenv(name, "subpixel");
+        Theme::grayText([&] { seen = qgetenv(name); });
+        QCOMPARE(seen, QByteArray("subpixel"));
+        QCOMPARE(qgetenv(name), QByteArray("subpixel"));
+        if (wasSet)
+            qputenv(name, was);
+        else
+            qunsetenv(name);
+    }
+
     void folderMatchStartIsWhereTheSearchMatched()
     {
         QTemporaryDir dir;

@@ -6,6 +6,7 @@
 #include <QObject>
 #include <QProcess>
 #include <QTimer>
+#include <functional>
 
 // The Omarchy palette, followed live. A file manager draws far more surface
 // than a one-tool app, so it reads the whole colors.toml rather than only the
@@ -62,6 +63,9 @@ public:
     QColor accentText() const;
     QColor yellowText() const;
     Q_INVOKABLE QColor inkOn(const QColor &fill) const;
+
+    // Makes the first window with gray text asked for, unless the environment chose: Qt Quick draws new glyphs with LCD fringes, reused ones gray.
+    static void grayText(const std::function<void()> &firstWindow);
 
 signals:
     void changed();

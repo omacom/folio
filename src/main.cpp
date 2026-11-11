@@ -108,7 +108,7 @@ static int preview(QGuiApplication &app) {
     engine.rootContext()->setContextProperty("translator", &translator);
     engine.rootContext()->setContextProperty("theme", &theme);
     engine.rootContext()->setContextProperty("previewer", &previewer);
-    engine.load(QUrl("qrc:/PreviewWindow.qml"));
+    Theme::grayText([&engine] { engine.load(QUrl("qrc:/PreviewWindow.qml")); });
     if (engine.rootObjects().isEmpty())
         return 1;
     return app.exec();
@@ -152,7 +152,9 @@ int main(int argc, char *argv[]) {
     engine.rootContext()->setContextProperty("plugins", &plugins);
 
     Windows windows(&engine, &plugins);
-    if (!windows.open(start, select))
+    bool opened = false;
+    Theme::grayText([&] { opened = windows.open(start, select) != nullptr; });
+    if (!opened)
         return 1;
     FileManager1::registerOn(&windows);
 
