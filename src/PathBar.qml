@@ -113,10 +113,16 @@ Rectangle {
                     translator.language
                     return backend.crumbs.length > 0 ? backend.crumbs[backend.crumbs.length - 1].name : ""
                 }
+                // Once the results for what is typed are in, how many there are.
+                readonly property bool settled: backend.folder.query.length > 0 && backend.folder.query === searchField.text.trim()
+                                                && !backend.folder.loading && backend.folder.error.length === 0
                 anchors.right: parent.right
                 anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
-                text: backend.path.startsWith("plugin:") ? qsTr("Search %1").arg(here) : qsTr("Search %1 and below").arg(here)
+                text: backend.path.startsWith("plugin:") ? qsTr("Search %1").arg(here)
+                    : !settled ? qsTr("Search %1 and below").arg(here)
+                    : backend.folder.count >= backend.folder.searchLimit ? qsTr("%Ln or more found in %1 and below", "", backend.folder.count).arg(here)
+                    : qsTr("%Ln found in %1 and below", "", backend.folder.count).arg(here)
                 color: theme.secondaryForeground
                 font.pixelSize: 12
             }

@@ -6631,6 +6631,22 @@ private slots:
         QVERIFY(!QFile::exists(from.filePath("near.txt")));
     }
 
+    void folderSearchLimitIsWhatTheSearchStopsAt()
+    {
+        // The search field reads a count at this limit as "or more", so it must be the one the search uses.
+        QTemporaryDir dir;
+        for (int i = 0; i < FolderModel::maxSearchResults + 1; ++i)
+            write(dir.filePath(QString("match-%1.txt").arg(i)), "");
+        // Through the model's own query, the count stops at the limit the field reads.
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        model.setQuery("match");
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), model.property("searchLimit").toInt());
+    }
+
 private:
     // Packs `items`, from `folder`, into `archive`, its kind from its name.
     static void pack(const QString &archive, const QString &folder, const QStringList &items)

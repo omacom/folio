@@ -36,6 +36,10 @@
     "one": "%Ln folder",
     "other": "%Ln folders"
   },
+  "%Ln found in %1 and below": {
+    "one": "%Ln found in %1 and below",
+    "other": "%Ln found in %1 and below"
+  },
   "%Ln items": {
     "one": "%Ln item",
     "other": "%Ln items"
@@ -47,6 +51,10 @@
   "%Ln items will be deleted permanently. This can't be undone.": {
     "one": "%Ln item will be deleted permanently. This can't be undone.",
     "other": "%Ln items will be deleted permanently. This can't be undone."
+  },
+  "%Ln or more found in %1 and below": {
+    "one": "%Ln or more found in %1 and below",
+    "other": "%Ln or more found in %1 and below"
   },
   "A folder, or a server's address like sftp://host/": "A folder, or a server's address like sftp://host/",
   "A name can't contain \"/\".": "A name can't contain \"/\".",

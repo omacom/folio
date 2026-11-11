@@ -34,6 +34,8 @@ class FolderModel : public QAbstractListModel {
     Q_PROPERTY(int selectedFolderCount READ selectedFolderCount NOTIFY selectionChanged)
     // The items a plugin's view lists, as Plugins::views gives them.
     Q_PROPERTY(QVariantList items READ items WRITE setItems NOTIFY itemsChanged)
+    // A search stops at this many matches, so a count this high may be cut.
+    Q_PROPERTY(int searchLimit READ searchLimit CONSTANT)
 
 public:
     enum Role {
@@ -149,8 +151,10 @@ public:
     // named by its path from `root`. Stops at `limit` matches, at other
     // filesystems and at symlinks, and as soon as `stop` returns true.
     static QVector<Entry> search(const QString &root, const QString &query, bool showHidden, const QString &sort,
-                                 const std::function<bool()> &stop = {}, int limit = 1000,
+                                 const std::function<bool()> &stop = {}, int limit = maxSearchResults,
                                  const QLocale &locale = QLocale());
+    static constexpr int maxSearchResults = 1000;
+    int searchLimit() const { return maxSearchResults; }
 
 signals:
     void pathChanged();
