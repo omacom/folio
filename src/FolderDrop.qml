@@ -34,9 +34,11 @@ FileDrop {
         border.color: theme.accent
         radius: Math.min(6, theme.radius)
         Text {
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: 12
+            // A dragged tile's picture hangs 52 px below the pointer, so the label sits 8 px under that.
+            readonly property int belowPointer: 60
+            readonly property int edgeMargin: 12
+            x: Math.max(edgeMargin, Math.min(parent.width - width - edgeMargin, area.drag.x - parent.x - width / 2))
+            y: Math.max(edgeMargin, Math.min(parent.height - height - edgeMargin, area.drag.y - parent.y + belowPointer))
             text: area.copies ? qsTr("Copy here") : qsTr("Move here")
             color: theme.secondaryForeground
             font.pixelSize: 12
