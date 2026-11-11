@@ -54,7 +54,13 @@ Item {
     // when mirrored.
     function revealEnd() { flick.contentX = view.LayoutMirroring.enabled ? 0 : Math.max(0, flick.contentWidth - flick.width) }
     LayoutMirroring.onEnabledChanged: revealEnd()
-    function enter() { if (view.selected.isDir) backend.navigate(view.selected.path) }
+    // Only into a folder with something in it, as in the Finder: in an empty
+    // one there'd be nothing for the cursor to land on, and the only thing
+    // still lit would be the sidebar's place. (Still being read, it goes in.)
+    function enter() {
+        if (view.selected.isDir && (insideFolder.loading || insideFolder.count > 0))
+            backend.navigate(view.selected.path)
+    }
 
     component Separator: Rectangle { width: 1; height: parent ? parent.height : 0; color: Qt.alpha(theme.foreground, 0.1) }
     // Files dropped in a column land in the folder it shows. It lies over
