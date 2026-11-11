@@ -59,6 +59,8 @@ constexpr int bisectionSteps = 18;
 constexpr int channelRange = 255;
 // WCAG's minimum contrast for marks and frames, which aren't text.
 constexpr double markFloor = 3;
+// The pin box's accent tint in Sidebar.qml while a drop hovers it, the strongest ground under its words.
+constexpr double strongestPinTint = 0.22;
 
 // The ink when it already reads at need, else the least mix toward black or white that still does once rounded.
 QColor ensureRatio(const QColor &ink, const QColor &ground, double need) {
@@ -271,4 +273,13 @@ QColor Theme::disabledForeground() const {
 // Red as words, raised to 4.5:1 on the background; fills keep the theme's own red.
 QColor Theme::redText() const {
     return ensureRatio(red(), background(), textFloor);
+}
+
+// The accent as words, raised to textFloor on the background, the preview window and the pin box's strongest tint.
+QColor Theme::accentText() const {
+    const QColor bg = background(), tint = mix(bg, accent(), strongestPinTint);
+    QColor ink = accent();
+    for (const QColor &ground : {bg, darkBackground(), tint})
+        ink = ensureRatio(ink, ground, textFloor);
+    return ink;
 }

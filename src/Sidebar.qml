@@ -360,6 +360,7 @@ Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: 34
                 visible: sidebar.dragging
+                // Theme's accentText floors on this 0.22 tint, so the two change together.
                 color: Qt.alpha(theme.accent, pinDrop.containsDrag ? 0.22 : 0.08)
                 border.width: pinDrop.containsDrag ? 2 : 1
                 border.color: theme.accentMark
@@ -367,7 +368,7 @@ Rectangle {
                 Text {
                     anchors.centerIn: parent
                     text: qsTr("Drop to pin")
-                    color: theme.accent
+                    color: theme.accentText
                     font.pixelSize: 12
                 }
                 DropArea {

@@ -32,6 +32,7 @@ class Theme : public QObject {
     Q_PROPERTY(QColor quietMark READ quietMark NOTIFY changed)
     Q_PROPERTY(QColor disabledForeground READ disabledForeground NOTIFY changed)
     Q_PROPERTY(QColor redText READ redText NOTIFY changed)
+    Q_PROPERTY(QColor accentText READ accentText NOTIFY changed)
 
 public:
     explicit Theme(const QString &currentDirectory = {}, QObject *parent = nullptr, const QString &hyprctl = {});
@@ -57,6 +58,7 @@ public:
     QColor quietMark() const;
     QColor disabledForeground() const;
     QColor redText() const;
+    QColor accentText() const;
 
 signals:
     void changed();

@@ -6729,6 +6729,22 @@ private slots:
         QCOMPARE(passing.redText(), QColor("#f38ba8"));
     }
 
+    void themeFloorsAccentText()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("theme");
+        write(dir.filePath("theme/colors.toml"), roseDawn);
+        Theme low(dir.path());
+        const QColor pinTint = blend(low.background(), low.accent(), 0.22);
+        for (const QColor &ground : {low.background(), low.darkBackground(), pinTint})
+            QVERIFY(contrast(low.accentText(), ground) >= 4.5);
+        QVERIFY(snug(low.accentText(), {low.background(), low.darkBackground(), pinTint}, 4.5));
+        QCOMPARE(low.accent(), QColor("#56949f"));
+        write(dir.filePath("theme/colors.toml"), mocha);
+        Theme passing(dir.path());
+        QCOMPARE(passing.accentText(), QColor("#89b4fa"));
+    }
+
 private:
     // Packs `items`, from `folder`, into `archive`, its kind from its name.
     static void pack(const QString &archive, const QString &folder, const QStringList &items)

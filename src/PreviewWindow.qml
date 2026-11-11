@@ -383,7 +383,7 @@ ApplicationWindow {
                 Text {
                     Layout.alignment: Qt.AlignHCenter
                     text: win.item.extension || ""
-                    color: theme.accent
+                    color: theme.accentText
                     font.weight: Font.DemiBold
                 }
                 Text {
