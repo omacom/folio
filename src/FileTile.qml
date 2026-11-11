@@ -74,7 +74,7 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         width: parent.width - 28
         text: tile.name
-        color: tile.current ? theme.accent : theme.foreground
+        color: tile.current ? theme.brightForeground : theme.foreground
         font.pixelSize: 12
         horizontalAlignment: Text.AlignHCenter
         wrapMode: Text.WrapAtWordBoundaryOrAnywhere
@@ -101,7 +101,7 @@ Item {
             const date = tile.isDir ? "" : Format.when(tile.modified)
             return size && date ? qsTr("%1 · %2").arg(size).arg(date) : size || date
         }
-        color: theme.secondaryForeground
+        color: tile.current ? theme.foreground : theme.secondaryForeground
         font.pixelSize: 10
         horizontalAlignment: Text.AlignHCenter
         elide: Text.ElideRight

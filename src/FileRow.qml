@@ -117,7 +117,7 @@ Item {
             Layout.minimumWidth: 120
             horizontalAlignment: Text.AlignLeft
             text: row.name
-            color: row.current ? theme.accent : theme.foreground
+            color: row.current ? theme.brightForeground : theme.foreground
             elide: Text.ElideMiddle
         }
         Text {
@@ -125,7 +125,7 @@ Item {
             Layout.preferredWidth: 96
             horizontalAlignment: Text.AlignRight
             text: row.kind === "item" ? row.extension : row.isDir ? Format.count(row.itemCount) : Format.size(row.size)
-            color: theme.secondaryForeground
+            color: row.current ? theme.foreground : theme.secondaryForeground
             font.pixelSize: 12
         }
         Text {
@@ -137,7 +137,7 @@ Item {
                 translator.language // Re-read when the language (and so the default locale) changes.
                 return Format.when(row.modified)
             }
-            color: theme.secondaryForeground
+            color: row.current ? theme.foreground : theme.secondaryForeground
             font.pixelSize: 12
             elide: Text.ElideRight
         }
