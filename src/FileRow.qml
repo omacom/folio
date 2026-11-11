@@ -50,6 +50,7 @@ Item {
                                   : row.kind === "video" ? "videos"
                                   : row.kind === "audio" ? "music"
                                   : row.kind === "pdf" || row.kind === "text" ? "documents"
+                                  : row.kind === "archive" ? "archive"
                                   : "file"
 
     // A folder row takes files dropped on it, lighting up while they hover.

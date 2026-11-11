@@ -59,7 +59,8 @@ Item {
         case "videos": return box(3, 5, 18, 14, r) + "M10 9v6l5-3z"
         case "recent": return circle(12, 12, 9) + "M12 7v5l3 2"
         case "trash": return "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"
-        case "drive": return box(3, 6, 18, 12, r) + "M7 14h2"
+        // A drive seen from the front: a sloped top over a box with a light.
+        case "drive": return "M3 12l4-7h10l4 7" + box(3, 12, 18, 7, r) + "M7 15.5h2"
         case "eject": return "M12 5l7 8H5zM5 18h14"
         case "peer": return box(4, 4, 16, 11, r) + "M9 20h6M12 15v5"
         // Machines joined to one another: a network of them.
@@ -68,7 +69,8 @@ Item {
         case "back": return "M15 6l-6 6 6 6"
         case "forward": return "M9 6l6 6-6 6"
         case "grid": return box(4, 4, 6, 6, r / 2) + box(14, 4, 6, 6, r / 2) + box(4, 14, 6, 6, r / 2) + box(14, 14, 6, 6, r / 2)
-        case "list": return "M4 6h16M4 12h16M4 18h16"
+        // Bulleted, so it reads as a list of files rather than a menu.
+        case "list": return "M9 6h11M9 12h11M9 18h11M4 6h1M4 12h1M4 18h1"
         case "columns": return box(3, 4, 18, 16, r) + "M9 4v16M15 4v16"
         case "preview": return box(3, 5, 18, 14, r) + "M14 5v14"
         case "split": return box(3, 5, 8, 14, r / 2) + box(13, 5, 8, 14, r / 2)
@@ -83,6 +85,8 @@ Item {
         case "play": return "M8 5v14l11-7z"
         case "pause": return "M8 5v14M16 5v14"
         case "open": return "M14 4h6v6M20 4l-9 9M18 14v6H4V6h6"
+        // A storage box: a lid over an open body with a handle.
+        case "archive": return box(3, 4, 18, 4, r / 2) + (r > 0 ? "M5 8V17Q5 19 7 19H17Q19 19 19 17V8" : "M5 8v11h14V8") + "M10 12h4"
         case "audio": return "M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"
         case "check": return "M5 12l5 5 9-10"
         case "close": return "M6 6l12 12M18 6L6 18"
