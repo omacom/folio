@@ -115,7 +115,7 @@ Rectangle {
             Text {
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignLeft
-                text: pane.many ? qsTr("%Ln items selected", "", pane.many) : pane.item.name || ""
+                text: pane.many ? qsTr("%Ln items selected", "", pane.many) : pane.item.fileName || ""
                 color: theme.brightForeground
                 font.pixelSize: 15
                 font.weight: Font.DemiBold
@@ -152,6 +152,16 @@ Rectangle {
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignRight
                 text: pane.trashed ? pane.homeless(pane.origin.replace(/\/[^\/]*$/, "") || "/") : ""
+                color: theme.foreground
+                font.pixelSize: 12
+                elide: Text.ElideMiddle
+            }
+            Text { visible: !!pane.item.folder; text: qsTr("Folder"); color: theme.secondaryForeground; font.pixelSize: 12 }
+            Text {
+                visible: !!pane.item.folder
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignRight
+                text: pane.item.folder || ""
                 color: theme.foreground
                 font.pixelSize: 12
                 elide: Text.ElideMiddle

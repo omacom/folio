@@ -23,6 +23,8 @@ Item {
     required property var size
     required property var modified
     required property bool selected
+    required property string fileName
+    required property string folder
 
     property bool current: false
     // In a pane the keys don't go to: the selection is drawn without the accent.
@@ -77,7 +79,7 @@ Item {
         anchors.topMargin: 12
         anchors.horizontalCenter: parent.horizontalCenter
         width: parent.width - 28
-        text: tile.name
+        text: tile.fileName
         color: tile.current ? theme.brightForeground : theme.foreground
         font.pixelSize: 12
         horizontalAlignment: Text.AlignHCenter
@@ -103,7 +105,9 @@ Item {
             // A folder's own date says little (it changes when anything in
             // it is added or removed), so only files show one.
             const date = tile.isDir ? "" : Format.when(tile.modified)
-            return size && date ? qsTr("%1 · %2").arg(size).arg(date) : size || date
+            const rest = size && date ? qsTr("%1 · %2").arg(size).arg(date) : size || date
+            // Both in one arg() call, so a "%2" in a folder's name stays as written.
+            return tile.folder && rest ? qsTr("%1 · %2").arg(tile.folder, rest) : tile.folder || rest
         }
         color: tile.current ? theme.foreground : theme.secondaryForeground
         font.pixelSize: 10

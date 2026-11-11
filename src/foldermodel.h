@@ -48,6 +48,8 @@ public:
         ItemCountRole,
         SelectedRole,
         IconRole,
+        FileNameRole,
+        FolderRole,
     };
 
     struct Entry {
@@ -66,6 +68,8 @@ public:
         int itemCount = -1;
         // The first pictures in a folder, for the preview window.
         QStringList peek;
+        // A search result's folder, from the searched one; empty when it is there.
+        QString folder;
     };
 
     explicit FolderModel(QObject *parent = nullptr);

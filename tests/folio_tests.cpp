@@ -6087,6 +6087,95 @@ private slots:
         QCOMPARE(model.selectedSize(), qint64(9));
     }
 
+    void folderSearchNamesTheFileAndItsFolder()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("Raw/Takes\\One");
+        QDir(dir.path()).mkpath(QString::fromUtf8("A\u2215B/Deep/Down"));
+        write(dir.filePath("harbour.txt"), "x");
+        write(dir.filePath("Raw/Takes\\One/harbour.mp4"), "x");
+        write(dir.filePath(QString::fromUtf8("A\u2215B/Deep/Down/harbour.jpg")), "x");
+
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QVERIFY(model.get(0).value("folder").toString().isEmpty());
+        model.setQuery("harbour");
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 3);
+
+        // The name stays the path from the searched folder; fileName and folder split it, no folder for one found here.
+        auto at = [&](const QString &name) { return model.get(model.indexOf(name)); };
+        const QString deep = QString::fromUtf8("A\u2215B/Deep/Down/harbour.jpg");
+        QCOMPARE(at(deep).value("fileName").toString(), QString("harbour.jpg"));
+        QCOMPARE(at(deep).value("folder").toString(), QString::fromUtf8("A\u2215B/Deep/Down"));
+        QCOMPARE(at("Raw/Takes\\One/harbour.mp4").value("fileName").toString(), QString("harbour.mp4"));
+        QCOMPARE(at("Raw/Takes\\One/harbour.mp4").value("folder").toString(), QString("Raw/Takes\\One"));
+        QCOMPARE(at("harbour.txt").value("fileName").toString(), QString("harbour.txt"));
+        QVERIFY(at("harbour.txt").value("folder").toString().isEmpty());
+        const QModelIndex row = model.index(model.indexOf(deep));
+        QCOMPARE(model.data(row, FolderModel::FileNameRole).toString(), QString("harbour.jpg"));
+        QCOMPARE(model.data(row, FolderModel::FolderRole).toString(), QString::fromUtf8("A\u2215B/Deep/Down"));
+
+        // A plugin's item goes by its own name, even one with a slash in it.
+        const QVariantMap share{{"id", "nas"}, {"name", "nas/backup"}, {"path", "/mnt/nas/backup"}};
+        const auto item = FolderModel::toMap(FolderModel::listItems({share}).at(0));
+        QCOMPARE(item.value("fileName").toString(), QString("nas/backup"));
+        QVERIFY(item.value("folder").toString().isEmpty());
+    }
+
+    void searchResultTileKeepsAPercentInItsFolder()
+    {
+        // A "%2" in a result's folder stays as written, not taken for the size and date's place.
+        FileOps ops;
+        const std::unique_ptr<QQmlPropertyMap> theme(QQmlPropertyMap::create());
+        const std::unique_ptr<QQmlPropertyMap> translator(QQmlPropertyMap::create());
+        const std::unique_ptr<QQmlPropertyMap> backend(QQmlPropertyMap::create());
+        const std::unique_ptr<QQmlPropertyMap> folder(QQmlPropertyMap::create());
+        for (const char *role : {"accent", "foreground", "brightForeground", "secondaryForeground", "lighterBackground",
+                                 "darkBackground", "background", "red", "blue", "magenta", "orange", "yellow", "cyan"})
+            theme->insert(role, QColor(Qt::gray));
+        theme->insert("radius", 0);
+        translator->insert("language", "en");
+        folder->insert("selectedCount", 0);
+        backend->insert("folder", QVariant::fromValue<QObject *>(folder.get()));
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("fileOps", &ops);
+        engine.rootContext()->setContextProperty("theme", theme.get());
+        engine.rootContext()->setContextProperty("translator", translator.get());
+        engine.rootContext()->setContextProperty("backend", backend.get());
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window {\n"
+                          "    width: 200; height: 200; visible: true\n"
+                          "    GridView {\n"
+                          "        anchors.fill: parent; cellWidth: 200; cellHeight: 200; model: 1\n"
+                          "        delegate: FileTile {\n"
+                          "            width: 200; height: 200; name: 'a%2b/notes.bin'; fileName: 'notes.bin'; folder: 'a%2b'\n"
+                          "            path: '/nowhere/a%2b/notes.bin'; isDir: false; kind: 'file'; mime: 'application/octet-stream'\n"
+                          "            extension: 'bin'; itemCount: 0; icon: ''; size: 4096; modified: new Date(); selected: false\n"
+                          "        }\n"
+                          "    }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(QFINDTESTDATA("../src/FileTile.qml") + ".test.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+
+        QStringList texts;
+        std::function<void(QQuickItem *)> collect = [&](QQuickItem *item) {
+            if (item->isVisible() && !item->property("text").toString().isEmpty())
+                texts << item->property("text").toString();
+            for (QQuickItem *child : item->childItems())
+                collect(child);
+        };
+        collect(window->contentItem());
+        const QString line = QString::fromUtf8("a%2b · ") + QLocale().toString(4.096, 'f', 1) + " KB";
+        QVERIFY2(texts.contains(line), qPrintable(texts.join(" | ")));
+    }
+
 private:
     // Packs `items`, from `folder`, into `archive`, its kind from its name.
     static void pack(const QString &archive, const QString &folder, const QStringList &items)

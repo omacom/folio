@@ -20,6 +20,8 @@ Item {
     required property int itemCount
     required property string icon
     required property bool selected
+    required property string fileName
+    required property string folder
 
     property bool current: false
     // In a pane the keys don't go to: the selection is drawn without the accent.
@@ -120,8 +122,17 @@ Item {
             Layout.fillWidth: true
             Layout.minimumWidth: 120
             horizontalAlignment: Text.AlignLeft
-            text: row.name
+            text: row.fileName
             color: row.current ? theme.brightForeground : theme.foreground
+            elide: Text.ElideMiddle
+        }
+        Text {
+            visible: row.folder.length > 0
+            Layout.maximumWidth: Math.round(row.width / 3)
+            horizontalAlignment: Text.AlignLeft
+            text: row.folder
+            color: theme.secondaryForeground
+            font.pixelSize: 12
             elide: Text.ElideMiddle
         }
         Text {
