@@ -24,6 +24,8 @@ Item {
     required property bool expanded
 
     property bool current: false
+    // Cut and not yet pasted: drawn in the colour of a disabled menu entry.
+    readonly property bool cut: fileOps.cutCount > 0 && fileOps.isCut(path)
     // In a column to the left: the folder the next column is showing.
     property bool trail: false
     property bool detailed: false
@@ -140,7 +142,7 @@ Item {
                 visible: !thumb.visible
                 name: row.glyph
                 size: 16
-                color: row.isDir ? theme.accent : theme.secondaryForeground
+                color: row.isDir && !row.cut ? theme.accent : theme.secondaryForeground
             }
         }
         // The name and the date are aligned explicitly, so that they're
@@ -151,7 +153,7 @@ Item {
             Layout.minimumWidth: 120
             horizontalAlignment: Text.AlignLeft
             text: row.name
-            color: row.current ? theme.accent : theme.foreground
+            color: row.cut ? theme.secondaryForeground : row.current ? theme.accent : theme.foreground
             elide: Text.ElideMiddle
         }
         // The size and date columns grow with the text, so the system's text
