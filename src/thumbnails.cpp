@@ -162,7 +162,10 @@ QImage Thumbnails::load(const QString &path, const QString &mime, int size) cons
     const int pixels = bucketPixels(bucketFor(size));
     QImage image = generate(path, mime, pixels);
     if (image.isNull()) {
-        rememberFailure(path);
+        // With nothing installed that reads the type the file is not broken: it is tried again once something is.
+        const bool qtReads = mime.startsWith("image/") && QImageReader::supportedMimeTypes().contains(mime.toLatin1());
+        if (qtReads || m_thumbnailers.contains(mime))
+            rememberFailure(path);
         return {};
     }
     if (image.width() > pixels || image.height() > pixels)

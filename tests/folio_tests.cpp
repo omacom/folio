@@ -527,6 +527,34 @@ private slots:
         QVERIFY(QFile::exists(dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(dir.filePath("clip.mp4")))));
     }
 
+    void thumbnailsWaitForAMissingThumbnailer()
+    {
+        QTemporaryDir dir;
+        const QString part = dir.filePath("part.step"), broken = dir.filePath("broken.png");
+        write(part, "not a picture");
+        write(broken, "not a picture");
+        QImage picture(64, 32, QImage::Format_RGB32);
+        picture.fill(Qt::green);
+        QVERIFY(picture.save(dir.filePath("picture.png")));
+        const auto failed = [&](const QString &path) { return QFile::exists(dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(path))); };
+
+        // Nothing here reads these types: no picture, and no failure marker.
+        const Thumbnails before(dir.filePath("cache"), {dir.filePath("specs")});
+        QVERIFY(before.load(part, "model/step", 128).isNull() && !failed(part));
+        QVERIFY(before.load(part, "image/x-no-reader", 128).isNull() && !failed(part));
+        // Qt PDF, where installed, lists this type, but only pictures are handed to Qt's readers.
+        QVERIFY(before.load(part, "application/pdf", 128).isNull() && !failed(part));
+        // Qt reads PNG, so this one is a broken file.
+        QVERIFY(before.load(broken, "image/png", 128).isNull() && failed(broken));
+
+        // Once a thumbnailer is installed, the next launch makes the thumbnail.
+        QVERIFY(QDir(dir.path()).mkdir("specs"));
+        write(dir.filePath("specs/step.thumbnailer"),
+              "[Thumbnailer Entry]\nTryExec=/bin/cp\nExec=/bin/cp \"" + dir.filePath("picture.png").toUtf8()
+                  + "\" %o\nMimeType=model/step;\n");
+        QCOMPARE(Thumbnails(dir.filePath("cache"), {dir.filePath("specs")}).load(part, "model/step", 128).size(), QSize(64, 32));
+    }
+
     void previewerPicksAViewerForEachType()
     {
         QCOMPARE(Previewer::viewerFor("image/png", false), QString("image"));
