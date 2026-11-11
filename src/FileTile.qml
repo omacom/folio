@@ -32,6 +32,8 @@ Item {
     // Pictures and drawings round their corners with the theme: square on
     // Omarchy's default, softly rounded on themes that round windows.
     readonly property real iconRadius: Math.min(10, theme.radius)
+    // With nothing selected, keys act on the cursor's item.
+    readonly property bool cursor: GridView.isCurrentItem && backend.folder.selectedCount === 0
 
     // The badge and stand-in color for each kind, from the theme's palette.
     readonly property color kindColor: kind === "pdf" ? theme.red
@@ -178,8 +180,8 @@ Item {
                 fillColor: tile.current || folderDrop.containsDrag ? Qt.tint(theme.lighterBackground, Qt.alpha(theme.accent, 0.3))
                     : hover.hovered ? Qt.tint(theme.lighterBackground, Qt.alpha(theme.foreground, 0.06))
                     : theme.lighterBackground
-                strokeColor: tile.current || folderDrop.containsDrag ? theme.accent : "transparent"
-                strokeWidth: folderDrop.containsDrag ? 2.5 : 1.5
+                strokeColor: tile.current || tile.cursor || folderDrop.containsDrag ? theme.accent : "transparent"
+                strokeWidth: folderDrop.containsDrag ? 2.5 : tile.cursor ? 1 : 1.5
                 joinStyle: tile.iconRadius > 0 ? ShapePath.RoundJoin : ShapePath.MiterJoin
                 PathSvg { path: tile.folderPath(tile.iconRadius) }
             }
@@ -257,14 +259,14 @@ Item {
                 return Qt.rect((w - 66) / 2, 0, 66, h)
             }
             Rectangle {
-                visible: tile.current || hover.hovered
+                visible: tile.current || tile.cursor || hover.hovered
                 x: parent.shown.x - 3
                 y: parent.shown.y - 3
                 width: parent.shown.width + 6
                 height: parent.shown.height + 6
                 color: "transparent"
                 border.width: tile.current ? 2 : 1
-                border.color: tile.current ? theme.accent : Qt.alpha(theme.foreground, 0.2)
+                border.color: tile.current || tile.cursor ? theme.accent : Qt.alpha(theme.foreground, 0.2)
                 radius: tile.iconRadius > 0 ? tile.iconRadius + 3 : 0
             }
         }
@@ -283,12 +285,12 @@ Item {
                 color: tile.current ? theme.accent : theme.foreground
             }
             Rectangle {
-                visible: tile.current || hover.hovered
+                visible: tile.current || tile.cursor || hover.hovered
                 anchors.fill: computer
                 anchors.margins: -3
                 color: "transparent"
                 border.width: tile.current ? 2 : 1
-                border.color: tile.current ? theme.accent : Qt.alpha(theme.foreground, 0.2)
+                border.color: tile.current || tile.cursor ? theme.accent : Qt.alpha(theme.foreground, 0.2)
                 radius: tile.iconRadius > 0 ? tile.iconRadius + 3 : 0
             }
         }

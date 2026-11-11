@@ -37,6 +37,8 @@ Item {
     // for it.)
     readonly property bool showDate: detailed && width >= 480
     readonly property bool showSize: detailed && width >= 380
+    // With nothing selected, keys act on the cursor's item; only the folder being shown has one.
+    readonly property bool cursor: ListView.isCurrentItem && ListView.view.model === backend.folder && backend.folder.selectedCount === 0
 
     readonly property string glyph: row.isDir ? "folder"
                                   : row.kind === "item" ? row.icon
@@ -61,7 +63,7 @@ Item {
         anchors.leftMargin: 4
         anchors.rightMargin: 4
         radius: Math.min(4, theme.radius)
-        border.width: folderDrop.containsDrag ? 2 : 0
+        border.width: folderDrop.containsDrag ? 2 : row.cursor ? 1 : 0
         border.color: theme.accent
         color: row.current || folderDrop.containsDrag ? Qt.alpha(theme.accent, 0.18)
              : row.trail ? Qt.alpha(theme.foreground, 0.08)
