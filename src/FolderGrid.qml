@@ -109,5 +109,15 @@ GridView {
         text: backend.folder.query ? qsTr("Nothing matches “%1”").arg(backend.folder.query)
             : plugins.views[backend.path] ? plugins.views[backend.path].empty : qsTr("This folder is empty")
         color: theme.secondaryForeground
+        // The way out of a search that found nothing.
+        Text {
+            anchors.top: parent.bottom
+            anchors.topMargin: 6
+            anchors.horizontalCenter: parent.horizontalCenter
+            visible: backend.folder.query.length > 0
+            text: qsTr("Escape ends the search")
+            color: theme.secondaryForeground
+            font.pixelSize: 12
+        }
     }
 }

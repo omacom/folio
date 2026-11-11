@@ -187,6 +187,15 @@ Item {
                     visible: here.count === 0 && !backend.folder.loading && backend.folder.error.length === 0
                     text: backend.folder.query ? qsTr("No matches") : qsTr("No items")
                     color: theme.secondaryForeground
+                    Text {
+                        anchors.top: parent.bottom
+                        anchors.topMargin: 6
+                        anchors.left: parent.left
+                        visible: backend.folder.query.length > 0
+                        text: qsTr("Escape ends the search")
+                        color: theme.secondaryForeground
+                        font.pixelSize: 12
+                    }
                 }
             }
             Separator { }
