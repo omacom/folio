@@ -207,23 +207,23 @@ void FolderModel::setPath(const QString &path) {
 }
 
 QString FolderModel::kindForMime(const QString &mime) {
-    if (mime == "inode/directory") return "folder";
-    if (mime == "application/pdf") return "pdf";
-    if (mime.startsWith("image/")) return "image";
-    if (mime.startsWith("video/")) return "video";
-    if (mime.startsWith("audio/")) return "audio";
+    if (mime == "inode/directory") return QStringLiteral("folder");
+    if (mime == "application/pdf") return QStringLiteral("pdf");
+    if (mime.startsWith("image/")) return QStringLiteral("image");
+    if (mime.startsWith("video/")) return QStringLiteral("video");
+    if (mime.startsWith("audio/")) return QStringLiteral("audio");
     // Anything readable as text (source code, config, JSON, Ruby, ...) is
     // text, whatever its own type is called.
     static const QMimeDatabase types;
     if (mime.startsWith("text/") || types.mimeTypeForName(mime).inherits("text/plain"))
-        return "text";
+        return QStringLiteral("text");
     static const QStringList archives{"application/zip", "application/x-tar", "application/gzip",
                                       "application/x-xz", "application/zstd", "application/x-7z-compressed",
                                       "application/x-compressed-tar", "application/x-zstd-compressed-tar",
                                       "application/vnd.rar", "application/x-iso9660-image"};
     // Every compressed tar too: .tar.xz, .tar.bz2, .tar.lz4 and the rest.
-    if (archives.contains(mime) || mime.endsWith("-compressed-tar")) return "archive";
-    return "other";
+    if (archives.contains(mime) || mime.endsWith("-compressed-tar")) return QStringLiteral("archive");
+    return QStringLiteral("other");
 }
 
 // Everything in a folder (sockets and broken links too), the hidden only
@@ -256,12 +256,20 @@ QVector<FolderModel::Entry> FolderModel::list(const QString &path, bool showHidd
     // Extension-only matching: reading every file's header would make large
     // folders and network mounts crawl.
     QMimeDatabase mimes;
+    // One string per type and extension, shared by every entry that has it.
+    QSet<QString> shared;
     QDirIterator it(path, entryFilters(showHidden));
     while (it.hasNext()) {
         if (stop && stop())
             return {};
-        entries.push_back(entryFor(it.nextFileInfo(), mimes));
+        Entry e = entryFor(it.nextFileInfo(), mimes);
+        e.mime = *shared.insert(e.mime);
+        if (!e.extension.isEmpty())
+            e.extension = *shared.insert(e.extension);
+        entries.push_back(std::move(e));
     }
+    // Growing left room for many more entries than were read; the listing is kept, so give it back.
+    entries.squeeze();
     sortEntries(entries, sort, locale);
     return entries;
 }

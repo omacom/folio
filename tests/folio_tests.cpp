@@ -537,6 +537,33 @@ private slots:
         QCOMPARE(names(QLocale("en_US")), QStringList({"åsa.txt", "zeta.txt"}));
     }
 
+    void folderSharesEachTypeAcrossAListing()
+    {
+        // A listing holds one string per type and extension, and no room for entries it never read.
+        QTemporaryDir dir;
+        for (const char *name : {"a.txt", "b.txt", "c.TXT", "d.png", "e.png", "README", "f"})
+            write(dir.filePath(name), "x");
+        QDir(dir.path()).mkdir("sub");
+        QString error;
+        const auto entries = FolderModel::list(dir.path(), false, "name", &error);
+        QCOMPARE(entries.size(), 8);
+        QCOMPARE(entries.capacity(), entries.size());
+        QHash<QString, const FolderModel::Entry *> first;
+        for (const auto &e : entries) {
+            const auto *seen = first.value(e.extension + '\n' + e.mime);
+            if (!seen) {
+                first.insert(e.extension + '\n' + e.mime, &e);
+                continue;
+            }
+            QVERIFY2(e.mime.constData() == seen->mime.constData(), qPrintable(e.name));
+            QVERIFY2(e.kind.constData() == seen->kind.constData(), qPrintable(e.name));
+            QVERIFY2(e.extension.isEmpty() || e.extension.constData() == seen->extension.constData(), qPrintable(e.name));
+        }
+        QVERIFY(entries.at(1).mime.constData() == entries.at(3).mime.constData());
+        QCOMPARE(entries.at(0).extension, QString());
+        QCOMPARE(entries.at(3).extension, QString("TXT"));
+    }
+
     void folderReportsMissingFolders()
     {
         QString error;
