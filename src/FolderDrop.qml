@@ -40,7 +40,7 @@ FileDrop {
             x: Math.max(edgeMargin, Math.min(parent.width - width - edgeMargin, area.drag.x - parent.x - width / 2))
             y: Math.max(edgeMargin, Math.min(parent.height - height - edgeMargin, area.drag.y - parent.y + belowPointer))
             text: area.copies ? qsTr("Copy here") : qsTr("Move here")
-            color: theme.secondaryForeground
+            color: theme.foreground
             font.pixelSize: 12
         }
     }

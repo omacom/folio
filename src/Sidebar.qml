@@ -246,7 +246,7 @@ Rectangle {
                      : row.mark.tone === "warning" ? theme.yellowText : theme.secondaryForeground
                 font.pixelSize: 11
             }
-            Text { visible: rowDrop.containsDrag && !row.dropTrashes; text: rowDrop.copies ? qsTr("Copy here") : qsTr("Move here"); color: theme.secondaryForeground; font.pixelSize: 11 }
+            Text { visible: rowDrop.containsDrag && !row.dropTrashes; text: rowDrop.copies ? qsTr("Copy here") : qsTr("Move here"); color: theme.foreground; font.pixelSize: 11 }
         }
     }
 

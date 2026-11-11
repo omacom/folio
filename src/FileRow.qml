@@ -161,7 +161,7 @@ Item {
         Text {
             visible: folderDrop.containsDrag
             text: folderDrop.copies ? qsTr("Copy here") : qsTr("Move here")
-            color: theme.secondaryForeground
+            color: theme.foreground
             font.pixelSize: 12
         }
         // Points to where the next column opens.

@@ -1378,7 +1378,7 @@ private slots:
         theme->insert("accent", QColor(Qt::blue));
         theme->insert("accentMark", QColor(Qt::blue));
         theme->insert("radius", 0);
-        theme->insert("secondaryForeground", QColor(Qt::gray));
+        theme->insert("foreground", QColor(Qt::gray));
         QQmlEngine engine;
         engine.rootContext()->setContextProperty("fileOps", &ops);
         engine.rootContext()->setContextProperty("theme", theme.get());
