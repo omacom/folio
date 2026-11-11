@@ -86,6 +86,12 @@ Rectangle {
                 cursorPosition = text.length
             }
             onActiveFocusChanged: if (!activeFocus && bar.editing) bar.stopEditing()
+            // A double click on the empty bar lands its second click here: keep the whole path selected, not a word.
+            MouseArea {
+                anchors.fill: parent
+                onPressed: mouse => mouse.accepted = (mouse.flags & Qt.MouseEventCreatedDoubleClick) !== 0 && pathField.selectedText === pathField.text
+                onDoubleClicked: mouse => mouse.accepted = pressed
+            }
         }
 
         PlainField {
@@ -155,6 +161,12 @@ Rectangle {
             }
             onWidthChanged: fit()
             LayoutMirroring.onEnabledChanged: fit()
+
+            // A click on the empty part of the bar edits the path, as Ctrl+L does.
+            MouseArea {
+                anchors.fill: parent
+                onClicked: bar.editPath()
+            }
 
             Text {
                 id: more
