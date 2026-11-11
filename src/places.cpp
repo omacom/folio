@@ -11,6 +11,7 @@
 #include <QFileInfo>
 #include <QStandardPaths>
 #include <QStorageInfo>
+#include <QtConcurrent>
 #include <QPointer>
 #include <algorithm>
 #include <memory>
@@ -120,6 +121,8 @@ Places::Places(const QString &home, QObject *parent)
     : QObject(parent), m_home(home.isEmpty() ? QDir::homePath() : home), m_realHome(home.isEmpty()) {
     // Drives get plugged in and folders come and go: a gentle poll keeps
     // the sidebar honest without any background service.
+    m_systemDevice = QString::fromUtf8(QStorageInfo::root().device());
+    connect(&m_mounts, &QFutureWatcherBase::finished, this, &Places::mountsRead);
     m_poll.setInterval(15000);
     connect(&m_poll, &QTimer::timeout, this, &Places::refresh);
     if (m_realHome)
@@ -276,7 +279,7 @@ QVariantList Places::physicalDrives(const QList<Mount> &mounts, const QString &s
     return drives;
 }
 
-void Places::refreshDevices() {
+QList<Places::Mount> Places::readMounts() {
     QList<Mount> mounts;
     auto volumes = QStorageInfo::mountedVolumes();
     // Shortest path first, so a drive mounted twice is listed at its top.
@@ -289,14 +292,42 @@ void Places::refreshDevices() {
         // A read-only medium (an installer image, a DVD) has nothing free to
         // speak of; it says nothing rather than "0 B free".
         mount.free = v.isReadOnly() ? -1 : v.bytesAvailable();
-        if (GMount *gmount = mountAt(mount.root)) {
+        mounts << mount;
+    }
+    return mounts;
+}
+
+void Places::refreshDevices() {
+    // One reading at a time: a filesystem that hangs holds up only the
+    // next reading, never a pile of them, and never the window.
+    if (m_mounts.isRunning()) {
+        m_rereadMounts = true;
+        return;
+    }
+    // In a pool that's never torn down: Qt's own waits for its work on the
+    // way out, and a filesystem that never answers would then keep Folio
+    // from quitting.
+    static QThreadPool *const pool = new QThreadPool;
+    m_mounts.setFuture(QtConcurrent::run(pool, &Places::readMounts));
+}
+
+void Places::mountsRead() {
+    QList<Mount> mounts = m_mounts.result();
+    // What GIO can do with each drive is asked here, on the UI thread, where
+    // GIO's volume monitor lives; it already knows, so asking is quick.
+    for (Mount &mount : mounts)
+        if (GMount *gmount = mount.device.startsWith("/dev/") ? mountAt(mount.root) : nullptr) {
             mount.canEject = g_mount_can_eject(gmount);
             mount.canUnmount = g_mount_can_unmount(gmount);
             g_object_unref(gmount);
         }
-        mounts << mount;
+    const QVariantList devices = physicalDrives(mounts, m_systemDevice);
+    if (devices != m_devices) {
+        m_devices = devices;
+        emit changed();
     }
-    m_devices = physicalDrives(mounts, QString::fromUtf8(QStorageInfo::root().device()));
+    if (std::exchange(m_rereadMounts, false))
+        refreshDevices();
 }
 
 void Places::leave(const QString &root) {

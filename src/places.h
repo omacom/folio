@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QFutureWatcher>
 #include <QObject>
 #include <QTimer>
 #include <QVariantList>
@@ -70,6 +71,11 @@ signals:
 private:
     void refreshPlaces();
     void refreshDevices();
+    // Every mount and its free space, read off the UI thread: reading them
+    // asks each filesystem, and a network one (an NFS or SMB server that's
+    // gone away) can take its time answering, or never answer.
+    static QList<Mount> readMounts();
+    void mountsRead();
     void refreshPinned();
     QString bookmarksPath() const;
     QStringList readBookmarkLines() const;
@@ -80,4 +86,9 @@ private:
     bool m_realHome;
     QVariantList m_places, m_pinned, m_views, m_devices;
     QTimer m_poll;
+    QFutureWatcher<QList<Mount>> m_mounts;
+    // Another refresh was asked for while one was reading.
+    bool m_rereadMounts = false;
+    // The device the system runs from, read once: it doesn't change.
+    QString m_systemDevice;
 };
