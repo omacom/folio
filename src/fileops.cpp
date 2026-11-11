@@ -762,13 +762,34 @@ Qt::DropAction FileOps::dropInto(const QList<QUrl> &urls, const QString &folder,
         return Qt::IgnoreAction;
     // canDrop passed, so at least one item is from elsewhere.
     const QStringList paths = fromElsewhere(urls, folder);
+    // Asked before the work starts, which can move items away.
+    const Qt::DropAction action = dropCopies(urls, folder, copy) ? Qt::CopyAction : Qt::MoveAction;
     transferInBackground(paths, folder, copy ? Copy : Drop, false);
-    return copy || !sameDrive(paths.first(), folder) ? Qt::CopyAction : Qt::MoveAction;
+    return action;
 }
 
 bool FileOps::ctrlHeld() const {
     // Asked of the system, not the last event: the drop's own event doesn't say.
     return QGuiApplication::queryKeyboardModifiers().testFlag(Qt::ControlModifier);
+}
+
+bool FileOps::dropCopies(const QList<QUrl> &urls, const QString &folder, bool copy) const {
+    if (copy)
+        return true;
+    const QStringList paths = fromElsewhere(urls, folder);
+    // One item on the folder's drive makes it a move; a folder may be a mount so asks itself, a file or link asks its folder once.
+    const QByteArray drive = QStorageInfo(folder).device();
+    QSet<QString> asked;
+    for (const QString &path : paths) {
+        const QFileInfo item(path);
+        const QString checked = item.isDir() && !item.isSymLink() ? path : item.absolutePath();
+        if (asked.contains(checked))
+            continue;
+        asked.insert(checked);
+        if (QStorageInfo(checked).device() == drive)
+            return false;
+    }
+    return !paths.isEmpty();
 }
 
 QString FileOps::uriList(const QStringList &paths) const {

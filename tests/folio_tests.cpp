@@ -1377,6 +1377,7 @@ private slots:
         const std::unique_ptr<QQmlPropertyMap> theme(QQmlPropertyMap::create());
         theme->insert("accent", QColor(Qt::blue));
         theme->insert("radius", 0);
+        theme->insert("secondaryForeground", QColor(Qt::gray));
         QQmlEngine engine;
         engine.rootContext()->setContextProperty("fileOps", &ops);
         engine.rootContext()->setContextProperty("theme", theme.get());
@@ -1420,6 +1421,101 @@ private slots:
         QVERIFY(dropAt({100, 150}));
         QVERIFY(done.wait(3000));
         QVERIFY(QFileInfo(home.filePath("install")).isDir());
+    }
+
+    void dropsInAColumnAndOnATilesNameCopyWithCtrl()
+    {
+        // A column's drop area and a folder tile's name both say "Copy here" with Ctrl held, and copy.
+        QTemporaryDir home;
+        QDir(home.path()).mkpath("column");
+        QDir(home.path()).mkpath("project");
+        write(home.filePath("a.txt"), "a");
+        write(home.filePath("b.txt"), "b");
+        FileOps ops;
+        const std::unique_ptr<QQmlPropertyMap> theme(QQmlPropertyMap::create());
+        const std::unique_ptr<QQmlPropertyMap> translator(QQmlPropertyMap::create());
+        const std::unique_ptr<QQmlPropertyMap> backend(QQmlPropertyMap::create());
+        const std::unique_ptr<QQmlPropertyMap> folder(QQmlPropertyMap::create());
+        for (const char *role : {"accent", "foreground", "brightForeground", "secondaryForeground", "lighterBackground",
+                                 "darkBackground", "red", "blue", "magenta", "orange", "yellow", "cyan"})
+            theme->insert(role, QColor(Qt::gray));
+        theme->insert("radius", 0);
+        translator->insert("language", "en");
+        folder->insert("selectedCount", 0);
+        backend->insert("folder", QVariant::fromValue<QObject *>(folder.get()));
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("fileOps", &ops);
+        engine.rootContext()->setContextProperty("theme", theme.get());
+        engine.rootContext()->setContextProperty("translator", translator.get());
+        engine.rootContext()->setContextProperty("backend", backend.get());
+        engine.rootContext()->setContextProperty("home", home.path());
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window {\n"
+                          "    width: 400; height: 300; visible: true\n"
+                          "    ListView {\n"
+                          "        id: column; width: 200; height: 300; model: 1\n"
+                          "        delegate: Item { width: 200; height: 40 }\n"
+                          "    }\n"
+                          "    FolderDrop { parent: column; anchors.fill: parent; z: -1; items: column; folder: home + '/column' }\n"
+                          "    GridView {\n"
+                          "        x: 200; width: 200; height: 300; cellWidth: 200; cellHeight: 200; model: 1\n"
+                          "        delegate: FileTile {\n"
+                          "            width: 200; height: 200; name: 'project'; fileName: 'project'; folder: ''\n"
+                          "            path: home + '/project'; isDir: true; kind: 'folder'; mime: 'inode/directory'\n"
+                          "            extension: ''; itemCount: 0; icon: ''; size: 0; modified: new Date(); selected: false\n"
+                          "        }\n"
+                          "    }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(QFINDTESTDATA("../src/FolderDrop.qml") + ".test.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+
+        // Whether a shown text anywhere in the window reads `text`.
+        std::function<bool(QQuickItem *, const QString &)> shows = [&](QQuickItem *item, const QString &text) {
+            if (item->isVisible() && item->property("text").toString() == text)
+                return true;
+            for (QQuickItem *child : item->childItems())
+                if (shows(child, text))
+                    return true;
+            return false;
+        };
+        QMimeData data;
+        // Enters at `at`, checks the verb shown, then drops, giving what the drop did.
+        const auto dropAt = [&](const QString &file, QPointF at, const QString &verb) {
+            data.setUrls({QUrl::fromLocalFile(home.filePath(file))});
+            QDragEnterEvent enter(at, Qt::CopyAction | Qt::MoveAction, &data, Qt::LeftButton, Qt::NoModifier);
+            QGuiApplication::sendEvent(window, &enter);
+            const bool said = shows(window->contentItem(), verb);
+            QDropEvent drop(at, Qt::CopyAction | Qt::MoveAction, &data, Qt::LeftButton, Qt::NoModifier);
+            QGuiApplication::sendEvent(window, &drop);
+            return said && drop.isAccepted() ? drop.dropAction() : Qt::IgnoreAction;
+        };
+        QSignalSpy done(&ops, &FileOps::done);
+        QTest::keyPress(window, Qt::Key_Control, Qt::ControlModifier);
+        auto ctrl = qScopeGuard([&] { QTest::keyRelease(window, Qt::Key_Control, Qt::NoModifier); });
+
+        // Below the column's last item.
+        QCOMPARE(dropAt("a.txt", {100, 150}, "Copy here"), Qt::CopyAction);
+        QVERIFY(done.wait(3000));
+        QVERIFY(QFile::exists(home.filePath("column/a.txt")));
+        QVERIFY(QFile::exists(home.filePath("a.txt")));
+
+        // On the tile's name, under its picture.
+        QCOMPARE(dropAt("a.txt", {300, 128}, "Copy here"), Qt::CopyAction);
+        QVERIFY(done.wait(3000));
+        QVERIFY(QFile::exists(home.filePath("project/a.txt")));
+        QVERIFY(QFile::exists(home.filePath("a.txt")));
+
+        // Ctrl let go, the name takes a move.
+        ctrl.dismiss();
+        QTest::keyRelease(window, Qt::Key_Control, Qt::NoModifier);
+        QCOMPARE(dropAt("b.txt", {300, 128}, "Move here"), Qt::MoveAction);
+        QVERIFY(done.wait(3000));
+        QVERIFY(QFile::exists(home.filePath("project/b.txt")));
+        QVERIFY(!QFile::exists(home.filePath("b.txt")));
     }
 
     void fileOpsDragUriLists()
@@ -6343,6 +6439,58 @@ private slots:
         QVERIFY(done.wait(3000));
         QVERIFY(QFile::exists(to.filePath("plan.txt")));
         QVERIFY(!QFile::exists(to.filePath("notes (copy).txt")));
+    }
+
+    void fileOpsSaysWhetherADropCopies()
+    {
+        QTemporaryDir from, to;
+        write(from.filePath("todo.txt"), "list");
+        const QList<QUrl> urls{QUrl::fromLocalFile(from.filePath("todo.txt"))};
+
+        // On one drive only Ctrl copies; nothing local to drop never does.
+        FileOps ops;
+        QVERIFY(!ops.dropCopies(urls, to.path(), false));
+        QVERIFY(ops.dropCopies(urls, to.path(), true));
+        QVERIFY(!ops.dropCopies({QUrl("https://example.com/todo.txt")}, to.path(), false));
+
+        // From another drive it copies without Ctrl.
+        if (!FileOps::sameDrive(from.filePath("todo.txt"), "/proc"))
+            QVERIFY(ops.dropCopies(urls, "/proc", false));
+
+        // What is already there stays out of it, as the drop leaves it, so the rest decide.
+        write(to.filePath("notes.txt"), "kept");
+        if (!FileOps::sameDrive(to.path(), "/proc"))
+            QVERIFY(ops.dropCopies({QUrl::fromLocalFile(to.filePath("notes.txt")), QUrl::fromLocalFile("/proc/version")}, to.path(), false));
+
+        // One from the folder's own drive moves, so the drop says so even when another drive's item leads.
+        if (!FileOps::sameDrive(from.path(), "/proc"))
+            QVERIFY(!ops.dropCopies({QUrl::fromLocalFile("/proc/version"), urls.first()}, to.path(), false));
+
+        // A mounted folder is asked itself, as the work asks it, never by the folder it is in; a link by its own folder.
+        QCOMPARE(ops.dropCopies({QUrl::fromLocalFile("/proc")}, to.path(), false), !FileOps::sameDrive("/proc", to.path()));
+        QVERIFY(QFile::link("/proc", from.filePath("proc")));
+        QCOMPARE(ops.dropCopies({QUrl::fromLocalFile(from.filePath("proc"))}, to.path(), false),
+                 !FileOps::sameDrive(from.filePath("proc"), to.path()));
+    }
+
+    void fileOpsMixedDropMovesWhatItSaysItMoves()
+    {
+        // A drop from two drives, led by the other drive's file, says Move: the one already on this drive is moved.
+        QTemporaryDir shm("/dev/shm/folio-XXXXXX"), from, to;
+        QVERIFY(shm.isValid());
+        write(shm.filePath("far.txt"), "far");
+        write(from.filePath("near.txt"), "near");
+        if (FileOps::sameDrive(shm.path(), to.path()))
+            QSKIP("Needs a second drive.");
+        FileOps ops;
+        QSignalSpy done(&ops, &FileOps::done);
+        QCOMPARE(ops.dropInto({QUrl::fromLocalFile(shm.filePath("far.txt")), QUrl::fromLocalFile(from.filePath("near.txt"))}, to.path()),
+                 Qt::MoveAction);
+        QVERIFY(done.wait(3000));
+        QVERIFY(QFile::exists(to.filePath("far.txt")));
+        QVERIFY(QFile::exists(to.filePath("near.txt")));
+        QVERIFY(QFile::exists(shm.filePath("far.txt")));
+        QVERIFY(!QFile::exists(from.filePath("near.txt")));
     }
 
 private:

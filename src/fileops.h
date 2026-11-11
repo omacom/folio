@@ -97,6 +97,8 @@ public:
     Q_INVOKABLE Qt::DropAction dropInto(const QList<QUrl> &urls, const QString &folder, bool copy = false);
     // Whether Ctrl is held right now, which makes a drop copy.
     Q_INVOKABLE bool ctrlHeld() const;
+    // Whether a drop of these on `folder` copies every item: with `copy` (Ctrl held), or all from other drives.
+    Q_INVOKABLE bool dropCopies(const QList<QUrl> &urls, const QString &folder, bool copy) const;
     // Whether these can be dropped on `folder`: not onto themselves, and
     // not into the trash, which only Delete fills.
     Q_INVOKABLE bool canDrop(const QList<QUrl> &urls, const QString &folder) const;

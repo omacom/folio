@@ -101,6 +101,8 @@ Item {
             translator.language // Re-read when the language (and so the default locale) changes.
             if (tile.kind === "item")
                 return tile.extension
+            if (folderDrop.containsDrag)
+                return folderDrop.copies ? qsTr("Copy here") : qsTr("Move here")
             const size = tile.isDir ? Format.count(tile.itemCount) : Format.size(tile.size)
             // A folder's own date says little (it changes when anything in
             // it is added or removed), so only files show one.
@@ -118,11 +120,11 @@ Item {
     // A folder takes files dropped anywhere on its tile, picture or name,
     // lighting up while they hover: the view's own drop area refuses the
     // whole cell, so the tile has to take all of it.
-    DropArea {
+    FileDrop {
         id: folderDrop
         anchors.fill: parent
         enabled: tile.isDir
-        keys: ["text/uri-list"]
+        folder: tile.path
         onEntered: (drag) => { drag.accepted = fileOps.canDrop(drag.urls, tile.path) }
         onDropped: (drop) => drop.accept(fileOps.dropInto(drop.urls, tile.path, fileOps.ctrlHeld()))
     }

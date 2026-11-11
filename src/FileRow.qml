@@ -53,11 +53,11 @@ Item {
                                   : "file"
 
     // A folder row takes files dropped on it, lighting up while they hover.
-    DropArea {
+    FileDrop {
         id: folderDrop
         anchors.fill: parent
         enabled: row.isDir
-        keys: ["text/uri-list"]
+        folder: row.path
         onEntered: (drag) => { drag.accepted = fileOps.canDrop(drag.urls, row.path) }
         onDropped: (drop) => drop.accept(fileOps.dropInto(drop.urls, row.path, fileOps.ctrlHeld()))
     }
@@ -136,7 +136,7 @@ Item {
             elide: Text.ElideMiddle
         }
         Text {
-            visible: row.showSize
+            visible: row.showSize && !folderDrop.containsDrag
             Layout.preferredWidth: 96
             horizontalAlignment: Text.AlignRight
             text: row.kind === "item" ? row.extension : row.isDir ? Format.count(row.itemCount) : Format.size(row.size)
@@ -144,7 +144,7 @@ Item {
             font.pixelSize: 12
         }
         Text {
-            visible: row.showDate
+            visible: row.showDate && !folderDrop.containsDrag
             Layout.preferredWidth: 96
             Layout.leftMargin: 12
             horizontalAlignment: Text.AlignLeft
@@ -155,6 +155,13 @@ Item {
             color: row.current ? theme.foreground : theme.secondaryForeground
             font.pixelSize: 12
             elide: Text.ElideRight
+        }
+        // While files hover a folder, what the drop will do takes the size and date's place.
+        Text {
+            visible: folderDrop.containsDrag
+            text: folderDrop.copies ? qsTr("Copy here") : qsTr("Move here")
+            color: theme.secondaryForeground
+            font.pixelSize: 12
         }
         // Points to where the next column opens.
         Glyph {
