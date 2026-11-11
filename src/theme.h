@@ -7,6 +7,8 @@
 #include <QProcess>
 #include <QTimer>
 
+class QSocketNotifier;
+
 // The Omarchy palette, followed live. A file manager draws far more surface
 // than a one-tool app, so it reads the whole colors.toml rather than only the
 // accent, and the Material style flips with the theme's light or dark mode.
@@ -57,6 +59,9 @@ private:
     QColor color(const QString &key) const;
     void reload();
     void refreshRounding();
+    void watchHyprland();
+    void readHyprlandEvents();
+    void closeHyprlandEvents();
 
     QString m_directory;
     QHash<QString, QColor> m_colors;
@@ -66,5 +71,9 @@ private:
     QString m_hyprctl;
     int m_radius = 0;
     QProcess m_roundingProcess;
-    QTimer m_roundingPoll, m_roundingTimeout;
+    QTimer m_roundingTimeout;
+    bool m_roundingPending = false;
+    int m_hyprlandEvents = -1;
+    QSocketNotifier *m_hyprlandNotifier = nullptr;
+    QByteArray m_hyprlandLine;
 };

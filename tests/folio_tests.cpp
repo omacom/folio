@@ -32,9 +32,14 @@
 #include <QtTest>
 #include <fcntl.h>
 #include <malloc.h>
+#include <cstring>
+#include <linux/sockios.h>
 #include <signal.h>
+#include <sys/ioctl.h>
 #include <sys/resource.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/un.h>
 #include <unistd.h>
 
 #include "backend.h"
@@ -496,6 +501,8 @@ private slots:
     {
         // No test ever reaches the real udisks, which would change real disks.
         fakeDisks({});
+        // No test follows the Hyprland of the session it's run from.
+        qunsetenv("HYPRLAND_INSTANCE_SIGNATURE");
     }
 
     void folderListsDirectoriesFirstWithoutHidden()
@@ -6145,16 +6152,114 @@ private slots:
 
     void themeFollowsHyprlandRounding()
     {
-        QTemporaryDir dir;
-        const QString response = dir.filePath("response.json"), command = dir.filePath("hyprctl");
-        write(command, "#!/bin/sh\ncat '" + response.toUtf8() + "'\n");
+        // The stand-in writes outside the theme folder, so its runs aren't theme changes.
+        QTemporaryDir dir, stage;
+        const QString response = stage.filePath("response.json"), runs = stage.filePath("runs");
+        const QString command = standInHyprctl(stage, response, runs);
+        write(response, "{\"int\":2}");
+        const QByteArray runtime = qgetenv("XDG_RUNTIME_DIR");
+        const int hyprland = listenAsHyprland(stage.path());
+        QVERIFY(hyprland >= 0);
+        const auto restore = qScopeGuard([=] { stopHyprland(hyprland, runtime); });
+
+        Theme theme(dir.path(), nullptr, command);
+        const int events = ::accept4(hyprland, nullptr, nullptr, SOCK_CLOEXEC);
+        QVERIFY(events >= 0);
+        const auto hangUp = qScopeGuard([events] { ::close(events); });
+        QTRY_COMPARE(theme.radius(), 2);
+        write(response, "{\"int\":6}");
+        // Other events, and a reload name cut short, ask nothing.
+        send(events, "activewindow>>kitty,configreloaded>>\nconfigreloaded\n");
+        QTest::qWait(300);
+        QCOMPARE(countRuns(runs), 1);
+        // A reload line that arrives in two pieces is one reload.
+        send(events, "configrel");
+        QTest::qWait(100);
+        send(events, "oaded>>\n");
+        QTRY_COMPARE(theme.radius(), 6);
+        QCOMPARE(countRuns(runs), 2);
+    }
+
+    void themeAsksAgainForAReloadDuringAnAsk()
+    {
+        QTemporaryDir dir, stage;
+        const QString response = stage.filePath("response.json"), runs = stage.filePath("runs");
+        const QString command = stage.filePath("hyprctl"), go = stage.filePath("go");
+        // This hyprctl reads its answer, then holds it until `go` exists: a reload sent meanwhile makes it stale.
+        write(command, "#!/bin/sh\nanswer=$(cat '" + response.toUtf8() + "')\necho run >> '" + runs.toUtf8()
+                           + "'\nuntil [ -e '" + go.toUtf8() + "' ]; do sleep 0.01; done\necho \"$answer\"\n");
         QVERIFY(QFile::setPermissions(command, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+        write(response, "{\"int\":2}");
+        const QByteArray runtime = qgetenv("XDG_RUNTIME_DIR");
+        const int hyprland = listenAsHyprland(stage.path());
+        QVERIFY(hyprland >= 0);
+        const auto restore = qScopeGuard([=] { stopHyprland(hyprland, runtime); });
+
+        Theme theme(dir.path(), nullptr, command);
+        const int events = ::accept4(hyprland, nullptr, nullptr, SOCK_CLOEXEC);
+        QVERIFY(events >= 0);
+        const auto hangUp = qScopeGuard([events] { ::close(events); });
+        QTRY_COMPARE(countRuns(runs), 1);
+        write(response, "{\"int\":6}");
+        send(events, "configreloaded>>\n");
+        // Theme reads the reload while the first ask is still held.
+        QVERIFY(unread(events) > 0);
+        QTRY_COMPARE(unread(events), 0);
+        write(go, "");
+        QTRY_COMPARE(theme.radius(), 6);
+        QCOMPARE(countRuns(runs), 2);
+    }
+
+    void themeAsksHyprlandOnlyWhenSomethingChanges()
+    {
+        QTemporaryDir dir, stage;
+        const QString response = stage.filePath("response.json"), runs = stage.filePath("runs");
+        const QString command = standInHyprctl(stage, response, runs);
         write(response, "{\"int\":4}");
 
         Theme theme(dir.path(), nullptr, command);
         QTRY_COMPARE(theme.radius(), 4);
+        // Longer than the one-second poll this replaced.
+        QTest::qWait(2500);
+        QCOMPARE(countRuns(runs), 1);
+        QDir(dir.path()).mkpath("theme");
+        write(dir.filePath("theme/colors.toml"), "accent = \"#112233\"\n");
+        QTRY_COMPARE(countRuns(runs), 2);
+    }
+
+    void themeKeepsRoundingWhenHyprctlFails()
+    {
+        QTemporaryDir dir, stage;
+        const QString response = stage.filePath("response.json"), runs = stage.filePath("runs");
+        const QString command = standInHyprctl(stage, response, runs);
         write(response, "{\"int\":6}");
+        const QByteArray runtime = qgetenv("XDG_RUNTIME_DIR");
+        const int hyprland = listenAsHyprland(stage.path());
+        QVERIFY(hyprland >= 0);
+        const auto restore = qScopeGuard([=] { stopHyprland(hyprland, runtime); });
+
+        Theme theme(dir.path(), nullptr, command);
+        const int events = ::accept4(hyprland, nullptr, nullptr, SOCK_CLOEXEC);
+        QVERIFY(events >= 0);
+        const auto hangUp = qScopeGuard([events] { ::close(events); });
         QTRY_COMPARE(theme.radius(), 6);
+
+        write(command, "#!/bin/sh\necho run >> '" + runs.toUtf8() + "'\necho '{\"int\":2}'\nexit 1\n");
+        send(events, "configreloaded>>\n");
+        QTRY_COMPARE(countRuns(runs), 2);
+        QTest::qWait(200);
+        QCOMPARE(theme.radius(), 6);
+
+        // A hyprctl that's gone changes nothing, and the next one that answers is followed again.
+        QVERIFY(QFile::remove(command));
+        send(events, "configreloaded>>\n");
+        QTest::qWait(300);
+        QCOMPARE(theme.radius(), 6);
+        write(response, "{\"int\":2}");
+        standInHyprctl(stage, response, runs);
+        send(events, "configreloaded>>\n");
+        QTRY_COMPARE(theme.radius(), 2);
+        QCOMPARE(countRuns(runs), 3);
     }
 
     void themeAsksForRoundingOnlyWhileActive()
@@ -6415,6 +6520,65 @@ private:
         QFile file(path);
         QVERIFY(file.open(QIODevice::WriteOnly));
         file.write(contents);
+    }
+    // A hyprctl that notes each run and prints the response file.
+    static QString standInHyprctl(const QTemporaryDir &dir, const QString &response, const QString &runs)
+    {
+        const QString command = dir.filePath("hyprctl");
+        write(command, "#!/bin/sh\necho run >> '" + runs.toUtf8() + "'\ncat '" + response.toUtf8() + "'\n");
+        QFile::setPermissions(command, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+        return command;
+    }
+
+    static int countRuns(const QString &runs)
+    {
+        QFile file(runs);
+        return file.open(QIODevice::ReadOnly) ? int(file.readAll().count('\n')) : 0;
+    }
+
+    // Hyprland's event socket, under a runtime folder of the test's own.
+    static int listenAsHyprland(const QString &runtime)
+    {
+        QDir(runtime).mkpath("hypr/test");
+        const QByteArray path = QFile::encodeName(runtime + "/hypr/test/.socket2.sock");
+        sockaddr_un address{};
+        address.sun_family = AF_UNIX;
+        if (path.size() >= qsizetype(sizeof address.sun_path))
+            return -1;
+        std::memcpy(address.sun_path, path.constData(), path.size());
+        const int fd = ::socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+        if (fd < 0 || ::bind(fd, reinterpret_cast<const sockaddr *>(&address), sizeof address) != 0
+            || ::listen(fd, 1) != 0) {
+            if (fd >= 0)
+                ::close(fd);
+            return -1;
+        }
+        qputenv("XDG_RUNTIME_DIR", QFile::encodeName(runtime));
+        qputenv("HYPRLAND_INSTANCE_SIGNATURE", "test");
+        return fd;
+    }
+
+    static void stopHyprland(int fd, const QByteArray &runtime)
+    {
+        ::close(fd);
+        if (runtime.isEmpty())
+            qunsetenv("XDG_RUNTIME_DIR");
+        else
+            qputenv("XDG_RUNTIME_DIR", runtime);
+        qunsetenv("HYPRLAND_INSTANCE_SIGNATURE");
+    }
+
+    // What a socket has sent that its other end hasn't read yet, as the kernel counts it: 0 once all of it is read.
+    static int unread(int fd)
+    {
+        int queued = -1;
+        ::ioctl(fd, SIOCOUTQ, &queued);
+        return queued;
+    }
+
+    static void send(int fd, const QByteArray &events)
+    {
+        QCOMPARE(::write(fd, events.constData(), events.size()), ssize_t(events.size()));
     }
 };
 
