@@ -184,7 +184,9 @@ Rectangle {
 
         background: Rectangle {
             radius: Math.min(4, theme.radius)
-            color: row.active || row.dropHover ? Qt.alpha(theme.accent, 0.16)
+            // Accent only while the sidebar holds the keyboard; grey while the files do.
+            color: row.dropHover || row.active && sidebar.activeFocus ? Qt.alpha(theme.accent, 0.16)
+                 : row.active ? Qt.alpha(theme.foreground, 0.10)
                  : row.hovered && row.enabled ? Qt.alpha(theme.foreground, 0.06) : "transparent"
             border.width: row.dropHover ? 2 : row.keyed ? 1 : 0
             border.color: theme.accent
