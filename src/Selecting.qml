@@ -24,6 +24,8 @@ QtObject {
             return
         backend.folder.selectOnly(view.currentIndex)
         anchor = view.currentIndex
+        if (view.currentIndex >= 0)
+            view.positionViewAtIndex(view.currentIndex, ListView.Contain)
     }
 
     function click(index, modifiers) {
