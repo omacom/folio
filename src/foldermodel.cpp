@@ -3,6 +3,7 @@
 #include <QCache>
 #include <QCollator>
 #include <QDir>
+#include <QDirListing>
 #include <QXmlStreamReader>
 #include <QUrl>
 #include <QStandardPaths>
@@ -265,9 +266,8 @@ QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QStri
     struct stat top;
     if (::stat(QFile::encodeName(root).constData(), &top) != 0)
         return entries;
-    QDir::Filters filters = QDir::AllEntries | QDir::NoDotAndDotDot | QDir::System;
-    if (showHidden)
-        filters |= QDir::Hidden;
+    // The same entries list() reads: broken symlinks, sockets and fifos too.
+    const auto flags = showHidden ? QDirListing::IteratorFlag::IncludeHidden : QDirListing::IteratorFlag::Default;
 
     // Breadth first, so what's near comes before what's deep when there are
     // more matches than the limit.
@@ -278,20 +278,30 @@ QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QStri
         if (stop && stop())
             return {};
         const QString folder = folders.takeFirst();
-        const auto infos = QDir(folder).entryInfoList(filters, QDir::NoSort);
-        for (const QFileInfo &info : infos) {
-            if (info.fileName().contains(query, Qt::CaseInsensitive) && entries.size() < limit) {
-                Entry e = entryFor(info, mimes);
+        struct Item { QString name; bool isDir; };
+        QVector<Item> items;
+        for (const QDirListing::DirEntry &item : QDirListing(folder, flags))
+            items.push_back({item.fileName(), !item.isSymLink() && item.isDir()});
+        // By name, ignoring case, as QDir handed a folder back: this order decides what the limit keeps.
+        std::sort(items.begin(), items.end(),
+                  [](const Item &a, const Item &b) { return a.name.compare(b.name, Qt::CaseInsensitive) < 0; });
+        const QDir dir(folder);
+        for (const Item &item : items) {
+            const bool match = item.name.contains(query, Qt::CaseInsensitive) && entries.size() < limit;
+            if (!match && !item.isDir)
+                continue;
+            // Only a match or a folder gets a path, and only a match a stat.
+            const QString path = dir.filePath(item.name);
+            if (match) {
+                Entry e = entryFor(QFileInfo(path), mimes);
                 e.name = base.relativeFilePath(e.path);
                 entries.push_back(e);
             }
             // Other filesystems (a mounted drive, a tailnet machine, /proc
             // from /) and symlinked folders aren't walked into.
             struct stat st;
-            if (info.isDir() && !info.isSymLink()
-                && ::lstat(QFile::encodeName(info.absoluteFilePath()).constData(), &st) == 0
-                && st.st_dev == top.st_dev)
-                folders << info.absoluteFilePath();
+            if (item.isDir && ::lstat(QFile::encodeName(path).constData(), &st) == 0 && st.st_dev == top.st_dev)
+                folders << path;
         }
     }
     sortEntries(entries, sort);

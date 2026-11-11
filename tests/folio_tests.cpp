@@ -122,6 +122,27 @@ private slots:
         QVERIFY(model.query().isEmpty());
     }
 
+    void folderSearchReadsEachFolderInNameOrder()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkdir("sub");
+        // Written out of name order and in mixed case, so no filesystem hands them back the way search must.
+        for (int i = 0; i < 20; ++i) {
+            const QString name = i % 2 ? "sub/Notes-%1.txt" : "sub/notes-%1.txt";
+            write(dir.filePath(name.arg(i * 7 % 20, 2, 10, QChar('0'))), "x");
+        }
+        QVERIFY(QFile::link(dir.filePath("sub"), dir.filePath("linked")));
+        QVERIFY(QFile::link(dir.filePath("gone"), dir.filePath("notes-lost")));
+
+        // A folder is read in name order, ignoring case, and that decides what the limit keeps.
+        QStringList kept;
+        for (const auto &e : FolderModel::search(dir.path(), "notes", false, "name", {}, 4))
+            kept << e.name;
+        QCOMPARE(kept.join(", "), QString("notes-lost, sub/notes-00.txt, sub/Notes-01.txt, sub/notes-02.txt"));
+        // A broken link is found by its name, and a linked folder is not walked into.
+        QCOMPARE(FolderModel::search(dir.path(), "notes", false, "name").size(), 21);
+    }
+
     void folderModelSwapsFoldersWithoutAnEmptyFrame()
     {
         QTemporaryDir a, b;
