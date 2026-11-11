@@ -317,7 +317,7 @@ Rectangle {
             }
             contentItem: RowLayout {
                 // A long app name ends in … rather than running past the button.
-                Text { Layout.leftMargin: 14; Layout.fillWidth: true; text: openButton.text; elide: Text.ElideRight; color: theme.accentForeground; font.weight: Font.DemiBold }
+                Text { Layout.leftMargin: 14; Layout.fillWidth: true; text: openButton.text; textFormat: Text.PlainText; elide: Text.ElideRight; color: theme.accentForeground; font.weight: Font.DemiBold }
                 Text { Layout.rightMargin: 14; text: "⏎"; color: theme.accentForeground }
             }
         }
