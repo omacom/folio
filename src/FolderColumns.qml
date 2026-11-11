@@ -20,8 +20,8 @@ Item {
     function focusView() { here.forceActiveFocus() }
     function menuAnchor() { return here.currentItem }
 
-    // Every column has a menu: on an item there, or on the column's folder.
-    signal contextMenu(var item, string folder, point at)
+    // Every column has a menu, on an item there or on the column's folder; `rows` is the column's own list when it isn't the open folder's.
+    signal contextMenu(var item, string folder, point at, var rows)
 
     readonly property var crumbs: backend.crumbs
 
@@ -119,7 +119,7 @@ Item {
                             acceptedButtons: Qt.RightButton
                             onTapped: (point) => {
                                 const index = column.indexAt(point.position.x + column.contentX, point.position.y + column.contentY)
-                                view.contextMenu(index >= 0 ? folder.get(index) : null, ancestor.path, point.scenePosition)
+                                view.contextMenu(index >= 0 ? folder.get(index) : null, ancestor.path, point.scenePosition, folder)
                             }
                         }
                         Connections {
@@ -158,7 +158,7 @@ Item {
 
                 TapHandler {
                     acceptedButtons: Qt.RightButton
-                    onTapped: (point) => view.contextMenu(selecting.menuAt(point), backend.path, point.scenePosition)
+                    onTapped: (point) => view.contextMenu(selecting.menuAt(point), backend.path, point.scenePosition, null)
                 }
                 ColumnDrop { items: here; folder: backend.path }
 
@@ -202,7 +202,7 @@ Item {
                     acceptedButtons: Qt.RightButton
                     onTapped: (point) => {
                         const index = inside.indexAt(point.position.x + inside.contentX, point.position.y + inside.contentY)
-                        view.contextMenu(index >= 0 ? inside.model.get(index) : null, view.selected.path, point.scenePosition)
+                        view.contextMenu(index >= 0 ? inside.model.get(index) : null, view.selected.path, point.scenePosition, inside.model)
                     }
                 }
                 model: FolderModel {

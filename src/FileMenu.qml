@@ -15,8 +15,10 @@ FolioMenu {
     property var target: null
     // The folder the click happened in.
     property string folder
+    // The list the clicked item is a row of: in the columns view, that column's own.
+    property var rows: null
 
-    signal renameRequested(var target)
+    signal renameRequested(var target, var rows)
     signal deleteRequested(var paths)
     signal emptyTrashRequested()
     signal pinRequested(string path)
@@ -50,9 +52,10 @@ FolioMenu {
     // Alt+Return) beside the item it's about. Mirrored, it opens leftward,
     // and beside the item's icon and name at its right end; Menu mirrors
     // neither by itself.
-    function show(clicked, where, near, at) {
+    function show(clicked, where, near, at, list) {
         target = clicked
         folder = where
+        rows = list || backend.folder
         shifted = fileOps.shiftHeld()
         // Not in the trash, where the menu is about getting things back.
         actions = forItem && forFiles && !trashView ? plugins.actionsFor(paths) : []
@@ -145,7 +148,7 @@ FolioMenu {
         shown: !fileMenu.trashView && fileMenu.forItem && fileMenu.forFiles
         text: qsTr("Rename…")
         keys: "F2"
-        onTriggered: fileMenu.renameRequested(fileMenu.target)
+        onTriggered: fileMenu.renameRequested(fileMenu.target, fileMenu.rows)
     }
     FolioMenuItem {
         shown: !fileMenu.trashView && fileMenu.forItem && fileMenu.forFiles
@@ -212,7 +215,7 @@ FolioMenu {
         onTriggered: {
             const made = fileOps.newFile(fileMenu.folder)
             if (made)
-                fileMenu.renameRequested({ path: made, isDir: false })
+                fileMenu.renameRequested({ path: made, isDir: false }, fileMenu.rows)
         }
     }
     MenuLine { shown: fileMenu.forFiles }

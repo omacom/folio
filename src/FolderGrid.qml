@@ -42,11 +42,11 @@ GridView {
         }
     }
 
-    // Right-click on an item (selecting it) or on empty space.
-    signal contextMenu(var item, string folder, point at)
+    // Right-click on an item (selecting it) or on empty space; `rows` is only ever given by the columns, and a signal is called with every argument it declares.
+    signal contextMenu(var item, string folder, point at, var rows)
     TapHandler {
         acceptedButtons: Qt.RightButton
-        onTapped: (point) => grid.contextMenu(selecting.menuAt(point), backend.path, point.scenePosition)
+        onTapped: (point) => grid.contextMenu(selecting.menuAt(point), backend.path, point.scenePosition, null)
     }
 
     clip: true

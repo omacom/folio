@@ -221,7 +221,7 @@ FocusScope {
 
     Connections {
         target: view.item
-        function onContextMenu(item, folder, at) { fileMenu.show(item, folder, null, at) }
+        function onContextMenu(item, folder, at, rows) { fileMenu.show(item, folder, null, at, rows) }
         function onCursorLetGo() { pane.cursorLetGo = true }
         // The cursor's item is remembered as the cursor moves, and once the
         // folder's loaded has placed it. Not when a re-read leaves the cursor
@@ -298,7 +298,7 @@ FocusScope {
 
     FileMenu {
         id: fileMenu
-        onRenameRequested: (target) => rename.open(target)
+        onRenameRequested: (target, rows) => rename.open(target, rows)
         onDeleteRequested: (paths) => pane.confirmDelete(paths)
         onEmptyTrashRequested: pane.emptyTrash()
         onPinRequested: (path) => pane.togglePin(path)
