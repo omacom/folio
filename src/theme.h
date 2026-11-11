@@ -14,6 +14,7 @@ class Theme : public QObject {
     Q_OBJECT
     Q_PROPERTY(QColor accent READ accent NOTIFY changed)
     Q_PROPERTY(QColor accentForeground READ accentForeground NOTIFY changed)
+    Q_PROPERTY(QColor accentText READ accentText NOTIFY changed)
     Q_PROPERTY(QColor background READ background NOTIFY changed)
     Q_PROPERTY(QColor darkBackground READ darkBackground NOTIFY changed)
     Q_PROPERTY(QColor lighterBackground READ lighterBackground NOTIFY changed)
@@ -28,6 +29,8 @@ class Theme : public QObject {
     Q_PROPERTY(QColor orange READ orange NOTIFY changed)
     Q_PROPERTY(bool light READ light NOTIFY changed)
     Q_PROPERTY(int radius READ radius NOTIFY changed)
+    Q_PROPERTY(qreal glass READ glass NOTIFY changed)
+    Q_PROPERTY(qreal currentTint READ currentTint CONSTANT)
 
 public:
     explicit Theme(const QString &currentDirectory = {}, QObject *parent = nullptr, const QString &hyprctl = {});
@@ -35,13 +38,15 @@ public:
 
     QColor accent() const { return color("accent"); }
     QColor accentForeground() const;
+    // The accent where it is text: lifted with the other text while glassy.
+    QColor accentText() const { return ink("accent"); }
     QColor background() const { return color("background"); }
     QColor darkBackground() const { return color("dark_background"); }
     QColor lighterBackground() const;
-    QColor foreground() const { return color("foreground"); }
-    QColor brightForeground() const { return color("bright_foreground"); }
+    QColor foreground() const { return ink("foreground"); }
+    QColor brightForeground() const { return ink("bright_foreground"); }
     QColor secondaryForeground() const;
-    QColor red() const { return color("red"); }
+    QColor red() const { return ink("red"); }
     QColor yellow() const { return color("yellow"); }
     QColor blue() const { return color("blue"); }
     QColor magenta() const { return color("magenta"); }
@@ -49,18 +54,27 @@ public:
     QColor orange() const { return color("orange"); }
     bool light() const { return m_light; }
     int radius() const { return m_radius; }
+    // How opaque the window's grounds are: 1, or less while Omarchy's windows are glassy.
+    qreal glass() const { return m_glass; }
+    // The accent tint under the current row, which accent text is lifted to read on too.
+    static constexpr qreal currentRowTint = 0.18;
+    qreal currentTint() const { return currentRowTint; }
 
 signals:
     void changed();
 
 private:
     QColor color(const QString &key) const;
+    QColor ink(const QString &key) const { return m_inks.value(key, color(key)); }
     void reload();
     void refreshRounding();
 
     QString m_directory;
     QHash<QString, QColor> m_colors;
     bool m_light = false;
+    QString m_toggles;
+    qreal m_glass = 1;
+    QHash<QString, QColor> m_inks;
     QFileSystemWatcher m_watcher;
     QTimer m_debounce;
     QString m_hyprctl;

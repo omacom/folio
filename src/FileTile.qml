@@ -74,7 +74,7 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         width: parent.width - 28
         text: tile.name
-        color: tile.current ? theme.accent : theme.foreground
+        color: tile.current ? theme.accentText : theme.foreground
         font.pixelSize: 12
         horizontalAlignment: Text.AlignHCenter
         wrapMode: Text.WrapAtWordBoundaryOrAnywhere
@@ -280,7 +280,7 @@ Item {
                 name: tile.icon
                 size: 76
                 stroke: 1.2
-                color: tile.current ? theme.accent : theme.foreground
+                color: tile.current ? theme.accentText : theme.foreground
             }
             Rectangle {
                 visible: tile.current || hover.hovered

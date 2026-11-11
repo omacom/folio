@@ -8,7 +8,7 @@ import "Format.js" as Format
 Rectangle {
     id: sidebar
 
-    color: theme.background
+    color: theme.glass < 1 ? "transparent" : theme.background
     // A long sidebar scrolls inside itself instead of spilling over the
     // status bar below it.
     clip: true
@@ -278,7 +278,7 @@ Rectangle {
             SectionLabel {
                 Layout.topMargin: 0
                 text: qsTr("Home")
-                color: sidebar.target.path === places.home ? theme.accent
+                color: sidebar.target.path === places.home ? theme.accentText
                      : homeHover.hovered ? theme.foreground : theme.secondaryForeground
                 Accessible.role: Accessible.Button
                 HoverHandler { id: homeHover; cursorShape: Qt.PointingHandCursor }
@@ -346,7 +346,7 @@ Rectangle {
                 Text {
                     anchors.centerIn: parent
                     text: qsTr("Drop to pin")
-                    color: theme.accent
+                    color: theme.accentText
                     font.pixelSize: 12
                 }
                 DropArea {

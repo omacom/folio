@@ -9,6 +9,7 @@
 #include <QJsonObject>
 #include <QRegularExpression>
 #include <QStandardPaths>
+#include <algorithm>
 #include <cmath>
 
 namespace {
@@ -43,6 +44,79 @@ QColor mix(const QColor &a, const QColor &b, double t) {
                             a.blueF() * (1 - t) + b.blueF() * t);
 }
 
+double contrast(const QColor &a, const QColor &b) {
+    const double x = luminance(a) + .05, y = luminance(b) + .05;
+    return x > y ? x / y : y / x;
+}
+
+// Omarchy's glass blur brightness: the brightest grey the blur leaves behind a window.
+constexpr double blurBrightness = .75;
+// The lowest ground alpha glass tries, 0.75 in 8 bits.
+constexpr int lowestAlpha = 192;
+// WCAG AA contrast for body text.
+constexpr double readable = 4.5;
+// How far secondary text stays from the foreground, so it still reads quieter.
+constexpr double quieterContrast = 1.25;
+
+// The worst contrast of `ink` on each ground at `alpha`, over the blur's brightest and darkest backdrop.
+double worstContrast(const QColor &ink, const QList<QColor> &grounds, double alpha, const QColor &tint = {},
+                     double tintAlpha = 0) {
+    double worst = 21;
+    for (const QColor &ground : grounds)
+        for (const QColor &backdrop :
+             {QColor::fromRgbF(blurBrightness, blurBrightness, blurBrightness), QColor(Qt::black)})
+            worst = std::min(worst, contrast(ink, QColor(mix(mix(backdrop, ground, alpha), tint, tintAlpha).rgb())));
+    return worst;
+}
+
+// The least mix of `ink` toward `toward` that holds, tested in the 8-bit color the screen draws.
+template <typename Holds> QColor lift(const QColor &ink, const QColor &toward, Holds holds) {
+    if (holds(ink))
+        return ink;
+    const auto at = [&](double t) { return QColor(mix(ink, toward, t).rgb()); };
+    double lo = 0, hi = 1;
+    for (int i = 0; i < 20; ++i) {
+        const double mid = (lo + hi) / 2;
+        (holds(at(mid)) ? hi : lo) = mid;
+    }
+    return at(hi);
+}
+
+struct Glass {
+    double alpha = 1;
+    QHash<QString, QColor> inks;
+};
+
+// The lowest ground alpha at which every ink, the accent included, lifts to read; with none the window stays opaque.
+Glass glassFor(QHash<QString, QColor> inks, const QList<QColor> &grounds, const QColor &accent) {
+    const QColor toward = luminance(inks["foreground"]) > luminance(grounds.first()) ? Qt::white : Qt::black;
+    const auto quieter = [&](const QColor &quiet, const QColor &loud) {
+        return contrast(quiet, loud) >= quieterContrast
+               && (toward == Qt::white) == (luminance(quiet) < luminance(loud));
+    };
+    for (int a = lowestAlpha; a < 255; ++a) {
+        const double alpha = a / 255.;
+        // Every ink reads on the bare grounds and on the current row's accent tint over them.
+        const auto reads = [&](const QColor &c) {
+            return worstContrast(c, grounds, alpha) >= readable
+                   && worstContrast(c, grounds, alpha, accent, Theme::currentRowTint) >= readable;
+        };
+        Glass glass{alpha, {}};
+        for (auto it = inks.cbegin(); it != inks.cend(); ++it)
+            glass.inks.insert(it.key(), lift(it.value(), toward, reads));
+        const QColor quiet = glass.inks["secondary_foreground"];
+        glass.inks["foreground"] = lift(glass.inks["foreground"], toward,
+                                        [&](const QColor &c) { return reads(c) && quieter(quiet, c); });
+        const QColor accentInk = lift(accent, toward, reads);
+        if (std::all_of(glass.inks.cbegin(), glass.inks.cend(), reads) && quieter(quiet, glass.inks["foreground"])
+            && reads(accentInk)) {
+            glass.inks["accent"] = accentInk;
+            return glass;
+        }
+    }
+    return {};
+}
+
 struct Palette {
     QHash<QString, QColor> colors;
     bool light = false;
@@ -71,6 +145,11 @@ Palette readPalette(const QString &path) {
 Theme::Theme(const QString &directory, QObject *parent, const QString &hyprctl)
     : QObject(parent),
       m_directory(directory.isEmpty() ? QDir::homePath() + "/.local/state/omarchy/current" : directory) {
+    // Omarchy's Window Transparency choice sits beside the current theme.
+    QString state = qEnvironmentVariable("XDG_STATE_HOME");
+    if (state.isEmpty())
+        state = QDir::homePath() + "/.local/state";
+    m_toggles = directory.isEmpty() ? state + "/omarchy/toggles/hypr" : QDir::cleanPath(m_directory + "/../toggles/hypr");
     m_debounce.setSingleShot(true);
     m_debounce.setInterval(80);
     connect(&m_watcher, &QFileSystemWatcher::directoryChanged, this, [this] { m_debounce.start(); });
@@ -149,7 +228,7 @@ QColor Theme::lighterBackground() const {
     const double gap = qAbs(luminance(lighter) - luminance(bg));
     if (gap > 0.004)
         return lighter;
-    return mix(bg, foreground(), 0.08);
+    return mix(bg, color("foreground"), 0.08);
 }
 
 // Black or white, whichever reads on the accent (WCAG relative luminance).
@@ -161,7 +240,7 @@ QColor Theme::accentForeground() const {
 // secondary color by mixing the foreground toward the background, keeping
 // roughly a 4.5:1 contrast for metadata and labels.
 QColor Theme::secondaryForeground() const {
-    return mix(background(), foreground(), 0.68);
+    return m_inks.value("secondary_foreground", mix(background(), color("foreground"), 0.68));
 }
 
 void Theme::reload() {
@@ -178,15 +257,32 @@ void Theme::reload() {
         ancestor = QFileInfo(ancestor).absolutePath();
     QStringList candidates{ancestor, QFileInfo(ancestor).absolutePath(), m_directory,
                            m_directory + "/theme", m_directory + "/theme/colors.toml"};
+    // Omarchy makes the toggles directory the first time one is set.
+    QString toggles = m_toggles;
+    while (!QFileInfo::exists(toggles) && toggles != "/")
+        toggles = QFileInfo(toggles).absolutePath();
+    candidates << toggles << m_toggles + "/window-glassy.lua" << m_toggles + "/window-opaque.lua";
     candidates.removeDuplicates();
     for (const auto &path : candidates)
         if (QFileInfo::exists(path))
             m_watcher.addPath(path);
 
     const Palette palette = readPalette(m_directory + "/theme/colors.toml");
-    if (palette.colors != m_colors || palette.light != m_light) {
-        m_colors = palette.colors;
-        m_light = palette.light;
+    const bool paletteChanged = palette.colors != m_colors || palette.light != m_light;
+    m_colors = palette.colors;
+    m_light = palette.light;
+
+    // Omarchy's own reading of its two files: opaque wins over glassy.
+    const bool opaque = QFileInfo::exists(m_toggles + "/window-opaque.lua");
+    const bool glassy = !opaque && QFileInfo::exists(m_toggles + "/window-glassy.lua");
+    Glass glass;
+    if (glassy)
+        glass = glassFor({{"foreground", color("foreground")}, {"bright_foreground", color("bright_foreground")},
+                          {"secondary_foreground", mix(background(), color("foreground"), 0.68)}, {"red", color("red")}},
+                         {background(), darkBackground()}, color("accent"));
+    if (paletteChanged || glass.alpha != m_glass || glass.inks != m_inks) {
+        m_glass = glass.alpha;
+        m_inks = glass.inks;
         emit changed();
     }
 }

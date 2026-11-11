@@ -49,7 +49,7 @@ Rectangle {
     onItemChanged: Qt.callLater(describe)
     function describe() { backend.describe(item, !!folderPane && folderPane.inTrash) }
 
-    color: theme.darkBackground
+    color: Qt.alpha(theme.darkBackground, theme.glass)
 
     Rectangle { anchors.left: parent.left; width: 1; height: parent.height; color: Qt.alpha(theme.foreground, 0.12) }
 
@@ -98,7 +98,7 @@ Rectangle {
                 name: pane.pluginItem ? pane.item.icon : pane.hasItem && pane.item.isDir ? "folder" : "file"
                 size: 72
                 stroke: 1.2
-                color: pane.hasItem && pane.item.isDir ? theme.accent : theme.secondaryForeground
+                color: pane.hasItem && pane.item.isDir ? theme.accentText : theme.secondaryForeground
             }
         }
 

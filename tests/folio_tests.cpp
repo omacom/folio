@@ -5813,6 +5813,109 @@ private slots:
         QTRY_COMPARE(theme.radius(), 6);
     }
 
+    void themeTurnsToGlassWithOmarchysWindows()
+    {
+        QTemporaryDir root;
+        QVERIFY(QDir(root.path()).mkpath("current/theme") && QDir(root.path()).mkpath("toggles/hypr"));
+        write(root.filePath("current/theme/colors.toml"),
+              "background = \"#2b2f36\"\ndark_background = \"#22262b\"\nforeground = \"#a9b1bc\"\nred = \"#c05050\"\n"
+              "accent = \"#5f87af\"\n");
+        Theme theme(root.filePath("current"));
+        QCOMPARE(theme.glass(), 1.0);
+        QCOMPARE(theme.foreground(), QColor("#a9b1bc"));
+        QCOMPARE(theme.accentText(), QColor("#5f87af"));
+
+        // Each ink reads at 4.5:1 on either ground over Omarchy's brightest blurred backdrop and over black.
+        const auto luminance = [](const QColor &c) {
+            auto linear = [](double v) { return v <= .04045 ? v / 12.92 : std::pow((v + .055) / 1.055, 2.4); };
+            return .2126 * linear(c.redF()) + .7152 * linear(c.greenF()) + .0722 * linear(c.blueF());
+        };
+        // The current row draws the accent's tint under its name, size and date.
+        const auto worst = [&](const QColor &ink, double tint = 0) {
+            double low = 21;
+            const double g = theme.glass();
+            const QColor a = theme.accent();
+            for (const QColor &ground : {theme.background(), theme.darkBackground()})
+                for (double backdrop : {.75, 0.}) {
+                    const auto over = [&](double c, double t) { return (c * g + backdrop * (1 - g)) * (1 - tint) + t * tint; };
+                    const QColor glass = QColor(QColor::fromRgbF(over(ground.redF(), a.redF()), over(ground.greenF(), a.greenF()),
+                                                                 over(ground.blueF(), a.blueF())).rgb());
+                    const double x = luminance(ink) + .05, y = luminance(glass) + .05;
+                    low = std::min(low, x > y ? x / y : y / x);
+                }
+            return low;
+        };
+        // Every lifted ink with its worst contrast, on the bare glass or under the tint, where it falls short.
+        const auto faint = [&] {
+            QStringList out;
+            for (const QColor &ink : {theme.foreground(), theme.brightForeground(), theme.secondaryForeground(),
+                                      theme.red(), theme.accentText()})
+                if (const double low = std::min(worst(ink), worst(ink, theme.currentTint())); low < 4.5)
+                    out << ink.name() + " " + QString::number(low, 'f', 3);
+            return out.join(", ");
+        };
+        write(root.filePath("toggles/hypr/window-glassy.lua"), "-- glassy\n");
+        QTRY_VERIFY(theme.glass() < 1);
+        // 192 is 0.75 in 8 bits, the lowest alpha glass tries, and this palette holds there.
+        QCOMPARE(qRound(theme.glass() * 255), 192);
+        QVERIFY2(faint().isEmpty(), qPrintable(faint()));
+        QVERIFY(luminance(theme.secondaryForeground()) < luminance(theme.foreground()));
+        // The grounds and the accent's fills keep the theme's own colors.
+        QCOMPARE(theme.background(), QColor("#2b2f36"));
+        QCOMPARE(theme.accent(), QColor("#5f87af"));
+
+        // A light palette darkens its text instead.
+        write(root.filePath("current/theme/colors.toml"),
+              "background = \"#eff1f5\"\ndark_background = \"#e6e9ef\"\nforeground = \"#4c4f69\"\nred = \"#d20f39\"\n"
+              "accent = \"#1e66f5\"\nmode = \"light\"\n");
+        QTRY_VERIFY(theme.light());
+        QCOMPARE(qRound(theme.glass() * 255), 192);
+        QVERIFY2(faint().isEmpty(), qPrintable(faint()));
+        QVERIFY(luminance(theme.secondaryForeground()) > luminance(theme.foreground()));
+
+        // Opaque wins when both are there, as in Omarchy's own reading.
+        write(root.filePath("toggles/hypr/window-opaque.lua"), "-- opaque\n");
+        QTRY_COMPARE(theme.glass(), 1.0);
+        QCOMPARE(theme.foreground(), QColor("#4c4f69"));
+        QCOMPARE(theme.accentText(), QColor("#1e66f5"));
+        QVERIFY(QFile::remove(root.filePath("toggles/hypr/window-opaque.lua")));
+        QTRY_VERIFY(theme.glass() < 1);
+        QVERIFY(QFile::remove(root.filePath("toggles/hypr/window-glassy.lua")));
+        QTRY_COMPARE(theme.glass(), 1.0);
+        QCOMPARE(theme.foreground(), QColor("#4c4f69"));
+
+        // A bright accent's tint lifts the ground under the text, so the grounds take a higher alpha.
+        write(root.filePath("toggles/hypr/window-glassy.lua"), "-- glassy\n");
+        write(root.filePath("current/theme/colors.toml"),
+              "background = \"#484848\"\ndark_background = \"#484848\"\nforeground = \"#dddddd\"\n"
+              "bright_foreground = \"#dddddd\"\nred = \"#ff0000\"\naccent = \"#c0c0c0\"\n");
+        QTRY_COMPARE(theme.accent(), QColor("#c0c0c0"));
+        QCOMPARE(qRound(theme.glass() * 255), 232);
+        QVERIFY2(faint().isEmpty(), qPrintable(faint()));
+        // A white accent's tint leaves no alpha below opaque where the text reads, so the window stays solid.
+        write(root.filePath("current/theme/colors.toml"),
+              "background = \"#484848\"\ndark_background = \"#484848\"\nforeground = \"#dddddd\"\n"
+              "bright_foreground = \"#dddddd\"\nred = \"#ff0000\"\naccent = \"#ffffff\"\n");
+        QTRY_COMPARE(theme.accent(), QColor("#ffffff"));
+        QCOMPARE(theme.glass(), 1.0);
+        QCOMPARE(theme.foreground(), QColor("#dddddd"));
+    }
+
+    void themeFollowsTransparencyTogglesMadeAfterStart()
+    {
+        QTemporaryDir root;
+        QVERIFY(QDir(root.path()).mkpath("current/theme") && QDir(root.path()).mkpath("toggles"));
+        write(root.filePath("current/theme/colors.toml"),
+              "background = \"#2b2f36\"\ndark_background = \"#22262b\"\nforeground = \"#a9b1bc\"\nred = \"#c05050\"\n"
+              "accent = \"#5f87af\"\n");
+        Theme theme(root.filePath("current"));
+        QCOMPARE(theme.glass(), 1.0);
+        // Omarchy makes toggles/hypr the first time one of its toggles is set.
+        QVERIFY(QDir(root.path()).mkpath("toggles/hypr"));
+        write(root.filePath("toggles/hypr/window-glassy.lua"), "-- glassy\n");
+        QTRY_VERIFY(theme.glass() < 1);
+    }
+
     void translatorFallsBackToEnglish()
     {
         QTemporaryDir dir;

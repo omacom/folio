@@ -9,6 +9,7 @@
 #include <QQmlEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
+#include <QQuickWindow>
 #include <QUrl>
 #include <cstdio>
 
@@ -52,6 +53,8 @@ static void setUp(QGuiApplication &app) {
     font.setPixelSize(13);
     app.setFont(font);
     QQuickStyle::setStyle("Material");
+    // Windows can turn glassy while open, so each gets an alpha channel.
+    QQuickWindow::setDefaultAlphaBuffer(true);
 }
 
 // `folio preview [--hidden] [--sort name|kind|modified|oldest|size] [--follow] FILE`:
