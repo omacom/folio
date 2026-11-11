@@ -28,6 +28,7 @@ class Theme : public QObject {
     Q_PROPERTY(QColor orange READ orange NOTIFY changed)
     Q_PROPERTY(bool light READ light NOTIFY changed)
     Q_PROPERTY(int radius READ radius NOTIFY changed)
+    Q_PROPERTY(QColor accentMark READ accentMark NOTIFY changed)
 
 public:
     explicit Theme(const QString &currentDirectory = {}, QObject *parent = nullptr, const QString &hyprctl = {});
@@ -49,6 +50,7 @@ public:
     QColor orange() const { return color("orange"); }
     bool light() const { return m_light; }
     int radius() const { return m_radius; }
+    QColor accentMark() const;
 
 signals:
     void changed();

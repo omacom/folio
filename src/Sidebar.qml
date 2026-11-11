@@ -189,7 +189,7 @@ Rectangle {
                  : row.active ? Qt.alpha(theme.foreground, 0.10)
                  : row.hovered && row.enabled ? Qt.alpha(theme.foreground, 0.06) : "transparent"
             border.width: row.dropHover ? 2 : row.keyed ? 1 : 0
-            border.color: theme.accent
+            border.color: theme.accentMark
         }
 
         FileDrop {
@@ -362,7 +362,7 @@ Rectangle {
                 visible: sidebar.dragging
                 color: Qt.alpha(theme.accent, pinDrop.containsDrag ? 0.22 : 0.08)
                 border.width: pinDrop.containsDrag ? 2 : 1
-                border.color: theme.accent
+                border.color: theme.accentMark
                 radius: Math.min(4, theme.radius)
                 Text {
                     anchors.centerIn: parent

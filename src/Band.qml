@@ -81,6 +81,6 @@ MouseArea {
         height: Math.abs(band.end.y - band.start.y)
         color: Qt.alpha(theme.accent, 0.12)
         border.width: 1
-        border.color: theme.accent
+        border.color: theme.accentMark
     }
 }

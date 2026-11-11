@@ -459,7 +459,7 @@ FocusScope {
         y: pathBar.height - 1
         width: parent.width
         height: 2
-        color: pane.active ? theme.accent : "transparent"
+        color: pane.active ? theme.accentMark : "transparent"
     }
 
     // The mouse's back and forward thumb buttons move through history, as in

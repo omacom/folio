@@ -56,7 +56,7 @@ FolioDialog {
                 radius: Math.min(3, theme.radius)
                 color: forAll.checked ? theme.accent : "transparent"
                 border.width: forAll.checked ? 0 : 1
-                border.color: forAll.visualFocus ? theme.accent : Qt.alpha(theme.foreground, 0.4)
+                border.color: forAll.visualFocus ? theme.accentMark : Qt.alpha(theme.foreground, 0.4)
                 Glyph {
                     anchors.centerIn: parent
                     visible: forAll.checked

@@ -1376,6 +1376,7 @@ private slots:
         FileOps ops;
         const std::unique_ptr<QQmlPropertyMap> theme(QQmlPropertyMap::create());
         theme->insert("accent", QColor(Qt::blue));
+        theme->insert("accentMark", QColor(Qt::blue));
         theme->insert("radius", 0);
         theme->insert("secondaryForeground", QColor(Qt::gray));
         QQmlEngine engine;
@@ -1436,8 +1437,8 @@ private slots:
         const std::unique_ptr<QQmlPropertyMap> translator(QQmlPropertyMap::create());
         const std::unique_ptr<QQmlPropertyMap> backend(QQmlPropertyMap::create());
         const std::unique_ptr<QQmlPropertyMap> folder(QQmlPropertyMap::create());
-        for (const char *role : {"accent", "foreground", "brightForeground", "secondaryForeground", "lighterBackground",
-                                 "darkBackground", "red", "blue", "magenta", "orange", "yellow", "cyan"})
+        for (const char *role : {"accent", "accentMark", "foreground", "brightForeground", "secondaryForeground",
+                                 "lighterBackground", "darkBackground", "red", "blue", "magenta", "orange", "yellow", "cyan"})
             theme->insert(role, QColor(Qt::gray));
         theme->insert("radius", 0);
         translator->insert("language", "en");
@@ -6499,7 +6500,7 @@ private slots:
         const std::unique_ptr<QQmlPropertyMap> translator(QQmlPropertyMap::create());
         const std::unique_ptr<QQmlPropertyMap> backend(QQmlPropertyMap::create());
         const std::unique_ptr<QQmlPropertyMap> folder(QQmlPropertyMap::create());
-        for (const char *role : {"accent", "foreground", "brightForeground", "secondaryForeground", "lighterBackground",
+        for (const char *role : {"accent", "accentMark", "foreground", "brightForeground", "secondaryForeground", "lighterBackground",
                                  "darkBackground", "background", "red", "blue", "magenta", "orange", "yellow", "cyan"})
             theme->insert(role, QColor(Qt::gray));
         theme->insert("radius", 0);
@@ -6663,6 +6664,21 @@ private slots:
         write(dir.filePath("theme/colors.toml"), mocha);
         Theme passing(dir.path());
         QCOMPARE(passing.secondaryForeground(), blend(QColor("#1e1e2e"), QColor("#cdd6f4"), 0.68));
+    }
+
+    void themeFloorsAccentMarks()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("theme");
+        write(dir.filePath("theme/colors.toml"), roseDawn);
+        Theme low(dir.path());
+        for (const QColor &ground : {low.background(), low.lighterBackground(), low.darkBackground()})
+            QVERIFY(contrast(low.accentMark(), ground) >= 3);
+        QVERIFY(snug(low.accentMark(), {low.background(), low.lighterBackground(), low.darkBackground()}, 3));
+        QCOMPARE(low.accent(), QColor("#56949f"));
+        write(dir.filePath("theme/colors.toml"), mocha);
+        Theme passing(dir.path());
+        QCOMPARE(passing.accentMark(), QColor("#89b4fa"));
     }
 
 private:

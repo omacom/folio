@@ -31,7 +31,7 @@ FileDrop {
         visible: area.containsDrag
         color: Qt.alpha(theme.accent, 0.05)
         border.width: 2
-        border.color: theme.accent
+        border.color: theme.accentMark
         radius: Math.min(6, theme.radius)
         Text {
             // A dragged tile's picture hangs 52 px below the pointer, so the label sits 8 px under that.

@@ -40,7 +40,7 @@ AbstractButton {
             radius: parent.radius + 3
             color: "transparent"
             border.width: 2
-            border.color: button.destructive ? theme.red : theme.accent
+            border.color: button.destructive ? theme.red : theme.accentMark
         }
     }
     contentItem: Text {

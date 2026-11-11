@@ -57,6 +57,8 @@ constexpr double midLuminance = .179;
 constexpr int bisectionSteps = 18;
 // One eight-bit channel's range, so the rounding repair can never step further.
 constexpr int channelRange = 255;
+// WCAG's minimum contrast for marks and frames, which aren't text.
+constexpr double markFloor = 3;
 
 // The ink when it already reads at need, else the least mix toward black or white that still does once rounded.
 QColor ensureRatio(const QColor &ink, const QColor &ground, double need) {
@@ -236,5 +238,13 @@ void Theme::reload() {
         m_light = palette.light;
         emit changed();
     }
+}
+
+// The accent as a thin frame or ring, raised to 3:1; fills and tints keep the accent itself.
+QColor Theme::accentMark() const {
+    QColor mark = accent();
+    for (const QColor &ground : {background(), lighterBackground(), darkBackground()})
+        mark = ensureRatio(mark, ground, markFloor);
+    return mark;
 }
 
