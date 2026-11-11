@@ -13,8 +13,13 @@ Rectangle {
     color: Qt.rgba(0, 0, 0, 0.55)
 
     // ↑ ↓, Page Up, Page Down, Home and End, for a list the window is too
-    // short for.
+    // short for. Tab stays here too, rather than going on to a button
+    // behind the overlay.
     Keys.onPressed: (event) => {
+        if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
+            event.accepted = true
+            return
+        }
         const page = flick.height - 40
         const by = { [Qt.Key_Up]: -40, [Qt.Key_Down]: 40, [Qt.Key_PageUp]: -page, [Qt.Key_PageDown]: page,
                      [Qt.Key_Home]: -flick.contentHeight, [Qt.Key_End]: flick.contentHeight }[event.key]
