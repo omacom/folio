@@ -225,7 +225,7 @@ FocusScope {
                     Layout.fillWidth: true
                     text: backend.message || backend.folder.error || backend.busy || fileOps.busy || backend.notice
                     color: theme.brightForeground
-                    elide: Text.ElideRight
+                    elide: Text.ElideMiddle
                 }
                 IconButton {
                     visible: backend.message.length > 0
