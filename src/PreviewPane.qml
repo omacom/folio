@@ -174,7 +174,7 @@ Rectangle {
                 text: {
                     translator.language // Re-read when the language (and so the default locale) changes.
                     const when = pane.trashed ? pane.info.deleted : pane.noting ? null : pane.item.modified
-                    return pane.hasItem && when ? when.toLocaleString(Qt.locale(), Locale.ShortFormat) : ""
+                    return pane.hasItem ? Format.stamp(when) : ""
                 }
                 color: theme.foreground
                 font.pixelSize: 12
