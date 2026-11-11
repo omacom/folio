@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
+import Folio
 import "Format.js" as Format
 
 // The large look at one file (Space in Folio, or `folio preview FILE`):
@@ -145,6 +146,7 @@ ApplicationWindow {
                     sourceComponent: win.viewer === "image" || win.viewer === "animated" ? imageView
                                    : win.viewer === "text" || win.viewer === "markdown" || win.viewer === "archive" ? textView
                                    : win.viewer === "folder" ? folderView
+                                   : win.viewer === "font" ? fontView
                                    : otherView
                 }
 
@@ -313,6 +315,102 @@ ApplicationWindow {
         }
     }
 
+    // A font as a sample sheet in the font itself, laid out and scrolled like the text view.
+    Component {
+        id: fontView
+
+        Flickable {
+            id: flick
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            contentWidth: width
+            contentHeight: Math.max(height, sheet.implicitHeight + 72)
+
+            function scroll(direction) { contentY = Math.max(0, Math.min(contentHeight - height, contentY + direction * 60)) }
+            function page(direction) { contentY = Math.max(0, Math.min(contentHeight - height, contentY + direction * (height - 60))) }
+
+            Connections {
+                target: previewer
+                function onChanged() { flick.contentY = 0 }
+            }
+
+            FontSample {
+                id: sample
+                path: win.item.path || ""
+                modified: win.item.modified
+            }
+
+            Column {
+                id: sheet
+                width: Math.min(flick.width - 96, 1200)
+                x: (flick.width - width) / 2
+                y: 36
+                spacing: 24
+                visible: sample.status === "ready"
+
+                Column {
+                    width: parent.width
+                    spacing: 2
+                    Text {
+                        width: parent.width
+                        text: sample.family
+                        color: theme.brightForeground
+                        font.pixelSize: 15
+                        font.weight: Font.DemiBold
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        width: parent.width
+                        text: sample.faces > 1 ? sample.style + " · " + qsTr("%Ln faces", "", sample.faces) : sample.style
+                        color: theme.secondaryForeground
+                        font.pixelSize: 12
+                        elide: Text.ElideRight
+                    }
+                }
+
+                // The Latin alphabet and the digits on purpose: they're what the font was checked for.
+                FontText {
+                    width: parent.width
+                    source: sample
+                    text: sample.glyphs || "ABCDEFGHIJKLMNOPQRSTUVWXYZ\nabcdefghijklmnopqrstuvwxyz\n0123456789"
+                    color: theme.foreground
+                    pixelSize: 36
+                    anywhere: true
+                }
+
+                // From the text view's size up to a display size.
+                Repeater {
+                    model: [13, 18, 24, 36, 48]
+                    Column {
+                        required property int modelData
+                        width: sheet.width
+                        spacing: 4
+                        Text {
+                            text: qsTr("%1 px").arg(modelData)
+                            color: theme.secondaryForeground
+                            font.pixelSize: 12
+                        }
+                        FontText {
+                            width: parent.width
+                            source: sample
+                            // Not translated: the font was checked for these letters and the space, no others.
+                            text: sample.glyphs || "The quick brown fox jumps over the lazy dog"
+                            color: theme.foreground
+                            pixelSize: modelData
+                        }
+                    }
+                }
+            }
+
+            Sentence {
+                visible: sample.status === "error"
+                text: qsTr("Couldn't read this font.")
+            }
+
+            ScrollBar.vertical: FolioScrollBar { }
+        }
+    }
+
     // A folder: what's inside, at a glance.
     Component {
         id: folderView
@@ -354,7 +452,7 @@ ApplicationWindow {
     }
 
     // Anything without a viewer of its own: the largest thumbnail the
-    // installed thumbnailers can make (HEIC, office files, fonts…), or the
+    // installed thumbnailers can make (HEIC, office files…), or the
     // file's type and a pointer to its app.
     Component {
         id: otherView

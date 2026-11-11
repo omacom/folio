@@ -77,7 +77,8 @@ public:
     Q_INVOKABLE void describe(const QVariantMap &item, bool inTrash = false);
     // The system's own name for a type ("JPEG image"), in the language of
     // the moment.
-    Q_INVOKABLE static QString typeName(const QString &mime);
+    // `path` lets a font be named as one where its extension alone means another type.
+    Q_INVOKABLE static QString typeName(const QString &mime, const QString &path = {});
     // Whether the details list an archive of this type's names.
     Q_INVOKABLE static bool listsArchive(const QString &mime) { return Previewer::listsArchive(mime); }
     // The item to select once the folder has loaded (where we came from, or

@@ -13,6 +13,7 @@
 #include <cstdio>
 
 #include "filemanager1.h"
+#include "fontsample.h"
 #include "foldermodel.h"
 #include "places.h"
 #include "plugins.h"
@@ -104,6 +105,8 @@ static int preview(QGuiApplication &app) {
     QObject::connect(&translator, &Translator::changed, &engine, &QQmlEngine::retranslate);
     QObject::connect(&translator, &Translator::changed, &previewer, &Previewer::relist);
     engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+    qmlRegisterType<FontSample>("Folio", 1, 0, "FontSample");
+    qmlRegisterType<FontText>("Folio", 1, 0, "FontText");
     engine.rootContext()->setContextProperty("translator", &translator);
     engine.rootContext()->setContextProperty("theme", &theme);
     engine.rootContext()->setContextProperty("previewer", &previewer);
@@ -144,6 +147,9 @@ int main(int argc, char *argv[]) {
     engine.addImageProvider("plugin-icon", new PluginIconProvider);
     // Creatable too: the column view lists each folder on the way here.
     qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+    // The details pane's sample of a font, and the text drawn in it.
+    qmlRegisterType<FontSample>("Folio", 1, 0, "FontSample");
+    qmlRegisterType<FontText>("Folio", 1, 0, "FontText");
     engine.rootContext()->setContextProperty("translator", &translator);
     engine.rootContext()->setContextProperty("theme", &theme);
     engine.rootContext()->setContextProperty("places", &places);

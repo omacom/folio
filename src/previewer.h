@@ -112,7 +112,7 @@ public:
     Q_INVOKABLE void open();
 
     // Which view shows a type: image, animated, thumbnail, video, audio,
-    // pdf, markdown, text, archive, folder or other.
+    // pdf, font, markdown, text, archive, folder or other.
     static QString viewerFor(const QString &mime, bool isDir);
     // Whether `bsdtar -tf` lists an archive of this type; a lone .gz, .xz or .zst isn't one.
     static bool listsArchive(const QString &mime);

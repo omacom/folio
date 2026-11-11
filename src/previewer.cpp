@@ -1,4 +1,5 @@
 #include "previewer.h"
+#include "fontsample.h"
 
 #include "fileops.h"
 #include <QFile>
@@ -22,6 +23,8 @@ QString Previewer::viewerFor(const QString &mime, bool isDir) {
         return "folder";
     if (mime == "application/pdf")
         return "pdf";
+    if (FontSample::isFont(mime))
+        return "font";
     if (mime.startsWith("video/"))
         return "video";
     if (mime.startsWith("audio/"))
@@ -202,7 +205,8 @@ QString Previewer::url() const {
 QString Previewer::type() const {
     if (m_index < 0 || m_index >= m_entries.size())
         return {};
-    return QMimeDatabase().mimeTypeForName(m_entries.at(m_index).mime).comment();
+    const FolderModel::Entry &e = m_entries.at(m_index);
+    return QMimeDatabase().mimeTypeForName(FontSample::typeOf(e.mime, e.path)).comment();
 }
 
 void Previewer::next() {
@@ -227,6 +231,9 @@ void Previewer::setIndex(int index, bool report) {
     m_index = index;
     const FolderModel::Entry e = m_entries.at(index);
     m_viewer = viewerFor(e.mime, e.isDir);
+    // By its extension alone a ".otf" font is taken for an OpenDocument template.
+    if (m_viewer == "other" && FontSample::isFontFile(e.path))
+        m_viewer = "font";
     m_text.clear();
     m_sentence.clear();
     m_helper.stop();

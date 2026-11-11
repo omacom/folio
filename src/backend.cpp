@@ -1,5 +1,6 @@
 #include "backend.h"
 #include "fileops.h"
+#include "fontsample.h"
 #include "previewer.h"
 
 #include <QClipboard>
@@ -476,8 +477,8 @@ bool Backend::askPlugins() {
         });
 }
 
-QString Backend::typeName(const QString &mime) {
-    return QMimeDatabase().mimeTypeForName(mime).comment();
+QString Backend::typeName(const QString &mime, const QString &path) {
+    return QMimeDatabase().mimeTypeForName(FontSample::typeOf(mime, path)).comment();
 }
 
 Backend::~Backend() {

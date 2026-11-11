@@ -1,6 +1,8 @@
 #include <QClipboard>
+#include <QDataStream>
 #include <QDir>
 #include <QEventLoopLocker>
+#include <QFontDatabase>
 #include <QMimeData>
 #include <QPageSize>
 #include <QPainter>
@@ -22,6 +24,7 @@
 #include <QQmlPropertyMap>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QRawFont>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QStandardPaths>
@@ -32,6 +35,7 @@
 #include <csignal>
 #include <fcntl.h>
 #include <signal.h>
+#include <sys/inotify.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -40,6 +44,7 @@
 #include "disks.h"
 #include "fileops.h"
 #include "foldermodel.h"
+#include "fontsample.h"
 #include "mounter.h"
 #include "places.h"
 #include "plugins.h"
@@ -5912,6 +5917,8 @@ private slots:
         Previewer previewer;
         previewer.start(dir.filePath("a.tar"), false, "name");
         QQmlEngine engine;
+        qmlRegisterType<FontSample>("Folio", 1, 0, "FontSample");
+        qmlRegisterType<FontText>("Folio", 1, 0, "FontText");
         engine.rootContext()->setContextProperty("theme", &theme);
         engine.rootContext()->setContextProperty("previewer", &previewer);
         engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
@@ -6034,6 +6041,317 @@ private slots:
             QTRY_VERIFY(stuckPid() > 0);
         }
         QTRY_VERIFY_WITH_TIMEOUT(::kill(stuckPid(), 0) != 0, 2000);
+    }
+
+    void previewerShowsFontsAsASampleSheet()
+    {
+        for (const char *mime : {"font/ttf", "font/otf", "font/collection", "font/woff", "font/woff2",
+                                 "application/x-font-ttf", "application/x-font-otf", "application/x-font-type1"})
+            QCOMPARE(Previewer::viewerFor(mime, false), QString("font"));
+        // A bitmap font has no outlines to draw a sheet in.
+        QCOMPARE(Previewer::viewerFor("application/x-font-bdf", false), QString("other"));
+
+        // By its extension alone a ".otf" is an OpenDocument template; it's still shown as a font.
+        QTemporaryDir dir;
+        write(dir.filePath("Sample.otf"), tinyFont("Folio Sample", "ABC"));
+        Previewer previewer;
+        previewer.start(dir.filePath("Sample.otf"), false, "name");
+        QCOMPARE(previewer.viewer(), QString("font"));
+
+        // And named as one, in the preview window and in the details pane.
+        const QMimeDatabase mimes;
+        const QString byName = mimes.mimeTypeForFile(dir.filePath("Sample.otf"), QMimeDatabase::MatchExtension).name();
+        const QString font = mimes.mimeTypeForName("font/otf").comment();
+        QVERIFY(!font.isEmpty() && mimes.mimeTypeForName(byName).comment() != font);
+        QCOMPARE(previewer.type(), font);
+        QCOMPARE(Backend::typeName(byName, dir.filePath("Sample.otf")), font);
+        QCOMPARE(Backend::typeName("text/plain", dir.filePath("notes.txt")), mimes.mimeTypeForName("text/plain").comment());
+    }
+
+    void fontSampleKeepsItsFontToItself()
+    {
+        QTemporaryDir dir;
+        const QString latin = " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        write(dir.filePath("One.ttf"), tinyFont("Folio One", latin));
+        write(dir.filePath("Two.ttf"), tinyFont("Folio Two", latin));
+        write(dir.filePath("notes.txt"), "x");
+        const QStringList before = QFontDatabase::families();
+
+        auto sample = std::make_unique<FontSample>();
+        sample->setPath(dir.filePath("One.ttf"));
+        QCOMPARE(sample->status(), QString("loading"));
+        QTRY_COMPARE(sample->status(), QString("ready"));
+        QCOMPARE(sample->family(), QString("Folio One"));
+        QCOMPARE(sample->style(), QString("Regular"));
+        QCOMPARE(sample->faces(), 1);
+        QVERIFY(sample->glyphs().isEmpty());
+        // The sample has the font; Folio's own list of fonts never does.
+        QCOMPARE(sample->font(12).familyName(), QString("Folio One"));
+        QCOMPARE(QFontDatabase::families(), before);
+
+        // Stepping to another font swaps one for the other, and to a file that isn't one leaves neither.
+        sample->setPath(dir.filePath("Two.ttf"));
+        QVERIFY(!sample->font(12).isValid());
+        QTRY_COMPARE(sample->status(), QString("ready"));
+        QCOMPARE(sample->font(12).familyName(), QString("Folio Two"));
+        QCOMPARE(QFontDatabase::families(), before);
+        sample->setPath(dir.filePath("notes.txt"));
+        QVERIFY(sample->status().isEmpty());
+        QVERIFY(!sample->font(12).isValid());
+
+        // A font stepped past while it's read is never the one kept.
+        sample->setPath(dir.filePath("One.ttf"));
+        sample->setPath(dir.filePath("Two.ttf"));
+        QTRY_COMPARE(sample->status(), QString("ready"));
+        QCOMPARE(sample->family(), QString("Folio Two"));
+        QCOMPARE(sample->font(12).familyName(), QString("Folio Two"));
+        QCOMPARE(QFontDatabase::families(), before);
+    }
+
+    void fontSampleDrawsOnlyWhatTheFontHas()
+    {
+        QTemporaryDir dir;
+        // Greek letters and a star but no Latin: the letters are drawn, never
+        // the alphabet in boxes or another font. Without letters, the star.
+        write(dir.filePath("Greek.ttf"), tinyFont("Folio Greek", QString::fromUtf8("★αγβ")));
+        write(dir.filePath("Stars.ttf"), tinyFont("Folio Stars", QString::fromUtf8("★☆")));
+        // The alphabet without the digits: its letters are drawn, never digits from another font.
+        const QString letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+        write(dir.filePath("Letters.ttf"), tinyFont("Folio Letters", letters));
+        write(dir.filePath("Pair.ttc"), tinyCollection({"Folio Left", "Folio Right"}));
+        write(dir.filePath("Broken.ttf"), "not a font");
+        write(dir.filePath("Empty.woff2"), "");
+        const QStringList before = QFontDatabase::families();
+        FontSample sample;
+        sample.setPath(dir.filePath("Greek.ttf"));
+        QTRY_COMPARE(sample.status(), QString("ready"));
+        QCOMPARE(sample.glyphs(), QString::fromUtf8("αβγ"));
+        sample.setPath(dir.filePath("Stars.ttf"));
+        QTRY_COMPARE(sample.status(), QString("ready"));
+        QCOMPARE(sample.glyphs(), QString::fromUtf8("★☆"));
+        sample.setPath(dir.filePath("Letters.ttf"));
+        QTRY_COMPARE(sample.status(), QString("ready"));
+        QCOMPARE(sample.glyphs(), letters);
+        // The alphabet and the digits without the space: its letters again, never a line of words with boxes between them.
+        write(dir.filePath("Tight.ttf"), tinyFont("Folio Tight", letters + "0123456789"));
+        sample.setPath(dir.filePath("Tight.ttf"));
+        QTRY_COMPARE(sample.status(), QString("ready"));
+        QCOMPARE(sample.glyphs(), letters);
+
+        // A collection shows its first face and counts them all.
+        sample.setPath(dir.filePath("Pair.ttc"));
+        QTRY_COMPARE(sample.status(), QString("ready"));
+        QCOMPARE(sample.family(), QString("Folio Left"));
+        QCOMPARE(sample.faces(), 2);
+
+        // A file that can't be read as a font adds nothing.
+        sample.setPath(dir.filePath("Broken.ttf"));
+        QTRY_COMPARE(sample.status(), QString("error"));
+        QVERIFY(sample.family().isEmpty());
+        sample.setPath(dir.filePath("Empty.woff2"));
+        QTRY_COMPARE(sample.status(), QString("error"));
+
+        // Only a mark that sits on another character: nothing to draw alone, so no sheet from another font.
+        write(dir.filePath("Marks.ttf"), tinyFont("Folio Marks", QString(QChar(0x0301))));
+        sample.setPath(dir.filePath("Marks.ttf"));
+        QTRY_COMPARE(sample.status(), QString("error"));
+
+        // A pipe named like a font, with nobody writing to it, is not waited on.
+        const QByteArray pipe = QFile::encodeName(dir.filePath("Pipe.ttf"));
+        QCOMPARE(::mkfifo(pipe.constData(), 0600), 0);
+        // Lets go of a reader that did wait, so a failure here ends the suite.
+        const auto release = qScopeGuard([&] { ::close(::open(pipe.constData(), O_WRONLY | O_NONBLOCK)); });
+        sample.setPath(dir.filePath("Pipe.ttf"));
+        QTRY_COMPARE(sample.status(), QString("error"));
+        QCOMPARE(QFontDatabase::families(), before);
+    }
+
+    void fontSamplesOfOneNameEachDrawTheirOwnFile()
+    {
+        // Two files of one family and style, shown at once as two windows show them, and a font of that name among Folio's own.
+        QTemporaryDir dir;
+        const int there = QFontDatabase::addApplicationFontFromData(tinyFont("Folio Twin", "C"));
+        QVERIFY(there >= 0);
+        const auto remove = qScopeGuard([&] { QFontDatabase::removeApplicationFont(there); });
+        write(dir.filePath("First.ttf"), tinyFont("Folio Twin", "A"));
+        write(dir.filePath("Second.ttf"), tinyFont("Folio Twin", "B"));
+        FontSample first, second;
+        FontText one, two;
+        // The glyph drawn for each character of "AB": 0 is the font's own missing glyph.
+        const auto drawn = [](const FontText &text) {
+            QList<quint32> glyphs;
+            for (const QGlyphRun &run : text.runs())
+                glyphs += run.glyphIndexes();
+            return glyphs;
+        };
+        for (FontText *text : {&one, &two}) {
+            text->setWidth(400);
+            text->setPixelSize(18);
+            text->setText("AB");
+        }
+        one.setSource(&first);
+        two.setSource(&second);
+        QVERIFY(drawn(one).isEmpty());
+        first.setPath(dir.filePath("First.ttf"));
+        QTRY_COMPARE(first.status(), QString("ready"));
+        second.setPath(dir.filePath("Second.ttf"));
+        QTRY_COMPARE(second.status(), QString("ready"));
+        QCOMPARE(first.family(), second.family());
+        QCOMPARE(first.style(), second.style());
+        QCOMPARE(drawn(one), QList<quint32>({1, 0}));
+        QCOMPARE(drawn(two), QList<quint32>({0, 1}));
+        QVERIFY(one.implicitHeight() > 0);
+        // Folio's own font of that name is still the one its name draws.
+        const QRawFont named = QRawFont::fromFont(QFont("Folio Twin"));
+        QVERIFY(named.supportsCharacter(QChar('C')) && !named.supportsCharacter(QChar('A')) && !named.supportsCharacter(QChar('B')));
+
+        // Lines break at the width, a new line in the text starts one, and nothing is drawn once the font goes.
+        two.setAnywhere(true);
+        two.setText("BBBB\nB");
+        const qreal twoLines = two.implicitHeight();
+        QVERIFY(twoLines > one.implicitHeight());
+        two.setWidth(two.pixelSize());
+        QVERIFY(two.implicitHeight() > twoLines);
+        QCOMPARE(drawn(two).size(), 5);
+        second.setPath({});
+        QVERIFY(drawn(two).isEmpty());
+        QCOMPARE(two.implicitHeight(), 0.0);
+        QCOMPARE(drawn(one), QList<quint32>({1, 0}));
+    }
+
+    void fontTextPaintsAPictureMadeWithItsFont()
+    {
+        // paint() runs on the render thread, where a font made on this one must not be used: it only copies a picture.
+        QTemporaryDir dir;
+        write(dir.filePath("Inked.ttf"), tinyFont("Folio Inked", "A", 0, true));
+        FontSample sample;
+        FontText text;
+        text.setWidth(200);
+        text.setPixelSize(40);
+        text.setColor(Qt::red);
+        text.setText("A");
+        text.setSource(&sample);
+        QVERIFY(text.picture().isNull());
+        sample.setPath(dir.filePath("Inked.ttf"));
+        QTRY_COMPARE(sample.status(), QString("ready"));
+        // How many pixels are wholly ink of one colour: the square's inside.
+        const auto inked = [](const QImage &picture, const QColor &colour) {
+            int pixels = 0;
+            for (int y = 0; y < picture.height(); ++y)
+                for (int x = 0; x < picture.width(); ++x)
+                    pixels += picture.pixelColor(x, y) == colour;
+            return pixels;
+        };
+        const QImage red = text.picture();
+        QCOMPARE(red.size(), (QSizeF(200, text.implicitHeight()) * red.devicePixelRatio()).toSize());
+        QVERIFY(inked(red, Qt::red) > 100);
+        QCOMPARE(inked(red, Qt::blue), 0);
+        // What paint() puts down is that picture.
+        QImage painted(red.size(), red.format());
+        painted.setDevicePixelRatio(red.devicePixelRatio());
+        painted.fill(Qt::transparent);
+        {
+            QPainter painter(&painted);
+            text.paint(&painter);
+        }
+        QCOMPARE(painted, red);
+        // A new colour makes a new picture, and no font leaves none.
+        text.setColor(Qt::blue);
+        QVERIFY(inked(text.picture(), Qt::blue) > 100);
+        QCOMPARE(inked(text.picture(), Qt::red), 0);
+        sample.setPath({});
+        QVERIFY(text.picture().isNull());
+    }
+
+    void fontSampleReadsAFontAgainWhenItIsWrittenOver()
+    {
+        QTemporaryDir dir;
+        const QString latin = " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        const QString path = dir.filePath("One.ttf");
+        const QDateTime written = QDateTime::currentDateTime();
+        write(path, tinyFont("Folio Before", latin));
+        FontSample sample;
+        sample.setPath(path);
+        sample.setModified(written);
+        QTRY_COMPARE(sample.status(), QString("ready"));
+        QCOMPARE(sample.family(), QString("Folio Before"));
+
+        // Written over in place: the path is the same, the time the folder reports is not.
+        write(path, tinyFont("Folio After", latin));
+        sample.setModified(written.addSecs(1));
+        QCOMPARE(sample.status(), QString("loading"));
+        QTRY_COMPARE(sample.status(), QString("ready"));
+        QCOMPARE(sample.family(), QString("Folio After"));
+        QCOMPARE(sample.font(12).familyName(), QString("Folio After"));
+
+        // The same time again reads nothing, and neither does a time for a file that isn't a font.
+        sample.setModified(written.addSecs(1));
+        QCOMPARE(sample.status(), QString("ready"));
+        write(dir.filePath("notes.txt"), "x");
+        sample.setPath(dir.filePath("notes.txt"));
+        sample.setModified(written.addSecs(2));
+        QVERIFY(sample.status().isEmpty());
+    }
+
+    void fontSampleReadsOnlyWhatIsStillShown()
+    {
+        QTemporaryDir dir;
+        const QString latin = " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        write(dir.filePath("One.ttf"), tinyFont("Folio One", latin));
+        write(dir.filePath("Two.ttf"), tinyFont("Folio Two", latin));
+        // Counts how often each font is opened from here on.
+        const int watch = ::inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+        QVERIFY(watch >= 0);
+        const auto closed = qScopeGuard([watch] { ::close(watch); });
+        const int one = ::inotify_add_watch(watch, QFile::encodeName(dir.filePath("One.ttf")).constData(), IN_OPEN);
+        const int two = ::inotify_add_watch(watch, QFile::encodeName(dir.filePath("Two.ttf")).constData(), IN_OPEN);
+        QVERIFY(one >= 0 && two >= 0);
+        QHash<int, int> opened;
+        const auto count = [&] {
+            char events[4096];
+            for (ssize_t got; (got = ::read(watch, events, sizeof events)) > 0;) {
+                for (ssize_t at = 0; at < got;) {
+                    inotify_event event;
+                    memcpy(&event, events + at, sizeof event);
+                    ++opened[event.wd];
+                    at += ssize_t(sizeof event) + event.len;
+                }
+            }
+        };
+
+        // A selection that moves sets the path, then the time: the font is opened once for both.
+        static constexpr int aReadingStartsMs = 100;
+        FontSample sample;
+        sample.setPath(dir.filePath("One.ttf"));
+        QThread::msleep(aReadingStartsMs);
+        // Counted here too: two opens that nobody read between come as one event.
+        count();
+        sample.setModified(QDateTime::currentDateTime());
+        QTRY_COMPARE(sample.status(), QString("ready"));
+        count();
+        QCOMPARE(opened.value(one), 1);
+
+        // With every worker busy, a font stepped past before its turn comes is never opened.
+        QThreadPool *pool = QThreadPool::globalInstance();
+        const int workers = pool->maxThreadCount();
+        QSemaphore busy;
+        pool->setMaxThreadCount(1);
+        const auto freed = qScopeGuard([&] {
+            busy.release();
+            pool->setMaxThreadCount(workers);
+        });
+        QFuture<void> holder = QtConcurrent::run([&busy] { busy.acquire(); });
+        sample.setPath(dir.filePath("Two.ttf"));
+        QCoreApplication::processEvents();
+        sample.setPath(dir.filePath("One.ttf"));
+        QCoreApplication::processEvents();
+        busy.release();
+        QTRY_COMPARE(sample.status(), QString("ready"));
+        QCOMPARE(sample.family(), QString("Folio One"));
+        holder.waitForFinished();
+        count();
+        QCOMPARE(opened.value(two), 0);
+        QCOMPARE(opened.value(one), 2);
     }
 
     void themeFallsBack()
@@ -6321,6 +6639,108 @@ private:
     {
         QFile file(path);
         return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+    }
+
+    // A TrueType font for `chars`, its glyphs empty unless `inked`, starting `at` bytes into its file: enough for FreeType to load.
+    static QByteArray tinyFont(const QString &family, const QString &chars, quint32 at = 0, bool inked = false)
+    {
+        QList<quint16> codes;
+        for (const QChar c : chars)
+            codes << c.unicode();
+        std::sort(codes.begin(), codes.end());
+        const quint16 glyphs = quint16(codes.size() + 1);
+        const quint16 segments = quint16(codes.size() + 1);
+        auto table = [](const std::function<void(QDataStream &)> &fill) {
+            QByteArray bytes;
+            QDataStream s(&bytes, QIODevice::WriteOnly);
+            fill(s);
+            return bytes;
+        };
+        auto zeros = [](QDataStream &s, int n) { for (int i = 0; i < n; ++i) s << quint16(0); };
+        // By tag, in the sorted order the table directory wants.
+        QMap<QByteArray, QByteArray> tables;
+        tables["cmap"] = table([&](QDataStream &s) {
+            s << quint16(0) << quint16(1) << quint16(3) << quint16(1) << quint32(12);
+            s << quint16(4) << quint16(16 + 8 * segments) << quint16(0) << quint16(2 * segments);
+            zeros(s, 3);
+            for (const quint16 c : codes) s << c;
+            s << quint16(0xFFFF) << quint16(0);
+            for (const quint16 c : codes) s << c;
+            s << quint16(0xFFFF);
+            for (int i = 0; i < codes.size(); ++i) s << quint16(i + 1 - codes[i]);
+            s << quint16(1);
+            zeros(s, segments);
+        });
+        // When `inked`, the first character is a square: one contour of 4 points on the curve, each a 16-bit step.
+        tables["glyf"] = inked ? table([](QDataStream &s) {
+            s << qint16(1) << qint16(100) << qint16(0) << qint16(500) << qint16(700) << quint16(3) << quint16(0);
+            for (int i = 0; i < 4; ++i) s << quint8(1);
+            s << qint16(100) << qint16(400) << qint16(0) << qint16(-400) << qint16(0) << qint16(0) << qint16(700) << qint16(0);
+        }) : QByteArray(4, '\0');
+        tables["head"] = table([](QDataStream &s) {
+            s << quint32(0x10000) << quint32(0x10000) << quint32(0) << quint32(0x5F0F3CF5) << quint16(0xB)
+              << quint16(1000) << quint64(0) << quint64(0) << qint16(0) << qint16(-200) << qint16(600)
+              << qint16(800) << quint16(0) << quint16(8) << qint16(2) << qint16(0) << qint16(0);
+        });
+        tables["hhea"] = table([&](QDataStream &s) {
+            s << quint32(0x10000) << qint16(800) << qint16(-200) << qint16(0) << quint16(600);
+            zeros(s, 3);
+            s << qint16(1);
+            zeros(s, 7);
+            s << glyphs;
+        });
+        tables["hmtx"] = table([&](QDataStream &s) { for (int i = 0; i < glyphs; ++i) s << quint16(600) << qint16(0); });
+        // In 2-byte units: the square's 34 bytes are glyph 1, and every other glyph is empty.
+        tables["loca"] = table([&](QDataStream &s) {
+            zeros(s, 2);
+            for (int i = 2; i <= glyphs; ++i) s << quint16(inked ? 17 : 0);
+        });
+        tables["maxp"] = table([&](QDataStream &s) {
+            s << quint32(0x10000) << glyphs << quint16(inked ? 4 : 0) << quint16(inked ? 1 : 0);
+            zeros(s, 2);
+            s << quint16(2);
+            zeros(s, 8);
+        });
+        const QStringList names{family, "Regular", family + " Regular", QString(family).remove(' ')};
+        tables["name"] = table([&](QDataStream &s) {
+            s << quint16(0) << quint16(names.size()) << quint16(6 + 12 * names.size());
+            const QList<quint16> ids{1, 2, 4, 6};
+            int offset = 0;
+            for (int i = 0; i < names.size(); ++i) {
+                s << quint16(3) << quint16(1) << quint16(0x409) << ids[i] << quint16(2 * names[i].size()) << quint16(offset);
+                offset += 2 * names[i].size();
+            }
+            for (const QString &name : names)
+                for (const QChar c : name) s << quint16(c.unicode());
+        });
+
+        QByteArray font = table([&](QDataStream &s) {
+            s << quint32(0x10000) << quint16(tables.size());
+            zeros(s, 3);
+        });
+        QByteArray body;
+        const quint32 start = at + 12 + 16 * tables.size();
+        for (auto it = tables.cbegin(); it != tables.cend(); ++it) {
+            font += it.key();
+            font += table([&](QDataStream &s) { s << quint32(0) << quint32(start + body.size()) << quint32(it.value().size()); });
+            body += it.value() + QByteArray((4 - it.value().size() % 4) % 4, '\0');
+        }
+        return font + body;
+    }
+
+    // A collection of one tiny font per family, each face after the last.
+    static QByteArray tinyCollection(const QStringList &families)
+    {
+        const quint32 header = 12 + 4 * families.size();
+        QByteArray faces;
+        QByteArray collection("ttcf");
+        QDataStream s(&collection, QIODevice::Append);
+        s << quint32(0x10000) << quint32(families.size());
+        for (const QString &family : families) {
+            s << quint32(header + faces.size());
+            faces += tinyFont(family, "AB", header + faces.size());
+        }
+        return collection + faces;
     }
 
     static void write(const QString &path, const QByteArray &contents)

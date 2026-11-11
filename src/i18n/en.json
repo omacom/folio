@@ -8,6 +8,7 @@
   "%1 GB": "%1 GB",
   "%1 KB": "%1 KB",
   "%1 MB": "%1 MB",
+  "%1 px": "%1 px",
   "%1 TB": "%1 TB",
   "%1 already exists here.": "%1 already exists here.",
   "%1 can't be burned onto that drive.": "%1 can't be burned onto that drive.",
@@ -32,6 +33,10 @@
   "%1 · %2": "%1 · %2",
   "%1 × %2": "%1 × %2",
   "%1: %2": "%1: %2",
+  "%Ln faces": {
+    "one": "%Ln face",
+    "other": "%Ln faces"
+  },
   "%Ln items": {
     "one": "%Ln item",
     "other": "%Ln items"
@@ -131,6 +136,7 @@
   "Couldn't play this file: %1": "Couldn't play this file: %1",
   "Couldn't read %1.": "Couldn't read %1.",
   "Couldn't read this archive.": "Couldn't read this archive.",
+  "Couldn't read this font.": "Couldn't read this font.",
   "Couldn't read this picture.": "Couldn't read this picture.",
   "Couldn't recreate %1.": "Couldn't recreate %1.",
   "Couldn't remove %1.": "Couldn't remove %1.",

@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import Folio
 import "Format.js" as Format
 
 // A larger look at the selected item and the facts about it, with the one
@@ -46,6 +47,8 @@ Rectangle {
     // Text files show their opening lines in a frame, archives bsdtar can list the names inside.
     readonly property bool archive: hasItem && backend.listsArchive(item.mime)
     readonly property bool listed: hasItem && (item.kind === "text" || archive)
+    // Fonts show the alphabet and a pangram in the font itself.
+    readonly property bool sampled: fontSample.status !== ""
     // Described once the folder's loaded has put the cursor back on its
     // item: a re-read leaves another item on the cursor's row for a moment,
     // and describing that would drop what's been read of this one.
@@ -71,7 +74,7 @@ Rectangle {
                 anchors.fill: parent
                 asynchronous: true
                 fillMode: Image.PreserveAspectFit
-                source: pane.hasItem && !pane.item.isDir && !pane.listed && !pane.pluginItem ? Format.thumb(pane.item.path, pane.item.mime, 512, pane.item.modified) : ""
+                source: pane.hasItem && !pane.item.isDir && !pane.listed && !pane.sampled && !pane.pluginItem ? Format.thumb(pane.item.path, pane.item.mime, 512, pane.item.modified) : ""
                 visible: status === Image.Ready
             }
 
@@ -102,9 +105,54 @@ Rectangle {
                 }
             }
 
+            FontSample {
+                id: fontSample
+                path: pane.hasItem && !pane.item.isDir ? pane.item.path : ""
+                modified: pane.hasItem ? pane.item.modified : undefined
+            }
+            Rectangle {
+                anchors.fill: parent
+                visible: pane.sampled
+                color: theme.background
+                border.width: 1
+                border.color: Qt.alpha(theme.foreground, 0.12)
+                clip: true
+                Column {
+                    anchors.fill: parent
+                    anchors.margins: 14
+                    spacing: 10
+                    visible: fontSample.status === "ready"
+                    // The Latin alphabet and the digits on purpose: they're what the font was checked for.
+                    FontText {
+                        width: parent.width
+                        source: fontSample
+                        text: fontSample.glyphs || "ABCDEFGHIJKLMNOPQRSTUVWXYZ\nabcdefghijklmnopqrstuvwxyz\n0123456789"
+                        color: theme.foreground
+                        pixelSize: 18
+                        anywhere: true
+                    }
+                    FontText {
+                        width: parent.width
+                        visible: !fontSample.glyphs
+                        source: fontSample
+                        // Not translated: the font was checked for these letters and the space, no others.
+                        text: "The quick brown fox jumps over the lazy dog"
+                        color: theme.foreground
+                        pixelSize: 13
+                    }
+                }
+                Sentence {
+                    visible: fontSample.status === "error"
+                    margin: 14
+                    text: qsTr("Couldn't read this font.")
+                    color: theme.secondaryForeground
+                    font.pixelSize: 12
+                }
+            }
+
             Glyph {
                 anchors.centerIn: parent
-                visible: !big.visible && pane.hasItem && !pane.listed
+                visible: !big.visible && pane.hasItem && !pane.listed && !pane.sampled
                 name: pane.pluginItem ? pane.item.icon : pane.hasItem && pane.item.isDir ? "folder" : "file"
                 size: 72
                 stroke: 1.2
@@ -133,7 +181,7 @@ Rectangle {
                 horizontalAlignment: Text.AlignLeft
                 text: {
                     translator.language // The type's name comes from the system, in the language of the moment.
-                    return Format.summary(pane.item, backend.typeName(pane.item.mime || ""))
+                    return Format.summary(pane.item, backend.typeName(pane.item.mime || "", pane.item.path || ""))
                 }
                 color: theme.secondaryForeground
                 font.pixelSize: 12
