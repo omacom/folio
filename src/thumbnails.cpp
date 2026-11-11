@@ -1,4 +1,5 @@
 #include "thumbnails.h"
+#include "embedded.h"
 #include "rawembed.h"
 
 #include <QBuffer>
@@ -321,9 +322,9 @@ Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbna
 }
 
 QString Thumbnails::missingPackage(const QString &mime) const {
-    // Qt draws its own pictures in-process, an installed thumbnailer needs nothing more, and pdftoppm draws a PDF without one.
+    // Qt draws its own pictures in-process, as Folio draws a picture a file keeps, an installed thumbnailer needs nothing more, and pdftoppm draws a PDF without one.
     if ((mime.startsWith("image/") && QImageReader::supportedMimeTypes().contains(mime.toLatin1()))
-        || m_thumbnailers.contains(mime)
+        || Embedded::handles(mime, {}) || m_thumbnailers.contains(mime)
         || (mime == "application/pdf" && !QStandardPaths::findExecutable("pdftoppm").isEmpty()))
         return {};
     return packageFor().value(mime);
@@ -403,10 +404,11 @@ QImage Thumbnails::load(const QString &path, const QString &mime, int size) cons
 }
 
 QImage Thumbnails::generate(const QString &path, const QString &mime, int pixels, bool &attempted) const {
-    // A camera RAW with no installed thumbnailer, the desktop's own answer, shows the JPEG the camera embedded.
-    if (RawEmbed::handles(mime) && !m_thumbnailers.contains(mime)) {
+    // A camera RAW, or a file that keeps its picture in a zip, with no installed thumbnailer, the desktop's own answer, shows the picture it embedded.
+    if ((RawEmbed::handles(mime) || Embedded::handles(mime, path)) && !m_thumbnailers.contains(mime)) {
         attempted = true;
-        if (const QImage image = RawEmbed::thumbnail(path, pixels); !image.isNull())
+        const QImage image = RawEmbed::handles(mime) ? RawEmbed::thumbnail(path, pixels) : Embedded::thumbnail(path, mime, pixels);
+        if (!image.isNull())
             return image;
     }
     // Common photo formats decode fastest in-process; anything Qt can't read

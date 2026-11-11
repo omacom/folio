@@ -6,6 +6,7 @@
 #include <QPdfWriter>
 #include <QPointer>
 #include <memory>
+#include <atomic>
 #include <functional>
 #include <thread>
 #include <QFile>
@@ -36,9 +37,11 @@
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <zlib.h>
 
 #include "backend.h"
 #include "disks.h"
+#include "embedded.h"
 #include "fileops.h"
 #include "foldermodel.h"
 #include "mounter.h"
@@ -6134,6 +6137,214 @@ private slots:
         QVERIFY(thumbnails.load(dir.filePath("photo.tif"), "image/tiff", 1024).isNull());
     }
 
+    void thumbnailsShowThePictureAFileKeeps()
+    {
+        QTemporaryDir dir;
+        const Thumbnails thumbnails(dir.filePath("cache"), {dir.filePath("none")});
+        // Each file keeps a cover of 60 by 90 beside another picture of 40 by 40, so the size says which one is shown.
+        const QByteArray cover = jpeg(60, 90), other = jpeg(40, 40);
+        const auto shown = [&](const QString &name, const QString &mime, const QList<ZipMember> &members) {
+            write(dir.filePath(name), zipOf(members));
+            return thumbnails.load(dir.filePath(name), mime, 128).size();
+        };
+        const auto container = [](const QByteArray &package) -> QByteArray {
+            return "<?xml version=\"1.0\"?><container xmlns=\"urn:oasis:names:tc:opendocument:xmlns:container\"><rootfiles>"
+                   "<rootfile full-path=\"" + package + "\" media-type=\"application/oebps-package+xml\"/></rootfiles></container>";
+        };
+        // EPUB 3 marks its cover with a property, and the package container.xml names holds its items.
+        QCOMPARE(shown("book.epub", "application/epub+zip",
+                       {{"mimetype", "application/epub+zip"}, {"META-INF/container.xml", container("OEBPS/content.opf"), true},
+                        {"OEBPS/content.opf", "<package><manifest><item id=\"page\" href=\"art/page.jpg\" media-type=\"image/jpeg\"/>"
+                                              "<item id=\"front\" href=\"art/front%20cover.jpg\" media-type=\"image/jpeg\" "
+                                              "properties=\"cover-image\"/></manifest></package>", true},
+                        {"OEBPS/art/page.jpg", other}, {"OEBPS/art/front cover.jpg", cover}}),
+                 QSize(60, 90));
+        // EPUB 2 names its cover's item in a meta, and the item names the picture from the package's own folder.
+        QCOMPARE(shown("old.epub", "application/epub+zip",
+                       {{"META-INF/container.xml", container("text/book.opf")},
+                        {"text/book.opf", "<package><metadata><meta name=\"cover\" content=\"front\"/></metadata><manifest>"
+                                          "<item id=\"page\" href=\"../images/page.jpg\"/><item id=\"front\" href=\"../images/cover.jpg\"/>"
+                                          "</manifest></package>"},
+                        {"images/page.jpg", other}, {"images/cover.jpg", cover, true}}),
+                 QSize(60, 90));
+        // A comic book shows its first page by name, past folders, other files and a Mac's resource forks.
+        QCOMPARE(shown("issue.cbz", "application/vnd.comicbook+zip",
+                       {{"pages/", ""}, {"pages/002.jpg", other}, {"ComicInfo.xml", "<ComicInfo/>"},
+                        {"__MACOSX/pages/._001.jpg", other}, {"pages/001.JPG", cover, true}}),
+                 QSize(60, 90));
+        QCOMPARE(shown("notes.odt", "application/vnd.oasis.opendocument.text",
+                       {{"mimetype", "application/vnd.oasis.opendocument.text"}, {"content.xml", "<office:document-content/>", true},
+                        {"Thumbnails/thumbnail.png", cover}}),
+                 QSize(60, 90));
+        // Office Open XML and 3MF name the picture as the package's thumbnail relationship first, then by the usual name.
+        const auto relationships = [](const QByteArray &target) -> QByteArray {
+            return "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+                   "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
+                   "officeDocument\" Target=\"word/document.xml\"/><Relationship Id=\"rId2\" "
+                   "Type=\"http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail\" Target=\""
+                   + target + "\"/></Relationships>";
+        };
+        QCOMPARE(shown("letter.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                       {{"_rels/.rels", relationships("/docProps/front.jpeg"), true}, {"docProps/thumbnail.jpeg", other},
+                        {"docProps/front.jpeg", cover}}),
+                 QSize(60, 90));
+        QCOMPARE(shown("sums.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                       {{"xl/workbook.xml", "<workbook/>", true}, {"docProps/thumbnail.jpeg", cover}}),
+                 QSize(60, 90));
+        QCOMPARE(shown("plate.3mf", "model/3mf",
+                       {{"_rels/.rels", relationships("/Metadata/plate_1.png")}, {"Metadata/thumbnail.png", other},
+                        {"Metadata/plate_1.png", cover}}),
+                 QSize(60, 90));
+        QCOMPARE(shown("bracket.3mf", "model/3mf", {{"3D/3dmodel.model", "<model/>", true}, {"Metadata/thumbnail.png", cover}}),
+                 QSize(60, 90));
+        // A FreeCAD file is known by its ending, since the MIME database has no type for it.
+        QCOMPARE(shown("part.FCStd", "application/octet-stream", {{"Document.xml", "<Document/>", true}, {"thumbnails/Thumbnail.png", cover}}),
+                 QSize(60, 90));
+        // Krita and OpenRaster keep the whole picture merged, or a smaller preview.
+        QCOMPARE(shown("sketch.kra", "application/x-krita", {{"mergedimage.png", cover}, {"preview.png", other}}), QSize(60, 90));
+        QCOMPARE(shown("small.kra", "application/x-krita", {{"maindoc.xml", "<DOC/>", true}, {"preview.png", other}}), QSize(40, 40));
+        QCOMPARE(shown("layers.ora", "image/openraster",
+                       {{"mimetype", "image/openraster"}, {"stack.xml", "<image/>"}, {"Thumbnails/thumbnail.png", cover}}),
+                 QSize(60, 90));
+    }
+
+    void thumbnailsRememberAContainerWithoutItsPicture()
+    {
+        QTemporaryDir dir;
+        const Thumbnails thumbnails(dir.filePath("cache"), {dir.filePath("none")});
+        const auto failed = [&](const QString &name) {
+            return QFile::exists(dir.filePath("cache/" + Thumbnails::failures + "/" + Thumbnails::cacheKey(dir.filePath(name))));
+        };
+        // A document saved without its picture, a book whose cover is not there and a file that is no zip show the plain
+        // icon, and are not read again until they change.
+        write(dir.filePath("letter.docx"), zipOf({{"word/document.xml", "<w:document/>", true}}));
+        QVERIFY(thumbnails.load(dir.filePath("letter.docx"), "application/vnd.openxmlformats-officedocument.wordprocessingml.document", 128).isNull());
+        QVERIFY(failed("letter.docx"));
+        write(dir.filePath("book.epub"), zipOf({{"META-INF/container.xml", "<container><rootfiles><rootfile full-path=\"a.opf\"/></rootfiles></container>"},
+                                                {"a.opf", "<package><manifest><item id=\"c\" href=\"gone.jpg\" properties=\"cover-image\"/></manifest></package>"}}));
+        QVERIFY(thumbnails.load(dir.filePath("book.epub"), "application/epub+zip", 128).isNull());
+        QVERIFY(failed("book.epub"));
+        write(dir.filePath("broken.cbz"), "not a zip");
+        QVERIFY(thumbnails.load(dir.filePath("broken.cbz"), "application/vnd.comicbook+zip", 128).isNull());
+        QVERIFY(failed("broken.cbz"));
+    }
+
+    void thumbnailsRefuseAHostileContainer()
+    {
+        QTemporaryDir dir;
+        const Thumbnails thumbnails(dir.filePath("cache"), {dir.filePath("none")});
+        const QString odt = "application/vnd.oasis.opendocument.text";
+        int files = 0;
+        // What an OpenDocument file of these bytes shows; each is a file of its own, so none is served from the cache.
+        const auto shown = [&](const QByteArray &zip) {
+            const QString path = dir.filePath(QString("doc%1.odt").arg(++files));
+            write(path, zip);
+            return thumbnails.load(path, odt, 128).size();
+        };
+        const QByteArray picture = jpeg(40, 30);
+        const ZipMember thumbnail{"Thumbnails/thumbnail.png", picture, true};
+        QCOMPARE(shown(zipOf({thumbnail})), QSize(40, 30));
+
+        // A FIFO named like a document is opened without waiting for a writer, and never read.
+        const QString fifo = dir.filePath("pipe.odt");
+        QCOMPARE(mkfifo(QFile::encodeName(fifo).constData(), 0600), 0);
+        QVERIFY(Embedded::thumbnail(fifo, odt, 128).isNull());
+
+        // A directory of the most entries Folio walks gives the picture its last entry names; one entry more gives none.
+        const auto entries = [&](int count) {
+            QList<ZipMember> members;
+            for (int i = 1; i < count; ++i)
+                members.append({QByteArray::number(i)});
+            members.append(thumbnail);
+            return shown(zipOf(members));
+        };
+        QCOMPARE(entries(kMostZipEntries), QSize(40, 30));
+        QVERIFY(entries(kMostZipEntries + 1).isEmpty());
+
+        // A member of the most bytes Folio holds is read, stored or deflated; one byte more is refused before it is held.
+        const QByteArray padded = picture + QByteArray(kMostMemberBytes - picture.size(), '\0');
+        QCOMPARE(shown(zipOf({{thumbnail.name, padded}})), QSize(40, 30));
+        QCOMPARE(shown(zipOf({{thumbnail.name, padded, true}})), QSize(40, 30));
+        QVERIFY(shown(zipOf({{thumbnail.name, padded + '\0'}})).isEmpty());
+        QVERIFY(shown(zipOf({{thumbnail.name, padded + '\0', true}})).isEmpty());
+
+        // A deflated member that inflates past the size its headers claim is stopped there, however little they claim.
+        const QByteArray bomb = picture + QByteArray(kMebibyte, '\0');
+        QCOMPARE(shown(zipOf({{thumbnail.name, bomb, true}})), QSize(40, 30));
+        QVERIFY(shown(zipOf({{thumbnail.name, bomb, true, 0, picture.size()}})).isEmpty());
+
+        // A zip64 locator ahead of the end record, a split archive and an encrypted member are refused, not misread.
+        QByteArray zip64 = zipOf({thumbnail});
+        zip64.insert(zip64.size() - kEndRecordBytes, QByteArray("PK\x06\x07", 4) + QByteArray(16, '\0'));
+        QVERIFY(shown(zip64).isEmpty());
+        QByteArray split = zipOf({thumbnail});
+        split[split.size() - kEndRecordBytes + 4] = 1;
+        QVERIFY(shown(split).isEmpty());
+        QVERIFY(shown(zipOf({{thumbnail.name, picture, true, 1}})).isEmpty());
+
+        // A picture whose frame header claims 20000 by 20000 pixels, more than a camera's preview may, is never decoded.
+        QByteArray vast = picture;
+        const qsizetype frame = vast.indexOf(QByteArray("\xFF\xC0", 2));
+        QVERIFY(frame > 0);
+        vast.replace(frame + 5, 4, QByteArray("\x4E\x20\x4E\x20", 4));
+        QVERIFY(shown(zipOf({{thumbnail.name, vast}})).isEmpty());
+
+        // A container behind a hole of 3 GiB is read at the offsets its directory gives, never as a whole.
+        const QString far = dir.filePath("far.odt");
+        {
+            QFile file(far);
+            QVERIFY(file.open(QIODevice::WriteOnly) && file.resize(kFarHole) && file.seek(kFarHole));
+            QVERIFY(file.write(zipOf({thumbnail}, kFarHole)) > 0);
+        }
+        QCOMPARE(thumbnails.load(far, odt, 128).size(), QSize(40, 30));
+
+        // A member name is only compared: a package named by a path on disk is no member, so the file there is never read.
+        write(dir.filePath("outside.opf"), "<package><manifest><item id=\"c\" href=\"cover.jpg\" properties=\"cover-image\"/></manifest></package>");
+        write(dir.filePath("cover.jpg"), picture);
+        write(dir.filePath("book.epub"), zipOf({{"META-INF/container.xml", "<container><rootfiles><rootfile full-path=\""
+                                                 + dir.filePath("outside.opf").toUtf8() + "\"/></rootfiles></container>"},
+                                                {"cover.jpg", picture}}));
+        QVERIFY(thumbnails.load(dir.filePath("book.epub"), "application/epub+zip", 128).isNull());
+    }
+
+    void thumbnailsReadAContainerOnAWorkerUnlessCancelled()
+    {
+        QTemporaryDir dir;
+        // Slow thumbnailers fill every thread the provider runs, so the two asks after them wait their turn in its queue.
+        write(dir.filePath("slow.thumbnailer"), "[Thumbnailer Entry]\nExec=/bin/sh -c \"sleep 1\" %i\nMimeType=video/mp4;\n");
+        const Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
+        const QString odt = "application/vnd.oasis.opendocument.text";
+        std::vector<std::unique_ptr<QQuickImageResponse>> responses;
+        // Declared after the responses, so its pool has finished every one of them before they go.
+        ThumbnailProvider provider(&thumbnails);
+        const auto ask = [&](const QString &name, const QString &mime) {
+            responses.emplace_back(provider.requestImageResponse(
+                QString::fromLatin1("128/0/" + QUrl::toPercentEncoding(mime) + "/" + QUrl::toPercentEncoding(dir.filePath(name))), {}));
+            return responses.back().get();
+        };
+        for (int i = 0; i < kMostThumbnailThreads; ++i) {
+            write(dir.filePath(QString("clip%1.mp4").arg(i)), "not a video");
+            ask(QString("clip%1.mp4").arg(i), "video/mp4");
+        }
+        write(dir.filePath("kept.odt"), zipOf({{"Thumbnails/thumbnail.png", jpeg(40, 30)}}));
+        write(dir.filePath("dropped.odt"), zipOf({{"Thumbnails/thumbnail.png", jpeg(40, 30)}}));
+        QQuickImageResponse *kept = ask("kept.odt", odt);
+        std::atomic<QThread *> where{nullptr};
+        connect(kept, &QQuickImageResponse::finished, kept, [&] { where = QThread::currentThread(); }, Qt::DirectConnection);
+        QQuickImageResponse *dropped = ask("dropped.odt", odt);
+        dropped->cancel();
+        QSignalSpy keptDone(kept, &QQuickImageResponse::finished), droppedDone(dropped, &QQuickImageResponse::finished);
+        QTRY_VERIFY_WITH_TIMEOUT(keptDone.count() == 1 && droppedDone.count() == 1, 20000);
+        // The picture is read on the provider's worker, never the thread that asked; the one cancelled before its turn is never read.
+        QVERIFY(where.load() && where.load() != QThread::currentThread());
+        const std::unique_ptr<QQuickTextureFactory> picture(kept->textureFactory());
+        QVERIFY(picture);
+        QCOMPARE(picture->image().size(), QSize(40, 30));
+        QCOMPARE(dropped->errorString(), QString("No thumbnail"));
+        QVERIFY(!QFile::exists(dir.filePath("cache/normal/" + Thumbnails::cacheKey(dir.filePath("dropped.odt")))));
+        QVERIFY(QFile::exists(dir.filePath("cache/normal/" + Thumbnails::cacheKey(dir.filePath("kept.odt")))));
+    }
+
     void thumbnailsNameThePackageThatWouldDrawAType()
     {
         QTemporaryDir dir;
@@ -6141,8 +6352,9 @@ private slots:
               "[Thumbnailer Entry]\nTryExec=/bin/sh\nExec=/bin/sh -c \"exit 1\" %i %o\nMimeType=video/webm;\n");
         const Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
         QCOMPARE(thumbnails.missingPackage("video/mp4"), QString("ffmpegthumbnailer"));
-        QCOMPARE(thumbnails.missingPackage("application/vnd.oasis.opendocument.text"), QString("libgsf"));
-        // Installed already, drawn by Qt itself, or no package known: nothing to name.
+        QCOMPARE(thumbnails.missingPackage("application/msword"), QString("libgsf"));
+        // Installed already, drawn by Qt or by Folio itself, or no package known: nothing to name.
+        QVERIFY(thumbnails.missingPackage("application/vnd.oasis.opendocument.text").isEmpty());
         QVERIFY(thumbnails.missingPackage("video/webm").isEmpty());
         QVERIFY(thumbnails.missingPackage("image/png").isEmpty());
         QVERIFY(thumbnails.missingPackage("model/step").isEmpty());
@@ -6712,6 +6924,43 @@ private:
     static constexpr int kEntryLimit = 1024, kMostEntries = 0xFFFF;
     // The reader holds an embedded JPEG of this many bytes in memory and none longer.
     static constexpr qint64 kMebibyte = 1048576, kMostJpegBytes = 64 * kMebibyte;
+    // The zip reader walks a directory of this many entries and none longer, and holds a member of this many bytes and none longer.
+    static constexpr int kMostZipEntries = 8192;
+    static constexpr qint64 kMostMemberBytes = 64 * kMebibyte;
+    // A zip with no comment ends with its end record of 22 bytes, whose disk number follows the 4-byte signature.
+    static constexpr int kEndRecordBytes = 22;
+    // The provider runs at most six thumbnails at once.
+    static constexpr int kMostThumbnailThreads = 6;
+    // A hole of 3 GiB, past what a signed 32-bit offset can name.
+    static constexpr quint32 kFarHole = 3u * 1024 * 1048576;
+    // One member of a zip a test writes: deflated when asked, with `flags` its general-purpose bits and `claimed` the inflated size its headers give.
+    struct ZipMember {
+        QByteArray name, data;
+        bool deflated = false;
+        quint16 flags = 0;
+        qint64 claimed = -1;
+    };
+    // A zip of these members whose offsets count from `hole`, the bytes the file holds ahead of it.
+    static QByteArray zipOf(const QList<ZipMember> &members, quint32 hole = 0)
+    {
+        const Raw le(true);
+        QByteArray local, central;
+        for (const ZipMember &m : members) {
+            // qCompress gives a 4-byte length and a 2-byte zlib header, then the raw deflate a zip holds and a 4-byte checksum.
+            const QByteArray stored = m.deflated ? qCompress(m.data).mid(6).chopped(4) : m.data;
+            const quint32 crc = quint32(crc32(0, reinterpret_cast<const Bytef *>(m.data.constData()), uInt(m.data.size())));
+            // Flags(2) method(2) time(4) crc(4) compressed(4) size(4) name(2) extra(2), as both headers hold them.
+            const QByteArray common = le.word(m.flags, 2) + le.word(m.deflated ? 8 : 0, 2) + le.word(0, 4) + le.word(crc, 4)
+                + le.word(stored.size(), 4) + le.word(quint32(m.claimed >= 0 ? m.claimed : m.data.size()), 4)
+                + le.word(m.name.size(), 2) + le.word(0, 2);
+            // Versions(4), then comment(2) disk(2) attributes(6) and the local header's offset(4) around the common fields.
+            central += QByteArray("PK\x01\x02", 4) + le.word(20, 2) + le.word(20, 2) + common + QByteArray(10, '\0')
+                + le.word(hole + local.size(), 4) + m.name;
+            local += QByteArray("PK\x03\x04", 4) + le.word(20, 2) + common + m.name + stored;
+        }
+        return local + central + QByteArray("PK\x05\x06", 4) + QByteArray(4, '\0') + le.word(members.size(), 2)
+            + le.word(members.size(), 2) + le.word(central.size(), 4) + le.word(hole + local.size(), 4) + le.word(0, 2);
+    }
     // A camera RAW in either byte order; blobs and IFDs are appended, so every offset is known before it is named.
     struct Raw {
         explicit Raw(bool littleEndian)

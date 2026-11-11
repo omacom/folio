@@ -31,8 +31,7 @@ constexpr quint64 kEntryLength = 12;
 constexpr quint64 kMaxValue = 65536;
 // SubIFD fan-out is capped, so one count cannot queue unbounded work.
 constexpr quint32 kMaxPointers = 64;
-// No camera's preview holds more pixels than this; a frame header that claims more would cost a vast decode for nothing.
-constexpr quint64 kMaxPixels = 250000000;
+using RawEmbed::kMaxPixels;
 // The largest embedded JPEG read into memory; a real one is a few MiB.
 constexpr quint64 kMaxJpeg = 64 * 1048576;
 // SOI plus one frame header: anything shorter is no picture.

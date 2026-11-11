@@ -34,8 +34,9 @@ public:
 
     static QString cacheKey(const QString &path);
     // The spec's fail/<program>-<version>: the number is raised when Folio learns to draw more, so old failures are tried
-    // again. 3: names with a thumbnailer's codes in them, and PDFs whose thumbnailer couldn't start, are drawn now.
-    static inline const QString failures = QStringLiteral("fail/folio-3");
+    // again. 3: names with a thumbnailer's codes in them, and PDFs whose thumbnailer couldn't start, are drawn now. 4: the
+    // picture a zip keeps inside, as an EPUB or an OpenDocument does.
+    static inline const QString failures = QStringLiteral("fail/folio-4");
     static QString bucketFor(int size);
     // A text file's first lines set on a page in the given colors. Made
     // fresh each time rather than cached, since the colors follow the theme.
