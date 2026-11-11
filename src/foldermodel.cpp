@@ -273,8 +273,10 @@ FolderModel::Entry FolderModel::entryFor(const QFileInfo &info, const QMimeDatab
     e.isDir = info.isDir();
     e.size = e.isDir ? 0 : info.size();
     e.modified = info.lastModified();
+    // A regular file is typed by its name alone; handing Qt the QFileInfo stats it once more first.
     e.mime = e.isDir ? QStringLiteral("inode/directory")
-                     : mimes.mimeTypeForFile(info, QMimeDatabase::MatchExtension).name();
+           : info.isFile() ? mimes.mimeTypeForFile(e.name, QMimeDatabase::MatchExtension).name()
+                           : mimes.mimeTypeForFile(info, QMimeDatabase::MatchExtension).name();
     e.kind = kindForMime(e.mime);
     e.extension = e.isDir ? QString() : info.suffix().toUpper();
     return e;

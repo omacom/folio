@@ -543,6 +543,37 @@ private slots:
         QVERIFY(!error.isEmpty());
     }
 
+    void folderTypesFilesByNameAndTheRestByWhatTheyAre()
+    {
+        QTemporaryDir dir;
+        write(dir.filePath("CMakeLists.txt"), "x");
+        write(dir.filePath("notes.txt"), "x");
+        QVERIFY(QFile::link("notes.txt", dir.filePath("link.md")));
+        QVERIFY(QFile::link(dir.path(), dir.filePath("folder.png")));
+        QVERIFY(QFile::link("/dev/null", dir.filePath("device.txt")));
+
+        const QMimeDatabase mimes;
+        const auto mime = [&](const char *name) { return FolderModel::entryFor(QFileInfo(dir.filePath(name)), mimes).mime; };
+        QCOMPARE(mime("CMakeLists.txt"), QString("text/x-cmake"));
+        QCOMPARE(mime("notes.txt"), QString("text/plain"));
+        QCOMPARE(mime("link.md"), QString("text/markdown"));
+        QCOMPARE(mime("folder.png"), QString("inode/directory"));
+        // Not a regular file, whatever its name says.
+        QCOMPARE(mime("device.txt"), QString("inode/chardevice"));
+    }
+
+    void folderTypesAFileByWhatItsListingRead()
+    {
+        // A file swapped for a pipe after its listing read it keeps the type it was read as: no second look.
+        QTemporaryDir dir;
+        write(dir.filePath("notes.txt"), "x");
+        QFileInfo info(dir.filePath("notes.txt"));
+        QVERIFY(info.isFile());
+        QVERIFY(QFile::remove(dir.filePath("notes.txt")));
+        QCOMPARE(::mkfifo(QFile::encodeName(dir.filePath("notes.txt")).constData(), 0600), 0);
+        QCOMPARE(FolderModel::entryFor(info, QMimeDatabase()).mime, QString("text/plain"));
+    }
+
     void folderSummaryCountsAndPeeks()
     {
         QTemporaryDir dir;
