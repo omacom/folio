@@ -1452,6 +1452,145 @@ private slots:
         QVERIFY(loaded.wait(3000));
     }
 
+    void searchSelectAllTakesEveryMatch()
+    {
+        // Select All is of the matches, not of the rows scrolled to so far, and it's whole at once: a copy pressed next takes them all.
+        QTemporaryDir dir;
+        for (int i = 0; i < 500; ++i)
+            write(dir.filePath(QString("match%1.txt").arg(i)), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        model.setQuery("match");
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 350);
+        model.selectAll();
+        QCOMPARE(model.selectedCount(), 500);
+        const QStringList all = model.selectedPaths();
+        QCOMPARE(all.size(), 500);
+        QCOMPARE(QSet<QString>(all.cbegin(), all.cend()).size(), 500);
+        for (const QString &path : all)
+            QVERIFY2(QFileInfo::exists(path), qPrintable(path));
+        // The rows come as before, a window at a time, and are selected as they come.
+        QCOMPARE(model.count(), 350);
+        model.fetchMore({});
+        QTRY_COMPARE(model.count(), 500);
+        QVERIFY(model.isSelected(420));
+        QCOMPARE(model.selectedPaths(), all);
+
+        // One taken out again, among the rows or past them, leaves the rest.
+        model.setQuery("atch");
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 350);
+        model.selectAll();
+        model.toggleSelected(3);
+        QCOMPARE(model.selectedCount(), 499);
+        QCOMPARE(model.selectedPaths().size(), 499);
+        model.selectOnly(3);
+        QCOMPARE(model.selectedPaths().size(), 1);
+    }
+
+    void searchReadAgainKeepsWhatSelectAllTook()
+    {
+        // F5, or a change in the folder, reads a search again: the matches selected past the rows stay selected, less the ones gone.
+        QTemporaryDir dir;
+        for (int i = 0; i < 500; ++i)
+            write(dir.filePath(QString("match%1.txt").arg(i)), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        model.setQuery("match");
+        QVERIFY(loaded.wait(3000));
+        model.selectAll();
+        const QString last = model.selectedPaths().constLast();
+        QVERIFY(QFile::remove(last));
+        model.reload();
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 350);
+        QCOMPARE(model.matches(), 499);
+        QCOMPARE(model.selectedCount(), 499);
+        QCOMPARE(model.selectedPaths().size(), 499);
+        QVERIFY(!model.selectedPaths().contains(last));
+    }
+
+    void searchKeepsItsSelectionWhileItsReadAgain()
+    {
+        // A search read again shows what it has found so far: what's selected and not found yet stays selected and named, and the rows come back as many as they were.
+        QTemporaryDir dir;
+        for (const char *folder : {"a", "b", "c"}) {
+            QDir(dir.path()).mkdir(folder);
+            for (int i = 0; i < 150; ++i)
+                write(dir.filePath(QString("%1/match%2.txt").arg(folder).arg(i)), "x");
+        }
+        for (int i = 0; i < 50; ++i)
+            write(dir.filePath(QString("match%1.txt").arg(i)), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        model.setQuery("match");
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QCOMPARE(model.count(), 350);
+        model.fetchMore({});
+        QTRY_COMPARE(model.count(), 500);
+        model.selectAll();
+        QCOMPARE(model.selectedCount(), 500);
+
+        QSemaphore held, resumed;
+        SearchIndex::afterFolder = [&](qsizetype folders) {
+            if (folders == 2) {
+                held.release();
+                resumed.acquire();
+            }
+        };
+        const auto restore = qScopeGuard([&] {
+            if (held.available() + resumed.available() == 0 && SearchIndex::afterFolder)
+                resumed.release();
+            SearchIndex::afterFolder = {};
+        });
+        loaded.clear();
+        model.reload();
+        QVERIFY(held.tryAcquire(1, 3000));
+        QVERIFY(loaded.wait(3000));
+        QVERIFY(model.reading());
+        QVERIFY(model.count() < 500);
+        QCOMPARE(model.selectedCount(), 500);
+        QCOMPARE(model.selectedPaths().size(), 500);
+        resumed.release();
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QCOMPARE(model.count(), 500);
+        QCOMPARE(model.selectedCount(), 500);
+        QCOMPARE(model.selectedPaths().size(), 500);
+    }
+
+    void searchReadAgainKeepsTheRowsItShowed()
+    {
+        // F5, or a change in the folder, reads a search again: rows past the first window stay, and a selection among them.
+        QTemporaryDir dir;
+        for (int i = 0; i < 500; ++i)
+            write(dir.filePath(QString("match%1.txt").arg(i)), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        model.setQuery("match");
+        QVERIFY(loaded.wait(3000));
+        model.fetchMore({});
+        QTRY_COMPARE(model.count(), 500);
+        model.selectOnly(420);
+        model.reload();
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 500);
+        QCOMPARE(model.selectedCount(), 1);
+        QVERIFY(model.isSelected(420));
+        // Other words start from the first window again.
+        model.setQuery("atch");
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 350);
+    }
+
     void searchMatchesWordsAlongThePath()
     {
         // With a "/", the folders take what's before it and the name the

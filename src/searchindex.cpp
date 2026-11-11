@@ -382,22 +382,40 @@ QByteArray SearchIndex::path(quint32 row) const {
     return joined(m_rows[row].parent, name(m_rows[row].name));
 }
 
-FolderModel::Entry SearchIndex::entry(quint32 row, const QMimeDatabase &mimes) {
-    const QString relative = QFile::decodeName(path(row));
-    ++counts.stats;
-    FolderModel::Entry e = FolderModel::entryFor(QFileInfo(QDir(m_root).filePath(relative)), mimes);
-    e.name = relative;
-    return e;
+QStringList SearchIndex::names(const QVector<quint32> &rows) const {
+    QStringList out;
+    out.reserve(rows.size());
+    for (quint32 row : rows)
+        out << QFile::decodeName(path(row));
+    return out;
+}
+
+QStringList SearchIndex::paths(const QString &root, const QStringList &names) {
+    QStringList out;
+    out.reserve(names.size());
+    const QDir dir(root);
+    for (const QString &name : names)
+        out << QFileInfo(dir.filePath(name)).absoluteFilePath();
+    return out;
+}
+
+QVector<FolderModel::Entry> SearchIndex::entriesAt(const QString &root, const QStringList &names, const std::function<bool()> &stop) {
+    QVector<FolderModel::Entry> out;
+    QMimeDatabase mimes;
+    const QDir dir(root);
+    for (const QString &name : names) {
+        if (stop && stop())
+            return {};
+        FolderModel::Entry e = FolderModel::entryFor(QFileInfo(dir.filePath(name)), mimes);
+        e.name = name;
+        out.push_back(std::move(e));
+    }
+    return out;
 }
 
 QVector<FolderModel::Entry> SearchIndex::entries(const QVector<quint32> &rows, const std::function<bool()> &stop) {
-    QVector<FolderModel::Entry> out;
-    QMimeDatabase mimes;
-    for (quint32 row : rows) {
-        if (stop && stop())
-            return {};
-        out.push_back(entry(row, mimes));
-    }
+    QVector<FolderModel::Entry> out = entriesAt(m_root, names(rows), stop);
+    counts.stats += out.size();
     return out;
 }
 

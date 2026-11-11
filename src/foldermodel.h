@@ -219,6 +219,10 @@ private:
     QVariantList m_items;
     int m_matches = -1;
     bool m_fetching = false;
+    // The rows a search showed with its whole answer: read again, it shows as many, so a selection past the first window stays.
+    qsizetype m_shownRows = 0;
+    // The matches a Select All took that aren't rows yet, best first: the selection holds them by path.
+    QStringList m_unshown;
     bool m_stillReading = false;
     quint64 m_generation = 0;
     // The newest listing's generation, shared with the background listing,

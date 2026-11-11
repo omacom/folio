@@ -121,8 +121,13 @@ public:
     qsizetype bytes() const;
     // The row's path from the root, in the folder's own bytes.
     QByteArray path(quint32 row) const;
-    // The row as the views show it, named by its path from the root.
-    FolderModel::Entry entry(quint32 row, const QMimeDatabase &mimes);
+    const QString &root() const { return m_root; }
+    // The rows' paths from the root, as the views name them: read from memory, so the lock is never held across the disk.
+    QStringList names(const QVector<quint32> &rows) const;
+    // The full paths of names(), as their entries carry them.
+    static QStringList paths(const QString &root, const QStringList &names);
+    // names() as entries, each asked of the disk; empty once `stop` returns true.
+    static QVector<FolderModel::Entry> entriesAt(const QString &root, const QStringList &names, const std::function<bool()> &stop = {});
     // The rows as entries; empty once `stop` returns true.
     QVector<FolderModel::Entry> entries(const QVector<quint32> &rows, const std::function<bool()> &stop = {});
     // Matches `query`, best first, and gives how many rows match. The rows
