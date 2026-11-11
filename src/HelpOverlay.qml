@@ -47,6 +47,8 @@ Rectangle {
             [qsTr("Go home"), [["Alt", "Home"]]],
             [qsTr("Type a path or a server's address"), [["Ctrl", "L"]]],
             [qsTr("Search this folder and below"), [["/"]]],
+            [qsTr("Search by extension, alone or after a name"), [["/", "~ext:jpg,png"]]],
+            [qsTr("Search by regular expression"), [["/", "~re:^IMG_\\d+"]]],
             [qsTr("Sidebar, panes and details"), [["Tab"], ["Shift", "Tab"]]]
         ]},
         { title: qsTr("Selecting"), shortcuts: [
