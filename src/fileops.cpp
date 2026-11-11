@@ -16,6 +16,7 @@
 #include <QStorageInfo>
 #include <QStandardPaths>
 #include <QTemporaryDir>
+#include <QThread>
 #include <QUrl>
 #include <QTimer>
 #include <QtConcurrent>
@@ -23,6 +24,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fcntl.h>
+#include <poll.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -39,6 +41,8 @@
 static QList<FileOps::Change> s_undo, s_redo;
 static QList<FileOps *> s_everyone;
 static constexpr int historyLength = 50;
+// How long a copy waits on a pipe with nothing in it before it looks whether it's been asked to stop.
+static constexpr int stopCheckMs = 100;
 
 // Work under way in this Folio, whichever pane started it. Panes work side
 // by side, but an undo or redo runs alone, so nothing changes the items it
@@ -223,8 +227,23 @@ static bool writeAll(int fd, const char *data, qint64 size) {
 // it's made with them, so a private file is never open to others while it's
 // copied.
 static bool copyFile(const QString &from, const QString &to, FileOps::Job *job) {
-    QFile in(from), out(to);
-    if (!in.open(QIODevice::ReadOnly) || !out.open(QIODevice::WriteOnly | QIODevice::NewOnly, in.permissions()))
+    QFile in, out(to);
+    const QByteArray name = QFile::encodeName(from);
+    int source;
+    // Opened without waiting: a pipe nobody writes to would hold a plain open for good, out of Stop's reach.
+    while ((source = ::open(name.constData(), O_RDONLY | O_NONBLOCK | O_CLOEXEC)) < 0 && errno == EWOULDBLOCK) {
+        // Only a file another program holds a lease on is refused for not waiting: it's asked for again until the lease is given up, with a look for Stop between.
+        if (job && job->cancelled)
+            return false;
+        QThread::msleep(stopCheckMs);
+    }
+    if (source < 0)
+        return false;
+    if (!in.open(source, QIODevice::ReadOnly, QFileDevice::AutoCloseHandle)) {
+        ::close(source);
+        return false;
+    }
+    if (!out.open(QIODevice::WriteOnly | QIODevice::NewOnly, in.permissions()))
         return false;
     bool kernel = true, ok = true;
     QByteArray buffer;
@@ -245,12 +264,16 @@ static bool copyFile(const QString &from, const QString &to, FileOps::Job *job) 
                 continue;
             }
         } else {
+            // A read of a silent pipe comes back at once with nothing, so the wait is here; a file always has its next piece, and a pipe its end once its writers have gone.
+            pollfd waiting{in.handle(), POLLIN, 0};
+            if (::poll(&waiting, 1, stopCheckMs) == 0)
+                continue;
             buffer.resize(1 << 20);
             n = ::read(in.handle(), buffer.data(), buffer.size());
             if (n > 0 && !writeAll(out.handle(), buffer.constData(), n))
                 n = -1;
         }
-        if (n < 0 && errno == EINTR)
+        if (n < 0 && (errno == EINTR || errno == EAGAIN))
             continue;
         if (n <= 0) {
             ok = n == 0;
