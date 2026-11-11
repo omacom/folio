@@ -66,6 +66,8 @@ ApplicationWindow {
     // Whether keys are going into a text field. The right pane can go before
     // the window does when it closes, leaving activePane null.
     readonly property bool typing: !!activePane && activePane.typing
+    // Whether Tab has put the keyboard in the sidebar or the details.
+    readonly property bool keysBesidePanes: sidebar.activeFocus || details.hasKeyboard
     // The rightmost pane's path bar reaches over the details column.
     readonly property int detailsWidth: details.visible ? details.width : 0
     // Whether the window is wide enough for the details column at all.

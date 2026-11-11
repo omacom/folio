@@ -59,6 +59,8 @@ FocusScope {
     // Delete or Space would act on files out of the keyboard's sight.
     readonly property bool paneKeys: active && !typing
     readonly property bool keys: paneKeys && activeFocus
+    // With the keys in another pane, a search field, the sidebar or the details, the views draw their selection without the accent.
+    readonly property bool keysElsewhere: !active || pathBar.searchFocused || (!!host && host.keysBesidePanes)
     // What file actions act on: everything selected, or the item under
     // the cursor when nothing is.
     function selectedPaths() {
@@ -423,9 +425,9 @@ FocusScope {
                 items: view.item
             }
         }
-        Component { id: gridView; FolderGrid { zoom: pane.zoom; inactive: !pane.active; onZoomRequested: (step) => pane.zoomBy(step) } }
-        Component { id: listView; FolderList { inactive: !pane.active } }
-        Component { id: columnsView; FolderColumns { inactive: !pane.active } }
+        Component { id: gridView; FolderGrid { zoom: pane.zoom; inactive: pane.keysElsewhere; onZoomRequested: (step) => pane.zoomBy(step) } }
+        Component { id: listView; FolderList { inactive: pane.keysElsewhere } }
+        Component { id: columnsView; FolderColumns { inactive: pane.keysElsewhere } }
     }
 
     // Drawn over the window's top bar. It reaches back over the sidebar for

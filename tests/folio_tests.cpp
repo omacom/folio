@@ -5084,6 +5084,56 @@ private slots:
         QCOMPARE(window->property("answer").toString(), QString());
     }
 
+    void selectionDropsTheAccentWhileTheKeysAreInTheSidebar()
+    {
+        // Shift+Tab puts the keyboard in the sidebar, and the files' view draws its selection without the accent until Tab brings it back.
+        QTemporaryDir home;
+        write(home.filePath("a.txt"), "a");
+        // The window remembers its view in QSettings; here that file lands in the test's home, not the user's.
+        QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, home.path());
+        Theme theme(home.filePath("theme"));
+        Translator translator(home.filePath("language"), sourceFolder() + "/i18n");
+        Places places(home.path());
+        Plugins plugins("en", {}, home.filePath("folio.conf"));
+        Backend backend(home.path());
+        FileOps ops;
+        QQmlEngine engine;
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("places", &places);
+        engine.rootContext()->setContextProperty("plugins", &plugins);
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("fileOps", &ops);
+        QQmlComponent component(&engine, QUrl::fromLocalFile(sourceFolder() + "/Main.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        backend.navigate(home.path());
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowFocused(window));
+
+        // The files' view, whichever of the three it is.
+        std::function<QQuickItem *(QQuickItem *)> findView = [&](QQuickItem *item) -> QQuickItem * {
+            if (QByteArray(item->metaObject()->className()).startsWith("Folder") && item->property("inactive").isValid())
+                return item;
+            for (QQuickItem *child : item->childItems())
+                if (QQuickItem *found = findView(child))
+                    return found;
+            return nullptr;
+        };
+        QQuickItem *view = nullptr;
+        QTRY_VERIFY((view = findView(window->contentItem())));
+        QTRY_VERIFY(!view->property("inactive").toBool());
+
+        // The window takes no keys until it has settled.
+        QTRY_VERIFY(window->property("settled").toBool());
+        QTest::keyClick(window, Qt::Key_Backtab, Qt::ShiftModifier);
+        QTRY_VERIFY(view->property("inactive").toBool());
+        QTest::keyClick(window, Qt::Key_Tab);
+        QTRY_VERIFY(!view->property("inactive").toBool());
+    }
+
     void formattingOffersWhatThisMachineCanMake()
     {
         // exFAT first, and only the filesystems whose tools are installed.
