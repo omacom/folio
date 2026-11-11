@@ -86,7 +86,7 @@ Rectangle {
                     text: pane.info.text || ""
                     color: theme.foreground
                     font.pixelSize: 10
-                    wrapMode: Text.WrapAnywhere
+                    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
                 }
@@ -114,7 +114,7 @@ Rectangle {
                 color: theme.brightForeground
                 font.pixelSize: 15
                 font.weight: Font.DemiBold
-                wrapMode: Text.WrapAnywhere
+                wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                 maximumLineCount: 3
                 elide: Text.ElideRight
             }
