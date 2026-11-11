@@ -48,12 +48,12 @@ function count(n) {
     return n === 0 ? qsTr("No items") : n > 0 ? qsTr("%Ln items", "", n) : ""
 }
 
-// A search result's name as StyledText, its matched run in `color`; "" for no match or for white space StyledText folds.
+// A search result's name as StyledText, its matched run bold in `color`; "" for no match or for white space StyledText folds.
 function lit(name, start, length, color) {
     if (start < 0 || /^\s|\s$|\s\s|[^\S ]|\u0085/.test(name))
         return ""
     const escaped = text => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    return escaped(name.slice(0, start)) + "<font color=\"" + color + "\">" + escaped(name.slice(start, start + length)) + "</font>" + escaped(name.slice(start + length))
+    return escaped(name.slice(0, start)) + "<font color=\"" + color + "\"><b>" + escaped(name.slice(start, start + length)) + "</b></font>" + escaped(name.slice(start + length))
 }
 
 // What an item is and how big, under its name in the details and the
