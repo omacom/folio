@@ -168,6 +168,12 @@ Rectangle {
             // The end stays in view; crumbs that don't fit whole fold into "…" at the reading start (the right, when mirrored).
             property int first: 0
             property real offset: 0
+            // The parent's width while it elides to stay beside the current folder; 0 when it shows whole.
+            property real squeeze: 0
+            // The narrowest the parent elides to before it folds, about six characters.
+            readonly property int squeezeFloor: 56
+            // The squeezed parent's crumb is as wide as its elided name, so the next separator keeps the usual gap.
+            FontMetrics { id: crumbFont; font.pixelSize: 14 }
             // Measured from each crumb's full width, so the current folder's own elide never changes what folds.
             function fit() {
                 let rest = 0
@@ -177,6 +183,11 @@ Rectangle {
                 if (rest > width)
                     while (i < crumbRepeater.count - 1 && rest > width - more.implicitWidth - crumbs.spacing)
                         rest -= crumbRepeater.itemAt(i++).fullWidth + crumbs.spacing
+                // Before the parent folds too, it elides, down to squeezeFloor.
+                const room = width - rest - crumbs.spacing - (i > 1 ? more.implicitWidth + crumbs.spacing : 0)
+                squeeze = i > 0 && i === crumbRepeater.count - 1 && room >= Math.min(crumbRepeater.itemAt(i - 1).fullWidth, squeezeFloor) ? room : 0
+                if (squeeze > 0)
+                    --i
                 first = i
                 // How far the first shown crumb is from the row's start, which a mirrored Row puts at its right.
                 const shown = crumbRepeater.itemAt(i)
@@ -257,7 +268,11 @@ Rectangle {
                             id: folderName
                             // The current folder always shows; alone too wide, it elides.
                             width: crumb.last ? Math.max(0, Math.min(implicitWidth, trail.width - (separator.visible ? separator.implicitWidth + crumb.spacing : 0)
-                                                                     - (trail.first > 0 ? more.implicitWidth + crumbs.spacing : 0))) : implicitWidth
+                                                                     - (trail.first > 0 ? more.implicitWidth + crumbs.spacing : 0)))
+                                 : crumb.index === trail.first && trail.squeeze > 0
+                                   ? Math.ceil(crumbFont.advanceWidth(crumbFont.elidedText(crumb.modelData.name, Qt.ElideRight,
+                                                                                          trail.squeeze - (separator.visible ? separator.implicitWidth + crumb.spacing : 0))))
+                                 : implicitWidth
                             elide: Text.ElideRight
                             text: crumb.modelData.name
                             textFormat: Text.PlainText
