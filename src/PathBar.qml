@@ -264,6 +264,7 @@ Rectangle {
         SortMenu { id: sortMenu }
         IconButton {
             glyph: "preview"
+            toggle: true
             // Only where the window has room to show them.
             visible: bar.previewFits
             text: qsTr("Details")
