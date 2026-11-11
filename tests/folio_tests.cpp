@@ -494,6 +494,10 @@ private slots:
     {
         // No test ever reaches the real udisks, which would change real disks.
         fakeDisks({});
+        // GLib reads XDG_DATA_HOME once per process, so GIO's apps come from a made-up one for the whole run.
+        QVERIFY(gioHome.isValid());
+        QVERIFY(QDir().mkpath(gioHome.filePath("data/applications")));
+        qputenv("XDG_DATA_HOME", QFile::encodeName(gioHome.filePath("data")));
     }
 
     void folderListsDirectoriesFirstWithoutHidden()
@@ -6866,7 +6870,57 @@ private slots:
         QCOMPARE(model.matchStart(QString::fromUtf8("\u00c9T\u00c9 notes.txt")), 0);
     }
 
+    void appsForCarryTheirIcons()
+    {
+        // Open With draws each app's Icon= from the pass that lists the apps; one without keeps no icon.
+        const QString apps = gioHome.filePath("data/applications");
+        write(apps + "/folio-test-viewer.desktop", "[Desktop Entry]\nType=Application\nName=Folio Test Viewer\n"
+                                                 "Exec=true %f\nIcon=folio-test-viewer\nMimeType=text/markdown;\n");
+        write(apps + "/folio-test-bare.desktop", "[Desktop Entry]\nType=Application\nName=Folio Test Bare\n"
+                                               "Exec=true %f\nMimeType=text/markdown;\n");
+        // GIO finds an app by type through the cache update-desktop-database writes.
+        write(apps + "/mimeinfo.cache", "[MIME Cache]\ntext/markdown=folio-test-viewer.desktop;folio-test-bare.desktop;\n");
+        QTemporaryDir dir;
+        write(dir.filePath("notes.md"), "# notes");
+        FileOps ops;
+        auto iconOf = [&](const QString &id) {
+            for (const QVariant &app : ops.appsFor(dir.filePath("notes.md")))
+                if (app.toMap().value("id") == id)
+                    return app.toMap().value("icon").toString();
+            return QString("missing");
+        };
+        QTRY_COMPARE(iconOf("folio-test-viewer.desktop"), QString("folio-test-viewer"));
+        QCOMPARE(iconOf("folio-test-bare.desktop"), QString());
+    }
+
+    void appIconsComeFromTheThemeOrAPath()
+    {
+        // A name the theme lacks leaves the column blank; a path, encoded as FileMenu encodes it, loads that file.
+        AppIconProvider provider;
+        QSize size;
+        const QImage blank = provider.requestImage("folio-test-no-such-icon", &size, QSize());
+        QCOMPARE(blank.size(), QSize(16, 16));
+        QCOMPARE(size, QSize(16, 16));
+        for (int y = 0; y < blank.height(); ++y)
+            for (int x = 0; x < blank.width(); ++x)
+                QCOMPARE(qAlpha(blank.pixel(x, y)), 0);
+
+        QTemporaryDir dir;
+        const QString path = dir.filePath("app icon.png");
+        QImage red(48, 48, QImage::Format_ARGB32);
+        red.fill(Qt::red);
+        QVERIFY(red.save(path));
+        const QString id = QString::fromUtf8(QUrl::toPercentEncoding(path));
+        const QImage icon = provider.requestImage(id, &size, QSize(16, 16));
+        QCOMPARE(icon.size(), QSize(16, 16));
+        QCOMPARE(icon.pixelColor(8, 8), QColor(Qt::red));
+        QCOMPARE(provider.requestImage(id, &size, QSize(24, 24)).size(), QSize(24, 24));
+        QCOMPARE(size, QSize(24, 24));
+    }
+
 private:
+    QTemporaryDir gioHome;
+
     // Packs `items`, from `folder`, into `archive`, its kind from its name.
     static void pack(const QString &archive, const QString &folder, const QStringList &items)
     {

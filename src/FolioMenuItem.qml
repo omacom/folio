@@ -19,6 +19,8 @@ MenuItem {
     // skips only entries that are disabled or out of the tab chain, so
     // Return would otherwise run one nobody can see.
     property bool shown: true
+    // Room for a 16 px icon.source before the label, kept when there's none so labels line up.
+    property bool iconColumn: false
 
     // Hover is off by default here; with it, the pointer highlights an
     // entry and opens a submenu on its own, as menus elsewhere do.
@@ -40,13 +42,26 @@ MenuItem {
     }
 
     contentItem: Item {
-        implicitWidth: label.implicitWidth + hint.implicitWidth + 40
+        implicitWidth: label.anchors.leftMargin + label.implicitWidth + hint.implicitWidth + 40
         implicitHeight: label.implicitHeight
+        Image {
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            visible: entry.iconColumn
+            width: 16
+            height: 16
+            sourceSize: Qt.size(16, 16)
+            fillMode: Image.PreserveAspectFit
+            // Synchronous: AppIconProvider calls QIcon::fromTheme, which belongs to the GUI thread.
+            source: entry.iconColumn ? entry.icon.source : ""
+        }
         Text {
             id: label
             anchors.left: parent.left
+            anchors.leftMargin: entry.iconColumn ? 26 : 0
             anchors.verticalCenter: parent.verticalCenter
             text: entry.text
+            textFormat: Text.PlainText
             color: !entry.enabled ? theme.secondaryForeground : entry.highlighted ? theme.brightForeground : theme.foreground
         }
         Text {

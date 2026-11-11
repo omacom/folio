@@ -13,6 +13,7 @@
 #include <cstdio>
 
 #include "filemanager1.h"
+#include "fileops.h"
 #include "foldermodel.h"
 #include "places.h"
 #include "plugins.h"
@@ -142,6 +143,7 @@ int main(int argc, char *argv[]) {
     QObject::connect(&translator, &Translator::changed, &engine, &QQmlEngine::retranslate);
     engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
     engine.addImageProvider("plugin-icon", new PluginIconProvider);
+    engine.addImageProvider("appicon", new AppIconProvider);
     // Creatable too: the column view lists each folder on the way here.
     qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
     engine.rootContext()->setContextProperty("translator", &translator);

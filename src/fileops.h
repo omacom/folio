@@ -2,6 +2,7 @@
 
 #include <QDateTime>
 #include <QObject>
+#include <QQuickImageProvider>
 #include <QStringList>
 #include <QUrl>
 #include <QVariantList>
@@ -145,7 +146,7 @@ public:
     Q_INVOKABLE void newFolder(const QString &folder);
 
     // The apps that can open a file, from the desktop's MIME database:
-    // {id, name, isDefault}, the default first.
+    // {id, name, icon (Icon=, a theme name or a path), isDefault}, the default first.
     Q_INVOKABLE QVariantList appsFor(const QString &path) const;
     Q_INVOKABLE void openWith(const QString &path, const QString &appId);
     // Makes the app what the file's type opens with from now on.
@@ -344,4 +345,11 @@ private:
         std::function<void(const QHash<QString, Choice> &)> then;
     };
     std::optional<Pending> m_pending;
+};
+
+// Serves image://appicon/<Icon=> from the icon theme, blank when the theme has no such icon.
+class AppIconProvider : public QQuickImageProvider {
+public:
+    AppIconProvider() : QQuickImageProvider(QQuickImageProvider::Image) {}
+    QImage requestImage(const QString &id, QSize *size, const QSize &requestedSize) override;
 };

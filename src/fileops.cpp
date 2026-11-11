@@ -8,6 +8,7 @@
 #include <QFileInfo>
 #include <QFutureWatcher>
 #include <QGuiApplication>
+#include <QIcon>
 #include <QLocale>
 #include <QMimeData>
 #include <QMimeDatabase>
@@ -2035,8 +2036,11 @@ QVariantList FileOps::appsFor(const QString &path) const {
         // even a hidden one (Omarchy's editor handler), so it can be named.
         if (!g_app_info_should_show(info) && id != defaultId)
             continue;
+        GIcon *icon = g_app_info_get_icon(info);
+        char *iconName = icon ? g_icon_to_string(icon) : nullptr;
         const QVariantMap app{{"id", id}, {"name", QString::fromUtf8(g_app_info_get_name(info))},
-                              {"isDefault", id == defaultId}};
+                              {"icon", QString::fromUtf8(iconName)}, {"isDefault", id == defaultId}};
+        g_free(iconName);
         if (id == defaultId)
             apps.prepend(app);
         else
@@ -2045,6 +2049,21 @@ QVariantList FileOps::appsFor(const QString &path) const {
     g_list_free_full(all, g_object_unref);
     g_free(type);
     return apps;
+}
+
+QImage AppIconProvider::requestImage(const QString &id, QSize *size, const QSize &requestedSize) {
+    // Open With's icon column, for an Image that names no size.
+    constexpr int menuIconSize = 16;
+    const QSize want = requestedSize.isValid() ? requestedSize : QSize(menuIconSize, menuIconSize);
+    const QString name = QUrl::fromPercentEncoding(id.toUtf8());
+    const QIcon icon = QFileInfo(name).isAbsolute() ? QIcon(name) : QIcon::fromTheme(name);
+    QImage image = icon.pixmap(want).toImage();
+    if (image.isNull()) {
+        image = QImage(want, QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::transparent);
+    }
+    *size = image.size();
+    return image;
 }
 
 void FileOps::openWith(const QString &path, const QString &appId) {
