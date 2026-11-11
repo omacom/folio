@@ -1,6 +1,7 @@
 #include "thumbnails.h"
 
 #include <QBuffer>
+#include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QtEndian>
 #include <zlib.h>
@@ -21,6 +22,11 @@ namespace {
 
 QString fileUri(const QString &path) {
     return QUrl::fromLocalFile(path).toString(QUrl::FullyEncoded);
+}
+
+// The cache spec's fail/<program>-<version>: a new version tries a file again that an older one gave up on.
+QString failureFolder() {
+    return "/fail/folio-" + QCoreApplication::applicationVersion() + "/";
 }
 
 QString mtimeOf(const QString &path) {
@@ -240,7 +246,7 @@ void Thumbnails::remember(const QImage &image, const QString &path, int size) co
 }
 
 void Thumbnails::rememberFailure(const QString &path) const {
-    const QString target = m_cache + "/fail/folio/" + cacheKey(path);
+    const QString target = m_cache + failureFolder() + cacheKey(path);
     QDir().mkpath(QFileInfo(target).absolutePath());
     QImage marker(1, 1, QImage::Format_ARGB32);
     marker.fill(Qt::transparent);
@@ -256,7 +262,7 @@ void Thumbnails::rememberFailure(const QString &path) const {
 }
 
 bool Thumbnails::failedBefore(const QString &path) const {
-    const QImage marker(m_cache + "/fail/folio/" + cacheKey(path));
+    const QImage marker(m_cache + failureFolder() + cacheKey(path));
     return !marker.isNull() && marker.text("Thumb::MTime") == mtimeOf(path);
 }
 

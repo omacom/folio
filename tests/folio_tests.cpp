@@ -515,16 +515,32 @@ private slots:
     void thumbnailsReadInstalledThumbnailers()
     {
         QTemporaryDir dir;
-        write(dir.filePath("demo.thumbnailer"),
-              "[Thumbnailer Entry]\nTryExec=/bin/sh\nExec=/bin/sh -c \"exit 1\" %i %o %s\nMimeType=video/mp4;video/webm;\n");
+        // The thumbnailer is a script that notes each run beside itself and fails.
+        const QString script = dir.filePath("fail.sh"), runs = script + ".runs";
+        write(script, "echo run >> \"$0.runs\"\nexit 1\n");
+        write(dir.filePath("demo.thumbnailer"), "[Thumbnailer Entry]\nTryExec=/bin/sh\nExec=/bin/sh \"" + script.toUtf8()
+                                                + "\" %i %o %s\nMimeType=video/mp4;video/webm;\n");
         Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
         QVERIFY(thumbnails.thumbnailerFor("video/webm").startsWith("/bin/sh"));
         QVERIFY(thumbnails.thumbnailerFor("video/ogg").isEmpty());
 
         // A thumbnailer that fails leaves a failure marker, so it isn't retried.
+        const auto restore = qScopeGuard([version = QCoreApplication::applicationVersion()] {
+            QCoreApplication::setApplicationVersion(version);
+        });
+        QCoreApplication::setApplicationVersion("1.0");
         write(dir.filePath("clip.mp4"), "not a video");
         QVERIFY(thumbnails.load(dir.filePath("clip.mp4"), "video/mp4", 128).isNull());
-        QVERIFY(QFile::exists(dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(dir.filePath("clip.mp4")))));
+        QVERIFY(QFile::exists(dir.filePath("cache/fail/folio-1.0/" + Thumbnails::cacheKey(dir.filePath("clip.mp4")))));
+        QVERIFY(thumbnails.load(dir.filePath("clip.mp4"), "video/mp4", 128).isNull());
+        // Each run of the thumbnailer appends "run" and a newline, four bytes.
+        QCOMPARE(QFileInfo(runs).size(), 4);
+
+        // The marker belongs to the version that wrote it: the next version tries the file once more.
+        QCoreApplication::setApplicationVersion("1.1");
+        QVERIFY(thumbnails.load(dir.filePath("clip.mp4"), "video/mp4", 128).isNull());
+        QVERIFY(thumbnails.load(dir.filePath("clip.mp4"), "video/mp4", 128).isNull());
+        QCOMPARE(QFileInfo(runs).size(), 8);
     }
 
     void previewerPicksAViewerForEachType()
