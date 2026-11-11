@@ -102,9 +102,11 @@ Rectangle {
             Layout.fillWidth: true
             visible: bar.searching && !bar.editing
             font.pixelSize: 14
-            // Room at the end for where it searches; padding isn't mirrored.
-            leftPadding: LayoutMirroring.enabled ? scope.implicitWidth + 24 : 12
-            rightPadding: LayoutMirroring.enabled ? 12 : scope.implicitWidth + 24
+            clip: true
+            // Room at the end for where it searches, while it fits; padding isn't mirrored.
+            readonly property real hintRoom: scope.fits ? scope.implicitWidth + 24 : 12
+            leftPadding: LayoutMirroring.enabled ? hintRoom : 12
+            rightPadding: LayoutMirroring.enabled ? 12 : hintRoom
             // Where it searches, at the end of the field. Unlike a
             // placeholder, it stays while typing. Plugins' views have
             // nothing below them.
@@ -119,17 +121,28 @@ Rectangle {
                 // Once the results for what is typed are in, how many there are.
                 readonly property bool settled: backend.folder.query.length > 0 && backend.folder.query === searchField.text.trim()
                                                 && !backend.folder.loading && backend.folder.error.length === 0
+                readonly property string hint: backend.path.startsWith("plugin:") ? qsTr("Search %1")
+                    : !settled ? qsTr("Search %1 and below")
+                    : backend.folder.count === 0 ? qsTr("Searched %1 and below")
+                    : backend.folder.count >= backend.folder.searchLimit ? qsTr("%Ln or more found in %1 and below", "", backend.folder.count)
+                    : qsTr("%Ln found in %1 and below", "", backend.folder.count)
+                // In a narrow field it gives way to what is typed: the place elides, then the hint hides.
+                readonly property bool fits: placeFit.elidedText === here || placeFit.elidedText.length > 3
+                visible: fits
                 anchors.right: parent.right
                 anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
                 textFormat: Text.PlainText
-                text: backend.path.startsWith("plugin:") ? qsTr("Search %1").arg(here)
-                    : !settled ? qsTr("Search %1 and below").arg(here)
-                    : backend.folder.count === 0 ? qsTr("Searched %1 and below").arg(here)
-                    : backend.folder.count >= backend.folder.searchLimit ? qsTr("%Ln or more found in %1 and below", "", backend.folder.count).arg(here)
-                    : qsTr("%Ln found in %1 and below", "", backend.folder.count).arg(here)
+                text: hint.arg(placeFit.elidedText)
                 color: theme.secondaryForeground
                 font.pixelSize: 12
+                // The field's width kept for typing, a dozen characters.
+                readonly property int typingRoom: 96
+                TextMetrics { id: hintRest; font: scope.font; text: scope.hint.arg("") }
+                // The padding on the side the typing starts from, which mirroring swaps.
+                readonly property real startPadding: LayoutMirroring.enabled ? searchField.rightPadding : searchField.leftPadding
+                // The hint keeps its margin on both sides, as rightPadding does.
+                TextMetrics { id: placeFit; font: scope.font; text: scope.here; elide: Text.ElideRight; elideWidth: searchField.width - scope.startPadding - 2 * scope.anchors.rightMargin - scope.typingRoom - hintRest.advanceWidth }
             }
             onTextEdited: searchDelay.restart()
             // Enter or ↓ goes to the results, leaving the search up.
