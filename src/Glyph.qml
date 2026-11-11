@@ -12,7 +12,7 @@ Item {
     property real size: 18
     property real stroke: 1.6
     // Brand marks are solid shapes rather than line drawings.
-    readonly property bool filled: name === "dropbox"
+    readonly property bool filled: name === "dropbox" || name === "star-on"
 
     implicitWidth: size
     implicitHeight: size
@@ -85,6 +85,9 @@ Item {
         case "audio": return "M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"
         case "check": return "M5 12l5 5 9-10"
         case "close": return "M6 6l12 12M18 6L6 18"
+        case "bookmark": return "M6 3h12v18l-6-5-6 5z"
+        case "star":
+        case "star-on": return "M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"
         default: return page()
         }
     }

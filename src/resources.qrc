@@ -30,6 +30,10 @@
         <file>PreviewWindow.qml</file>
         <file>PdfPreview.qml</file>
         <file>MediaPreview.qml</file>
+        <file>BookmarksBar.qml</file>
+        <file>BookmarkDialog.qml</file>
+        <file>BookmarkBubble.qml</file>
+        <file>FolderPicker.qml</file>
         <file>Format.js</file>
         <file>i18n/en.json</file>
     </qresource>

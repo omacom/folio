@@ -21,6 +21,8 @@ FocusScope {
     // so the rightmost pane's buttons sit at the window's edge.
     property int barExtension: 0
     property int barLeft: 0
+    // The path bar's star, which the bookmark bubble hangs from.
+    readonly property var bookmarkStar: pathBar.star
 
     // Each pane has its own view. The window's own pane is the one
     // remembered between launches; the right pane of a split starts with
@@ -50,7 +52,7 @@ FocusScope {
     property bool cursorLetGo: false
     // While a text field has the keyboard (renaming, a password), single-key
     // and clipboard shortcuts stand aside so typing works.
-    readonly property bool typing: rename.visible || confirm.visible || backend.mounter.asking || pathBar.editing || pathBar.searchFocused || (!!host && host.helpVisible)
+    readonly property bool typing: rename.visible || confirm.visible || backend.mounter.asking || pathBar.editing || pathBar.searchFocused || (!!host && (host.helpVisible || host.bookmarking))
     readonly property bool keys: active && !typing
     // What file actions act on: everything selected, or the item under
     // the cursor when nothing is.
@@ -254,6 +256,8 @@ FocusScope {
         onDeleteRequested: (paths) => pane.confirmDelete(paths)
         onEmptyTrashRequested: pane.emptyTrash()
         onPinRequested: (path) => pane.togglePin(path)
+        onBookmarkRequested: (path) => { if (pane.host) pane.host.bookmark(path) }
+        host: pane.host
     }
 
     ColumnLayout {
@@ -262,7 +266,7 @@ FocusScope {
 
         // Room for the path bar, which is drawn on top so it can reach over
         // the details column.
-        Item { Layout.fillWidth: true; implicitHeight: pathBar.implicitHeight }
+        Item { Layout.fillWidth: true; implicitHeight: pathBar.implicitHeight + ((!!pane.host && pane.host.bookmarksBarHeight) || 0) }
         // Problems and slow work are said in the window, not swallowed.
         Rectangle {
             Layout.fillWidth: true
@@ -364,6 +368,7 @@ FocusScope {
         onTogglePreview: if (pane.host) pane.host.previewVisible = !pane.host.previewVisible
         onCycleView: pane.cycleView()
         onCloseRequested: pane.closeRequested()
+        onBookmarkRequested: (anchor) => { if (pane.host) pane.host.bookmark(backend.path, anchor) }
     }
 
     // With two panes, a line along the top marks the one keys go to.

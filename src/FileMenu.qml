@@ -20,6 +20,9 @@ FolioMenu {
     signal deleteRequested(var paths)
     signal emptyTrashRequested()
     signal pinRequested(string path)
+    signal bookmarkRequested(string path)
+    // The window, for the bookmarks bar's visibility.
+    property var host: null
     // In the trash the menu is about getting things back, or letting go.
     readonly property bool trashView: fileOps.inTrash(folder)
     // The tailnet view lists machines, which only open.
@@ -201,9 +204,22 @@ FolioMenu {
         onTriggered: fileMenu.pinRequested(fileMenu.target.path)
     }
     FolioMenuItem {
+        shown: !fileMenu.trashView && fileMenu.forFiles
+        text: fileMenu.forItem ? qsTr("Add to Bookmarks") : qsTr("Bookmark This Folder")
+        keys: fileMenu.forItem ? "" : "Ctrl+B"
+        onTriggered: fileMenu.bookmarkRequested(fileMenu.forItem ? fileMenu.target.path : fileMenu.folder)
+    }
+    FolioMenuItem {
         shown: fileMenu.forFiles && (!fileMenu.forItem || fileMenu.forFolder)
         text: qsTr("Open Terminal Here")
         onTriggered: fileOps.openTerminal(fileMenu.forItem ? fileMenu.target.path : fileMenu.folder)
+    }
+    // The way back to a hidden bookmarks bar for the mouse.
+    FolioMenuItem {
+        shown: !fileMenu.forItem && fileMenu.forFiles && !!fileMenu.host && !fileMenu.host.bookmarksBarVisible
+        text: qsTr("Show Bookmarks Bar")
+        keys: "Ctrl+Shift+B"
+        onTriggered: fileMenu.host.bookmarksBarVisible = true
     }
     FolioMenuItem {
         shown: !fileMenu.forItem

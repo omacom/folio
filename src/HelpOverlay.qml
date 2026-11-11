@@ -30,6 +30,8 @@ Rectangle {
         ["Space", qsTr("Preview the selected file")],
         ["Ctrl+I", qsTr("Show or hide the details pane")],
         ["Ctrl+D", qsTr("Pin or unpin the folder (or drag it to the sidebar)")],
+        ["Ctrl+B / Ctrl+Shift+B", qsTr("Bookmark this folder / show or hide the bookmarks bar")],
+        ["F6", qsTr("Keys to the bookmarks bar (arrows, ⏎, Escape)")],
         ["Ctrl+C / X / V", qsTr("Copy, cut, paste files")],
         ["Ctrl+Shift+C", qsTr("Copy the path as text")],
         ["F2 / Ctrl+Shift+D", qsTr("Rename / duplicate")],
