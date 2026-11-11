@@ -3,6 +3,7 @@
 #include <QCache>
 #include <QCollator>
 #include <QDir>
+#include <QDirListing>
 #include <QXmlStreamReader>
 #include <QUrl>
 #include <QStandardPaths>
@@ -228,17 +229,15 @@ QVector<FolderModel::Entry> FolderModel::list(const QString &path, bool showHidd
         return entries;
     }
 
-    QDir::Filters filters = QDir::AllEntries | QDir::NoDotAndDotDot | QDir::System;
-    if (showHidden)
-        filters |= QDir::Hidden;
+    // Links unresolved, so broken ones, sockets and fifos are listed too.
+    const auto flags = showHidden ? QDirListing::IteratorFlag::IncludeHidden : QDirListing::IteratorFlag::Default;
 
     // Extension-only matching: reading every file's header would make large
     // folders and network mounts crawl.
     QMimeDatabase mimes;
-    const auto infos = dir.entryInfoList(filters, QDir::NoSort);
-    entries.reserve(infos.size());
-    for (const QFileInfo &info : infos)
-        entries.push_back(entryFor(info, mimes));
+    // Each entry is built as it's read, so no file info outlives its entry.
+    for (const auto &item : QDirListing(path, flags))
+        entries.push_back(entryFor(item.fileInfo(), mimes));
 
     sortEntries(entries, sort);
     return entries;
@@ -325,7 +324,11 @@ void FolderModel::sortEntries(QVector<Entry> &entries, const QString &sort) {
             if (a.extension != b.extension)
                 return collator.compare(a.extension, b.extension) < 0;
         }
-        return collator.compare(a.name, b.name) < 0;
+        if (const int order = collator.compare(a.name, b.name))
+            return order < 0;
+        // Names the collator calls equal go in QDir's order: lower-cased, then as written.
+        const int lower = a.name.toLower().compare(b.name.toLower());
+        return lower ? lower < 0 : a.name < b.name;
     });
 }
 

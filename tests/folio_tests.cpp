@@ -8,6 +8,7 @@
 #include <QTemporaryDir>
 #include <QUrl>
 #include <QtTest>
+#include <sys/stat.h>
 
 #include "backend.h"
 #include "fileops.h"
@@ -51,6 +52,28 @@ private slots:
         QString error;
         QVERIFY(FolderModel::list("/definitely/not/here", false, "name", &error).isEmpty());
         QVERIFY(!error.isEmpty());
+    }
+
+    void folderListsTiesInQDirOrder()
+    {
+        // Names the collator calls equal (leading zeros, case) go in QDir's lower-cased order, then as written.
+        QTemporaryDir dir;
+        for (const char *name : {"Zed5", "photo01.jpg", "m3.log", "a1.txt", "Track010.mp3", "NOTE002.md", "zEd0005",
+                                 "Photo1.jpg", "b.txt", "A01.txt", "track10.mp3", "note02.md", "ZED005", "Readme",
+                                 "PHOTO001.jpg", "a001.txt", "TRACK0010.mp3", "Note2.md", "zed05", "photo0001.jpg",
+                                 "README", "ReadMe"})
+            write(dir.filePath(name), "x");
+        write(dir.filePath(".hidden"), "x");
+        QVERIFY(QFile::link(dir.filePath("nowhere"), dir.filePath("broken")));
+        QCOMPARE(::mkfifo(QFile::encodeName(dir.filePath("pipe")).constData(), 0600), 0);
+
+        QString error;
+        QStringList names;
+        for (const auto &e : FolderModel::list(dir.path(), true, "size", &error)) names << e.name;
+        // Same size, so by name; the empty broken link and pipe come last, and are still listed.
+        QCOMPARE(names.join(' '), QString(".hidden a001.txt A01.txt a1.txt b.txt m3.log NOTE002.md note02.md Note2.md "
+                                          "photo0001.jpg PHOTO001.jpg photo01.jpg Photo1.jpg README ReadMe Readme "
+                                          "TRACK0010.mp3 Track010.mp3 track10.mp3 zEd0005 ZED005 zed05 Zed5 broken pipe"));
     }
 
     void folderSummaryCountsAndPeeks()
