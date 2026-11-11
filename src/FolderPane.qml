@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "Format.js" as Format
 
 // One folder pane: its path bar, problems banner and the files (grid,
 // list or columns), with its own menu and dialogs. A window
@@ -79,6 +80,10 @@ FocusScope {
     readonly property bool inTailnet: backend.path === "tailnet:"
     readonly property bool fileKeys: keys && !inTailnet
     Binding { target: backend.folder; property: "peers"; value: places.peers }
+    // "Copying 3 items… 1.2 GB of 4.0 GB"; the busy text goes in last, so a "%1" in a name stays.
+    readonly property string fileOpsBusy: fileOps.busy && fileOps.bytesTotal > 0
+        ? qsTr("%3 %1 of %2").arg(Format.size(fileOps.bytesDone)).arg(Format.size(fileOps.bytesTotal)).arg(fileOps.busy)
+        : fileOps.busy
     function deleteSelected() {
         const paths = pane.selectedPaths()
         if (pane.inTrash)
@@ -276,9 +281,15 @@ FocusScope {
                 Text {
                     id: bannerText
                     Layout.fillWidth: true
-                    text: backend.message || backend.folder.error || backend.busy || fileOps.busy || backend.notice
+                    text: backend.message || backend.folder.error || backend.busy || pane.fileOpsBusy || backend.notice
                     color: theme.brightForeground
                     elide: Text.ElideRight
+                }
+                // Stops the copy or move the banner is showing.
+                PlainButton {
+                    visible: fileOps.canStop && bannerText.text === pane.fileOpsBusy
+                    text: qsTr("Stop")
+                    onClicked: fileOps.stop()
                 }
                 IconButton {
                     visible: backend.message.length > 0
