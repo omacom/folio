@@ -1443,7 +1443,8 @@ private slots:
         // A real model, whose matchStart a search result's name calls.
         FolderModel folder;
         for (const char *role : {"accent", "accentMark", "foreground", "brightForeground", "secondaryForeground",
-                                 "lighterBackground", "darkBackground", "red", "blue", "magenta", "orange", "yellow", "cyan"})
+                                 "lighterBackground", "darkBackground", "folderFill", "red", "blue", "magenta",
+                                 "orange", "yellow", "cyan"})
             theme->insert(role, QColor(Qt::gray));
         theme->insert("radius", 0);
         translator->insert("language", "en");
@@ -6742,6 +6743,22 @@ private slots:
         QColor ring("#cdd6f4");
         ring.setAlphaF(0.6);
         QCOMPARE(passing.quietMark(), ring);
+    }
+
+    void themeFloorsTheFolderCard()
+    {
+        // Rose Pine Dawn's card is 1.1:1 on its background; White's already stands off at 1.8:1.
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("theme");
+        write(dir.filePath("theme/colors.toml"), roseDawn);
+        Theme low(dir.path());
+        QVERIFY(contrast(low.folderFill(), low.background()) >= 1.4);
+        QVERIFY(snug(low.folderFill(), {low.background()}, 1.4));
+        // Tiles and panels keep the theme's own lighter background.
+        QCOMPARE(low.lighterBackground(), QColor("#f2e9e1"));
+        write(dir.filePath("theme/colors.toml"), "mode = \"light\"\nbackground = \"#ffffff\"\nlighter_background = \"#c0c0c0\"\nforeground = \"#000000\"\n");
+        Theme passing(dir.path());
+        QCOMPARE(passing.folderFill(), QColor("#c0c0c0"));
     }
 
     void themeFloorsTheDisabledGlyph()

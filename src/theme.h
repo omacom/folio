@@ -31,6 +31,7 @@ class Theme : public QObject {
     Q_PROPERTY(int radius READ radius NOTIFY changed)
     Q_PROPERTY(QColor accentMark READ accentMark NOTIFY changed)
     Q_PROPERTY(QColor quietMark READ quietMark NOTIFY changed)
+    Q_PROPERTY(QColor folderFill READ folderFill NOTIFY changed)
     Q_PROPERTY(QColor disabledForeground READ disabledForeground NOTIFY changed)
     Q_PROPERTY(QColor redText READ redText NOTIFY changed)
     Q_PROPERTY(QColor accentText READ accentText NOTIFY changed)
@@ -58,6 +59,7 @@ public:
     int radius() const { return m_radius; }
     QColor accentMark() const;
     QColor quietMark() const;
+    QColor folderFill() const;
     QColor disabledForeground() const;
     QColor redText() const;
     QColor accentText() const;

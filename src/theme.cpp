@@ -59,6 +59,8 @@ constexpr int bisectionSteps = 18;
 constexpr int channelRange = 255;
 // WCAG's minimum contrast for marks and frames, which aren't text.
 constexpr double markFloor = 3;
+// The least contrast a folder card's fill keeps on the pane: a surface, so well under markFloor.
+constexpr double folderFloor = 1.4;
 // The pin box's accent tint in Sidebar.qml while a drop hovers it, the strongest ground under its words.
 constexpr double strongestPinTint = 0.22;
 // At or under this saturation a theme's red is a grey.
@@ -263,6 +265,11 @@ QColor Theme::quietMark() const {
         return ring;
     }
     return ensureRatio(ensureRatio(mix(bg, fg, share), bg, markFloor), card, markFloor);
+}
+
+// A folder card's fill: the lighter background, raised to folderFloor so the card stands off the pane.
+QColor Theme::folderFill() const {
+    return ensureRatio(lighterBackground(), background(), folderFloor);
 }
 
 // A disabled glyph: 3:1 on the bar, while the secondary ink of an off toggle keeps 4.5:1.
