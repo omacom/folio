@@ -296,6 +296,8 @@ Rectangle {
 
     Text {
         anchors.centerIn: parent
+        // On the empty folder's line beside it: that view starts 16 px lower, under a gap below the bar.
+        anchors.verticalCenterOffset: 8
         visible: !pane.hasItem && !pane.many
         text: qsTr("Nothing selected")
         color: theme.secondaryForeground
