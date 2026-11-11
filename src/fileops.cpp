@@ -757,10 +757,18 @@ bool FileOps::canDrop(const QList<QUrl> &urls, const QString &folder) const {
     return any;
 }
 
-void FileOps::dropInto(const QList<QUrl> &urls, const QString &folder) {
+Qt::DropAction FileOps::dropInto(const QList<QUrl> &urls, const QString &folder, bool copy) {
     if (!canDrop(urls, folder) || !idle())
-        return;
-    transferInBackground(localPaths(urls), folder, Drop, false);
+        return Qt::IgnoreAction;
+    // canDrop passed, so at least one item is from elsewhere.
+    const QStringList paths = fromElsewhere(urls, folder);
+    transferInBackground(paths, folder, copy ? Copy : Drop, false);
+    return copy || !sameDrive(paths.first(), folder) ? Qt::CopyAction : Qt::MoveAction;
+}
+
+bool FileOps::ctrlHeld() const {
+    // Asked of the system, not the last event: the drop's own event doesn't say.
+    return QGuiApplication::queryKeyboardModifiers().testFlag(Qt::ControlModifier);
 }
 
 QString FileOps::uriList(const QStringList &paths) const {
@@ -775,6 +783,14 @@ QStringList FileOps::localPaths(const QList<QUrl> &urls) const {
     for (const QUrl &url : urls)
         if (url.isLocalFile())
             paths << url.toLocalFile();
+    return paths;
+}
+
+QStringList FileOps::fromElsewhere(const QList<QUrl> &urls, const QString &folder) const {
+    QStringList paths;
+    for (const QString &path : localPaths(urls))
+        if (!alreadyIn(path, folder))
+            paths << path;
     return paths;
 }
 

@@ -24,8 +24,7 @@ DropArea {
     onDropped: (drop) => {
         if (!takes(drop))
             return
-        fileOps.dropInto(drop.urls, folder)
-        drop.accept(Qt.MoveAction)
+        drop.accept(fileOps.dropInto(drop.urls, folder, fileOps.ctrlHeld()))
     }
 
     Rectangle {

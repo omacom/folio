@@ -198,10 +198,10 @@ Rectangle {
             onDropped: (drop) => {
                 if (row.dropTrashes) {
                     fileOps.trash(fileOps.localPaths(drop.urls))
+                    drop.accept(Qt.MoveAction)
                 } else {
-                    fileOps.dropInto(drop.urls, row.dropPath)
+                    drop.accept(fileOps.dropInto(drop.urls, row.dropPath, fileOps.ctrlHeld()))
                 }
-                drop.accept(Qt.MoveAction)
             }
         }
         contentItem: RowLayout {

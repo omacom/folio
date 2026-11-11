@@ -59,7 +59,7 @@ Item {
         enabled: row.isDir
         keys: ["text/uri-list"]
         onEntered: (drag) => { drag.accepted = fileOps.canDrop(drag.urls, row.path) }
-        onDropped: (drop) => { fileOps.dropInto(drop.urls, row.path); drop.accept(Qt.MoveAction) }
+        onDropped: (drop) => drop.accept(fileOps.dropInto(drop.urls, row.path, fileOps.ctrlHeld()))
     }
 
     Rectangle {

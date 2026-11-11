@@ -124,7 +124,7 @@ Item {
         enabled: tile.isDir
         keys: ["text/uri-list"]
         onEntered: (drag) => { drag.accepted = fileOps.canDrop(drag.urls, tile.path) }
-        onDropped: (drop) => { fileOps.dropInto(drop.urls, tile.path); drop.accept(Qt.MoveAction) }
+        onDropped: (drop) => drop.accept(fileOps.dropInto(drop.urls, tile.path, fileOps.ctrlHeld()))
     }
 
     HoverHandler {

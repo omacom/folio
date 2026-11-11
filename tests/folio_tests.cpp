@@ -6249,6 +6249,43 @@ private slots:
         QVERIFY2(texts.contains(line), qPrintable(texts.join(" | ")));
     }
 
+    void fileOpsDropCopiesWithCtrl()
+    {
+        QTemporaryDir from, to;
+        write(from.filePath("todo.txt"), "list");
+        write(to.filePath("todo.txt"), "already here");
+        write(to.filePath("notes.txt"), "kept");
+
+        // One drive, so only Ctrl copies: the source stays, the taken name is asked about, and what is already there is left.
+        FileOps ops;
+        QSignalSpy done(&ops, &FileOps::done);
+        QCOMPARE(ops.dropInto({QUrl::fromLocalFile(from.filePath("todo.txt")), QUrl::fromLocalFile(to.filePath("notes.txt"))}, to.path(), true), Qt::CopyAction);
+        QCOMPARE(ops.clash().value("name").toString(), QString("todo.txt"));
+        // A drop while that copy waits is refused, and says so rather than that it moved.
+        QCOMPARE(ops.dropInto({QUrl::fromLocalFile(from.filePath("todo.txt"))}, to.path(), false), Qt::IgnoreAction);
+        ops.answerClash("both", false);
+        QVERIFY(done.wait(3000));
+        QCOMPARE(done.takeFirst().at(1).toString(), QString("todo (copy).txt"));
+        QVERIFY(QFile::exists(from.filePath("todo.txt")));
+        QVERIFY(QFile::exists(to.filePath("todo (copy).txt")));
+        QVERIFY(!QFile::exists(to.filePath("notes (copy).txt")));
+
+        // Without Ctrl it's still a move.
+        QCOMPARE(ops.dropInto({QUrl::fromLocalFile(from.filePath("todo.txt"))}, to.path(), false), Qt::MoveAction);
+        ops.answerClash("both", false);
+        QVERIFY(done.wait(3000));
+        QVERIFY(!QFile::exists(from.filePath("todo.txt")));
+        QVERIFY(QFile::exists(to.filePath("todo (copy 2).txt")));
+
+        // Through a link to the folder, what is already there is left out too.
+        write(from.filePath("plan.txt"), "next");
+        QVERIFY(QFile::link(to.path(), from.filePath("there")));
+        QCOMPARE(ops.dropInto({QUrl::fromLocalFile(from.filePath("plan.txt")), QUrl::fromLocalFile(to.filePath("notes.txt"))}, from.filePath("there"), true), Qt::CopyAction);
+        QVERIFY(done.wait(3000));
+        QVERIFY(QFile::exists(to.filePath("plan.txt")));
+        QVERIFY(!QFile::exists(to.filePath("notes (copy).txt")));
+    }
+
 private:
     // Packs `items`, from `folder`, into `archive`, its kind from its name.
     static void pack(const QString &archive, const QString &folder, const QStringList &items)

@@ -93,10 +93,10 @@ public:
     Q_INVOKABLE void cut(const QStringList &paths);
     Q_INVOKABLE void yank(const QStringList &paths);
     Q_INVOKABLE void paste(const QString &folder);
-    // Files dropped on a folder: moved when they're on the same drive,
-    // copied from another drive. Dropping something where it already is
-    // does nothing.
-    Q_INVOKABLE void dropInto(const QList<QUrl> &urls, const QString &folder);
+    // Files dropped on a folder: each moved on its drive and copied from another, or all copied with `copy` (Ctrl held); returns CopyAction only when every item is copied, or IgnoreAction when it refuses.
+    Q_INVOKABLE Qt::DropAction dropInto(const QList<QUrl> &urls, const QString &folder, bool copy = false);
+    // Whether Ctrl is held right now, which makes a drop copy.
+    Q_INVOKABLE bool ctrlHeld() const;
     // Whether these can be dropped on `folder`: not onto themselves, and
     // not into the trash, which only Delete fills.
     Q_INVOKABLE bool canDrop(const QList<QUrl> &urls, const QString &folder) const;
@@ -323,6 +323,9 @@ private:
     // other work is under way.
     QProcess *runTool(const QString &program, const QStringList &args, const QString &busy, const QString &missing,
                       const QString &stopped, const std::function<void(QProcess *, int)> &finished);
+
+    // The local files among `urls` not already in `folder`: a copy of one already there would be a duplicate.
+    QStringList fromElsewhere(const QList<QUrl> &urls, const QString &folder) const;
 
     QString m_busy;
     std::shared_ptr<Job> m_job;
