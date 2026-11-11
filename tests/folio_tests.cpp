@@ -1346,6 +1346,47 @@ private slots:
         QCOMPARE(nearest.first().name, QString("beach.txt"));
     }
 
+    void searchReadsTheFoldersOnceWhileItsOpen()
+    {
+        // The first letter reads the folders below; every letter after is
+        // answered from what was read. Ending the search lets all of it go.
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("Photos/2024");
+        write(dir.filePath("Photos/2024/beach.jpg"), "x");
+        write(dir.filePath("beacon.txt"), "x");
+        write(dir.filePath(".beach"), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QVERIFY(!model.searchIndex());
+        model.setQuery("b");
+        QVERIFY(loaded.wait(3000));
+        const std::weak_ptr<const SearchIndex> held = model.searchIndex();
+        for (const char *query : {"be", "bea"}) {
+            model.setQuery(query);
+            QVERIFY(loaded.wait(3000));
+        }
+        QCOMPARE(model.count(), 2);
+        QVERIFY(model.searchIndex() == held.lock());
+        QCOMPARE(held.lock()->counts.walks, 1);
+        QVERIFY(held.lock()->bytes() > 0);
+        model.setQuery("");
+        QVERIFY(!model.searchIndex());
+        QTRY_VERIFY(held.expired());
+
+        // The next search reads again, so it finds what's new; showing
+        // hidden files reads again too.
+        write(dir.filePath("Photos/beach2.jpg"), "x");
+        model.setQuery("beach");
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 2);
+        model.setShowHidden(true);
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 3);
+        QCOMPARE(model.searchIndex()->counts.walks, 1);
+    }
+
     void folderModelSwapsFoldersWithoutAnEmptyFrame()
     {
         QTemporaryDir a, b;

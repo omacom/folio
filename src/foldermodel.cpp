@@ -13,6 +13,7 @@
 #include <QFileInfo>
 #include <QFutureWatcher>
 #include <QMimeDatabase>
+#include <QMutex>
 #include <QVarLengthArray>
 #include <QtConcurrent>
 #include <algorithm>
@@ -43,6 +44,7 @@ FolderModel::FolderModel(QObject *parent) : QAbstractListModel(parent) {
 // running for this model.
 FolderModel::~FolderModel() {
     *m_latest = 0;
+    closeSearch();
 }
 
 // Recent listings, shared by every model (the window's folder and each
@@ -282,7 +284,7 @@ void FolderModel::setSortMode(const QString &sort) {
         return;
     m_sort = sort;
     emit sortModeChanged();
-    reload();
+    read();
 }
 
 void FolderModel::setQuery(const QString &query) {
@@ -291,12 +293,14 @@ void FolderModel::setQuery(const QString &query) {
     m_query = query;
     emit queryChanged();
     setSelected({});
-    // Back to the folder: its remembered listing shows at once.
+    // Back to the folder: its remembered listing shows at once, and what
+    // the search read is let go of.
     if (m_query.isEmpty()) {
+        closeSearch();
         if (const auto *cached = recentListings().object(cacheKey()))
             setEntries(*cached);
     }
-    reload();
+    read();
 }
 
 void FolderModel::setItems(const QVariantList &items) {
@@ -313,6 +317,7 @@ void FolderModel::setPath(const QString &path) {
     const QString clean = path.isEmpty() || isView(path) ? path : QDir::cleanPath(path);
     if (clean == m_path)
         return;
+    closeSearch();
     if (!m_watcher.directories().isEmpty())
         m_watcher.removePaths(m_watcher.directories());
     if (!m_watcher.files().isEmpty())
@@ -673,7 +678,52 @@ int FolderModel::itemCount(const QString &folder, bool showHidden) {
     return count;
 }
 
+// The open search: its index, read once in the background, and the lock
+// its answers take turns at.
+struct FolderModel::Search {
+    SearchIndex index;
+    QMutex lock;
+    std::atomic<bool> closed{false};
+    // Set on the UI thread once the walk is done; nothing is answered before.
+    bool landed = false;
+};
+
+std::shared_ptr<const SearchIndex> FolderModel::searchIndex() const {
+    return m_search ? std::shared_ptr<const SearchIndex>(m_search, &m_search->index) : nullptr;
+}
+
+void FolderModel::openSearch() {
+    m_search = std::make_shared<Search>();
+    const auto search = m_search;
+    const QString path = m_path;
+    const bool showHidden = m_showHidden;
+    auto *watcher = new QFutureWatcher<void>(this);
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, search] {
+        watcher->deleteLater();
+        if (search != m_search)
+            return; // Ended, or another search started, while it was read.
+        search->landed = true;
+        read();
+    });
+    watcher->setFuture(QtConcurrent::run([search, path, showHidden] {
+        search->index.walk(path, showHidden, [&] { return search->closed.load(); });
+    }));
+}
+
+void FolderModel::closeSearch() {
+    if (!m_search)
+        return;
+    m_search->closed = true;
+    m_search.reset();
+}
+
+// What's on disk now: a search open reads its folders again.
 void FolderModel::reload() {
+    closeSearch();
+    read();
+}
+
+void FolderModel::read() {
     if (m_path.isEmpty())
         return;
     const quint64 generation = ++m_generation;
@@ -697,6 +747,13 @@ void FolderModel::reload() {
     m_asked.clear();
     *m_latest = generation;
     const auto latest = m_latest;
+    // A search's first letter starts reading the folders below; until
+    // they've been read, the landing asks again.
+    if (!query.isEmpty() && !isView(path) && !m_search)
+        openSearch();
+    const auto search = query.isEmpty() || isView(path) ? nullptr : m_search;
+    if (search && !search->landed)
+        return;
     auto *watcher = new QFutureWatcher<QPair<QVector<Entry>, QString>>(this);
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation] {
         watcher->deleteLater();
@@ -731,12 +788,17 @@ void FolderModel::reload() {
             remember();
         countFolders(generation);
     });
-    watcher->setFuture(QtConcurrent::run([path, showHidden, sort, query, items, latest, generation, locale, read] {
+    watcher->setFuture(QtConcurrent::run([path, showHidden, sort, query, items, latest, generation, locale, read, search] {
         QString error;
         const auto overtaken = [&] { return *latest != generation; };
+        if (search) {
+            // As many matches as a search has always shown.
+            constexpr int shown = 1000;
+            QMutexLocker hold(&search->lock);
+            return qMakePair(search->index.find(query, sort, shown, overtaken, locale), error);
+        }
         auto entries = isPluginView(path) ? listItems(items, query)
-                     : query.isEmpty() || path == recentPath() ? list(path, showHidden, sort, &error, overtaken, locale, false)
-                     : search(path, query, showHidden, sort, overtaken, 1000, locale);
+                                          : list(path, showHidden, sort, &error, overtaken, locale, false);
         for (Entry &e : entries) {
             if (!e.unread || !read.contains(e.path))
                 continue;

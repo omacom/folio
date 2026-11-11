@@ -27,6 +27,8 @@ public:
     // returns true.
     bool walk(const QString &root, bool showHidden, const std::function<bool()> &stop = {});
     qsizetype size() const { return m_rows.size(); }
+    // The memory it holds.
+    qsizetype bytes() const;
     // The row's path from the root, in the folder's own bytes.
     QByteArray path(quint32 row) const;
     // The row as the views show it, named by its path from the root.

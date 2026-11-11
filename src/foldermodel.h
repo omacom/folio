@@ -19,6 +19,7 @@
 // two passes: the entries first, then each subfolder's item count.
 class QFileInfo;
 class QMimeDatabase;
+class SearchIndex;
 
 class FolderModel : public QAbstractListModel {
     Q_OBJECT
@@ -156,6 +157,8 @@ public:
     static QVector<Entry> search(const QString &root, const QString &query, bool showHidden, const QString &sort,
                                  const std::function<bool()> &stop = {}, int limit = 1000,
                                  const QLocale &locale = QLocale());
+    // What the open search has read, for the tests; null with no search open.
+    std::shared_ptr<const SearchIndex> searchIndex() const;
 
 signals:
     void pathChanged();
@@ -170,6 +173,10 @@ signals:
     void loaded();
 
 private:
+    struct Search;
+    void read();
+    void openSearch();
+    void closeSearch();
     void setLoading(bool loading);
     void setEntries(const QVector<Entry> &entries);
     void clearEntries();
@@ -211,6 +218,9 @@ private:
     mutable QSet<int> m_owed;
     // A get() answered without a size or date, so QML takes its snapshots again (on countChanged) once they're in.
     mutable bool m_snapshotWaiting = false;
+    // The folders below, read on a search's first letter and kept until it
+    // ends, the folder changes or hidden files are shown or hidden.
+    std::shared_ptr<Search> m_search;
     QFileSystemWatcher m_watcher;
     QTimer m_debounce;
     QTimer m_staleClear;

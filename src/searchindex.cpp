@@ -66,7 +66,21 @@ bool SearchIndex::walk(const QString &root, bool showHidden, const std::function
         }
         ::closedir(dir);
     }
+    // Names are only looked up while folders are read, and what's left
+    // over from growing goes back.
+    m_lookup = {};
+    m_names.squeeze();
+    m_folders.squeeze();
+    m_rows.squeeze();
     return true;
+}
+
+qsizetype SearchIndex::bytes() const {
+    qsizetype slabs = 0;
+    for (const QByteArray &slab : m_slabs)
+        slabs += slab.capacity();
+    return slabs + m_names.capacity() * sizeof(Name) + m_lookup.capacity() * sizeof(quint32)
+        + m_folders.capacity() * sizeof(Folder) + m_rows.capacity() * sizeof(Row);
 }
 
 quint32 SearchIndex::intern(QByteArrayView text) {
