@@ -908,9 +908,12 @@ private slots:
                      "        required property var size; required property var modified\n"
                      "        readonly property string line: Format.size(size) + \"|\" + Format.when(modified)\n"
                      "        readonly property string thumb: Format.thumb(path, mime, 128, modified)\n"
+                     "        readonly property string page: Format.page(path, 256, modified, \"#101010\", \"#f0f0f0\")\n"
                      "        property var thumbs: []\n"
-                     "        Component.onCompleted: thumbs.push(thumb)\n"
-                     "        onThumbChanged: thumbs.push(thumb) } }",
+                     "        property var pages: []\n"
+                     "        Component.onCompleted: { thumbs.push(thumb); pages.push(page) }\n"
+                     "        onThumbChanged: thumbs.push(thumb)\n"
+                     "        onPageChanged: pages.push(page) } }",
                      QUrl::fromLocalFile(QFINDTESTDATA("../src/Format.js")));
         std::unique_ptr<QObject> view(rows.createWithInitialProperties({{"folder", QVariant::fromValue(&model)}}));
         QVERIFY2(view, qPrintable(rows.errorString()));
@@ -927,8 +930,11 @@ private slots:
         QVERIFY(later->property("line").toString().size() > 4);
         const QString thumb = later->property("thumb").toString();
         QVERIFY(thumb.startsWith(QString("image://thumb/128/%1/").arg(modified.toMSecsSinceEpoch())));
-        // The thumbnail is asked for once, with its date.
+        // The thumbnail is asked for once, with its date, and so is a text file's page.
         QCOMPARE(later->property("thumbs").toStringList(), QStringList({QString(), thumb}));
+        const QString page = later->property("page").toString();
+        QVERIFY(page.startsWith(QString("image://thumb/page/256/%1/").arg(modified.toMSecsSinceEpoch())));
+        QCOMPARE(later->property("pages").toStringList(), QStringList({QString(), page}));
 
         // Details without a size name the type alone.
         QQmlComponent summary(&engine);

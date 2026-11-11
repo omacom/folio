@@ -65,6 +65,9 @@ function thumb(path, mime, px, modified) {
 
 // A text file's first lines on a page in the theme's colors.
 function page(path, px, modified, paper, ink) {
+    // As for a thumbnail: a time not read yet gives no URL, or the page would be read and drawn twice.
+    if (modified === undefined)
+        return ""
     const changed = modified ? modified.getTime() : 0
     const hex = (color) => String(color).slice(1)
     return "image://thumb/page/" + px + "/" + changed + "/" + hex(paper) + "/" + hex(ink) + "/" + encodeURIComponent(path)
