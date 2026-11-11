@@ -42,7 +42,8 @@ MenuItem {
     }
 
     contentItem: Item {
-        implicitWidth: label.anchors.leftMargin + label.implicitWidth + hint.implicitWidth + 40
+        // The gap before a key or arrow only when there is one, so a plain row's width is its label and padding.
+        implicitWidth: label.anchors.leftMargin + label.implicitWidth + (entry.keys || entry.subMenu ? hint.implicitWidth + 40 : 0)
         implicitHeight: label.implicitHeight
         Image {
             anchors.left: parent.left
