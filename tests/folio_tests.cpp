@@ -54,6 +54,7 @@
 #include "places.h"
 #include "plugins.h"
 #include "previewer.h"
+#include "searchindex.h"
 #include "theme.h"
 #include "thumbnails.h"
 #include "translator.h"
@@ -1318,6 +1319,33 @@ private slots:
         QCOMPARE(found.first().name, QString("real/match.txt"));
     }
 
+    void searchAsksAboutFoldersAndShownRowsOnly()
+    {
+        // A search reads names and types as each folder gives them: one stat
+        // for each folder it opens and one for each match it shows, none for
+        // every other file.
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("a/b");
+        QDir(dir.path()).mkpath("c");
+        for (int i = 0; i < 50; ++i) {
+            write(dir.filePath(QString("a/b/file%1.txt").arg(i)), "x");
+            write(dir.filePath(QString("c/note%1.md").arg(i)), "x");
+        }
+        write(dir.filePath("beach.txt"), "x");
+        write(dir.filePath("a/b/Beach.jpg"), "x");
+        SearchIndex index;
+        QVERIFY(index.walk(dir.path(), false));
+        QCOMPARE(index.size(), 105);
+        QCOMPARE(index.counts.opens, 4);
+        QCOMPARE(index.counts.stats, index.counts.opens);
+        QCOMPARE(index.find("BEACH", "name", 1000).size(), 2);
+        QCOMPARE(index.counts.stats, index.counts.opens + 2);
+        // Nearest first when there are more than the limit.
+        const auto nearest = index.find("beach", "name", 1);
+        QCOMPARE(nearest.size(), 1);
+        QCOMPARE(nearest.first().name, QString("beach.txt"));
+    }
+
     void folderModelSwapsFoldersWithoutAnEmptyFrame()
     {
         QTemporaryDir a, b;
@@ -1454,16 +1482,20 @@ private slots:
         // next listing, the folder counts and file transfers all wait for.
         // With a pool of one thread, the next folder waits for the overtaken
         // read to stop, so it shows in a fraction of the time the read takes.
-        QTemporaryDir big, small, other;
+        QTemporaryDir big, small, other, tree;
         for (int i = 0; i < 20000; ++i)
             write(big.filePath(QString("%1.txt").arg(i)), "x");
+        // A search asks nothing about a file, so what it takes time over is
+        // opening folders.
+        for (int i = 0; i < 5000; ++i)
+            QDir(tree.path()).mkdir(QString::number(i));
         write(small.filePath("a.txt"), "x");
         write(other.filePath("b.txt"), "x");
         QElapsedTimer timer;
         timer.start();
         FolderModel::list(big.path(), false, "name", nullptr);
         const qint64 listing = timer.restart();
-        FolderModel::search(big.path(), "none", false, "name");
+        FolderModel::search(tree.path(), "none", false, "name");
         const qint64 searching = timer.elapsed();
 
         QThreadPool *pool = QThreadPool::globalInstance();
@@ -1480,7 +1512,7 @@ private slots:
         QVERIFY(loaded.wait(5000));
         QVERIFY(timer.elapsed() < listing / 2);
 
-        model.setPath(big.path());
+        model.setPath(tree.path());
         QVERIFY(loaded.wait(5000));
         model.setQuery("none");
         timer.restart();

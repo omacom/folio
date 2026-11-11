@@ -1,4 +1,5 @@
 #include "foldermodel.h"
+#include "searchindex.h"
 
 #include <QCache>
 #include <QCollator>
@@ -478,41 +479,12 @@ FolderModel::Entry FolderModel::entryFor(const QFileInfo &info, const QMimeDatab
 QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QString &query, bool showHidden,
                                                 const QString &sort, const std::function<bool()> &stop,
                                                 int limit, const QLocale &locale) {
-    QVector<Entry> entries;
-    struct stat top;
-    if (::stat(QFile::encodeName(root).constData(), &top) != 0)
-        return entries;
-    const QDir::Filters filters = entryFilters(showHidden);
-
     // Breadth first, so what's near comes before what's deep when there are
     // more matches than the limit.
-    QMimeDatabase mimes;
-    const QDir base(root);
-    QStringList folders{root};
-    while (!folders.isEmpty() && entries.size() < limit) {
-        if (stop && stop())
-            return {};
-        QDirIterator it(folders.takeFirst(), filters);
-        while (it.hasNext()) {
-            if (stop && stop())
-                return {};
-            const QFileInfo info = it.nextFileInfo();
-            if (info.fileName().contains(query, Qt::CaseInsensitive) && entries.size() < limit) {
-                Entry e = entryFor(info, mimes);
-                e.name = base.relativeFilePath(e.path);
-                entries.push_back(e);
-            }
-            // Other filesystems (a mounted drive, another machine, /proc
-            // from /) and symlinked folders aren't walked into.
-            struct stat st;
-            if (info.isDir() && !info.isSymLink()
-                && ::lstat(QFile::encodeName(info.absoluteFilePath()).constData(), &st) == 0
-                && st.st_dev == top.st_dev)
-                folders << info.absoluteFilePath();
-        }
-    }
-    sortEntries(entries, sort, locale);
-    return entries;
+    SearchIndex index;
+    if (!index.walk(root, showHidden, stop))
+        return {};
+    return index.find(query, sort, limit, stop, locale);
 }
 
 QStringList FolderModel::sortModes() {
