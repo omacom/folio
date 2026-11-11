@@ -72,8 +72,9 @@ Item {
         // Bulleted, so it reads as a list of files rather than a menu.
         case "list": return "M9 6h11M9 12h11M9 18h11M4 6h1M4 12h1M4 18h1"
         case "columns": return box(3, 4, 18, 16, r) + "M9 4v16M15 4v16"
-        case "preview": return box(3, 5, 18, 14, r) + "M14 5v14"
-        case "split": return box(3, 5, 8, 14, r / 2) + box(13, 5, 8, 14, r / 2)
+        // Facts in a side panel, against split's two bare boxes with a gap between them.
+        case "preview": return box(3, 5, 18, 14, r) + "M14 5v14M16.5 9h2M16.5 12h2"
+        case "split": return box(3, 5, 7, 14, r / 2) + box(14, 5, 7, 14, r / 2)
         // One per sort order: a slim arrow on the left (down for the usual
         // direction, up for oldest first), and what it sorts by on the right,
         // kept apart so both read at toolbar size.
