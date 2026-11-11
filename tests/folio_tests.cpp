@@ -53,6 +53,25 @@ private slots:
         QVERIFY(!error.isEmpty());
     }
 
+    void folderTypesFilesByNameAndTheRestByWhatTheyAre()
+    {
+        QTemporaryDir dir;
+        write(dir.filePath("CMakeLists.txt"), "x");
+        write(dir.filePath("notes.txt"), "x");
+        QVERIFY(QFile::link("notes.txt", dir.filePath("link.md")));
+        QVERIFY(QFile::link(dir.path(), dir.filePath("folder.png")));
+        QVERIFY(QFile::link("/dev/null", dir.filePath("device.txt")));
+
+        const QMimeDatabase mimes;
+        const auto mime = [&](const char *name) { return FolderModel::entryFor(QFileInfo(dir.filePath(name)), mimes).mime; };
+        QCOMPARE(mime("CMakeLists.txt"), QString("text/x-cmake"));
+        QCOMPARE(mime("notes.txt"), QString("text/plain"));
+        QCOMPARE(mime("link.md"), QString("text/markdown"));
+        QCOMPARE(mime("folder.png"), QString("inode/directory"));
+        // Not a regular file, whatever its name says.
+        QCOMPARE(mime("device.txt"), QString("inode/chardevice"));
+    }
+
     void folderSummaryCountsAndPeeks()
     {
         QTemporaryDir dir;
