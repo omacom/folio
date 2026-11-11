@@ -346,7 +346,7 @@ FocusScope {
                     Layout.fillWidth: true
                     text: backend.message || backend.folder.error || (slowWork.shown ? slowWork.working : "") || backend.notice
                     color: theme.brightForeground
-                    elide: Text.ElideRight
+                    elide: Text.ElideMiddle
                 }
                 // File work can be stopped where it's shown. A click leaves
                 // the keyboard with the files, since the button goes once
