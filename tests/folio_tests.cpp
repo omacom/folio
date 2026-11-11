@@ -1451,6 +1451,37 @@ private slots:
         QVERIFY(loaded.wait(3000));
     }
 
+    void searchMatchesWordsAlongThePath()
+    {
+        // With a "/", the folders take what's before it and the name the
+        // rest. Each folder is matched at most once a query, however many
+        // rows it holds.
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("projects/editor/src/components");
+        QDir(dir.path()).mkpath("projects/viewer/src");
+        QDir(dir.path()).mkpath("archive/2024/client/reports");
+        for (int i = 0; i < 50; ++i)
+            write(dir.filePath(QString("projects/editor/src/components/render%1.rs").arg(i)), "x");
+        write(dir.filePath("projects/editor/src/components/render_frame.rs"), "x");
+        write(dir.filePath("projects/viewer/src/render.rs"), "x");
+        write(dir.filePath("archive/2024/client/reports/quarterly_review.pdf"), "x");
+        write(dir.filePath("render_notes.txt"), "x");
+        SearchIndex index;
+        QVERIFY(index.walk(dir.path(), false));
+        const auto best = [&](const QString &query) {
+            index.answer(query);
+            const auto rows = index.rows(0, 1);
+            return rows.isEmpty() ? QString() : QString::fromUtf8(index.path(rows.first()));
+        };
+        QCOMPARE(best("editor/src/components/render_f"), QString("projects/editor/src/components/render_frame.rs"));
+        QCOMPARE(best("archive/2024/client/reports/quarterly"), QString("archive/2024/client/reports/quarterly_review.pdf"));
+        const qsizetype before = index.counts.folders;
+        QCOMPARE(index.answer("src/render"), 52);
+        QVERIFY(index.counts.folders - before <= 10);
+        // A name that holds the query comes before a path that does.
+        QCOMPARE(best("render"), QString("render_notes.txt"));
+    }
+
     void folderModelSwapsFoldersWithoutAnEmptyFrame()
     {
         QTemporaryDir a, b;

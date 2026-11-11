@@ -4,6 +4,7 @@
 
 #include <QByteArray>
 #include <QByteArrayView>
+#include <QHash>
 #include <QVector>
 #include <climits>
 #include <functional>
@@ -21,11 +22,13 @@ public:
         Exact = 5000000, // the name is the query
         Prefix = 4000000, // the name starts with it
         Word = 3500000, // a word in the name starts with it
-        Named = 2000000, // its letters are in the name, in order
+        Aligned = 3000000, // with a "/", its folders hold what's before it and the name the rest
+        Named = 2000000, // its letters are in the name, or along the path, in order
     };
     static constexpr int Span = 100000;
-    // A match whose score inside its class is only worked out if it's shown.
-    static constexpr int Pending = -2;
+    // A match whose score inside its class is only worked out if it's
+    // shown: Aligned, Named in the name, or Named along the path.
+    static constexpr int PendingAligned = -3, Pending = -2, PendingPath = -1;
     static constexpr int NoMatch = INT_MIN;
 
     explicit SearchMatcher(const QString &query);
@@ -36,6 +39,14 @@ public:
     // A Named match's score: runs, word starts and letters close together
     // earn more.
     int align(QByteArrayView text) const;
+    // How far into the query `text` takes it, from `at`, its letters
+    // taken in order.
+    qsizetype reach(QByteArrayView text, qsizetype at) const;
+    // The query's length up to and with its last "/", which the folders
+    // have to take it past; 0 without one.
+    qsizetype folderPart() const { return m_folderPart; }
+    // The bits of the query from `at` on.
+    quint64 bitsFrom(qsizetype at) const { return m_bitsFrom[at]; }
     // Whether every match of `now` is among the matches of `before`.
     static bool canNarrow(const QString &before, const QString &now);
     // One bit for each letter, digit and common mark in `text`: a name that
@@ -63,6 +74,8 @@ private:
 
     QByteArray m_needle;
     quint64 m_bits = 0;
+    qsizetype m_folderPart = 0;
+    std::vector<quint64> m_bitsFrom;
 };
 
 // Everything below a folder by name, read once for a search. Names stay the
@@ -76,6 +89,7 @@ public:
         qsizetype stats = 0; // one for each folder opened, each row shown, and each entry of unknown type
         qsizetype walks = 0;
         qsizetype names = 0; // names matched, each once a query however many rows share it
+        qsizetype folders = 0; // folders matched along a path, each at most once a query
     };
 
     // Reads `root` and every folder below it, breadth first, staying on its
@@ -109,9 +123,9 @@ private:
     // Names are kept in slabs this big, which go back to the system with the search.
     static constexpr qsizetype SlabBytes = 1 << 20;
     struct Name { quint32 offset, length; quint64 bits; };
-    // A folder is its name, the folder holding it and the length of its
-    // path; a row is its name and its folder.
-    struct Folder { quint32 name, parent, length; };
+    // A folder is its name, the folder holding it, the length of its path
+    // and the bits of every name along it; a row is its name and its folder.
+    struct Folder { quint32 name, parent, length; quint64 bits; };
     struct Row { quint32 name, parent; };
     struct Hit { int score; quint32 row; };
 
@@ -123,6 +137,8 @@ private:
     bool isDir(quint32 row) const { return m_kinds[row / 8] & (1 << (row % 8)); }
     qsizetype pathLength(quint32 row) const;
     int score(quint32 id, QByteArray &folded) const;
+    qsizetype reach(quint32 folder);
+    int alongPath(quint32 row, int tier, QHash<quint32, SearchMatcher::Alignment> &above);
     bool before(const Hit &a, const Hit &b) const;
 
     QString m_root;
@@ -146,4 +162,7 @@ private:
     quint32 m_stamp = 0;
     QVector<quint32> m_stamps;
     QVector<int> m_scores;
+    // Each folder's reach into the query, for the query its stamp is for.
+    QVector<quint32> m_folderStamps;
+    QVector<quint32> m_reaches;
 };

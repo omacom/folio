@@ -5,6 +5,7 @@
 #include <QFileInfo>
 #include <QHash>
 #include <QMimeDatabase>
+#include <QVarLengthArray>
 #include <algorithm>
 #include <cstring>
 #include <dirent.h>
@@ -46,7 +47,18 @@ quint64 SearchMatcher::bitsOf(QByteArrayView text) {
 }
 
 SearchMatcher::SearchMatcher(const QString &query)
-    : m_needle(query.toCaseFolded().toUtf8()), m_bits(bitsOf(m_needle)) {}
+    : m_needle(query.toCaseFolded().toUtf8()), m_bits(bitsOf(m_needle)),
+      m_folderPart(m_needle.lastIndexOf('/') + 1), m_bitsFrom(m_needle.size() + 1, 0) {
+    for (qsizetype at = m_needle.size(); at-- > 0;)
+        m_bitsFrom[at] = m_bitsFrom[at + 1] | bitsOf(m_needle.sliced(at, 1));
+}
+
+qsizetype SearchMatcher::reach(QByteArrayView text, qsizetype at) const {
+    for (char c : text)
+        if (at < m_needle.size() && m_needle[at] == lower(c))
+            ++at;
+    return at;
+}
 
 bool SearchMatcher::canNarrow(const QString &before, const QString &now) {
     return !before.isEmpty() && now.startsWith(before);
@@ -164,7 +176,9 @@ bool SearchIndex::walk(const QString &root, bool showHidden, const std::function
             if (isDir) {
                 m_kinds.back() = char(m_kinds.back() | (1 << (m_rows.size() % 8)));
                 const quint32 above = parent == None ? 0 : m_folders[parent].length + 1;
-                m_folders.push_back({id, parent, above + m_names[id].length});
+                // A "/" after each folder, as in the path.
+                const quint64 bits = m_names[id].bits | SearchMatcher::bitsOf("/") | (parent == None ? 0 : m_folders[parent].bits);
+                m_folders.push_back({id, parent, above + m_names[id].length, bits});
             }
             m_rows.push_back({id, parent});
         }
@@ -186,7 +200,8 @@ qsizetype SearchIndex::bytes() const {
         slabs += slab.capacity();
     return slabs + m_names.capacity() * sizeof(Name) + m_lookup.capacity() * sizeof(quint32)
         + m_folders.capacity() * sizeof(Folder) + m_rows.capacity() * sizeof(Row) + m_kinds.capacity()
-        + m_hits.capacity() * sizeof(Hit) + m_stamps.capacity() * sizeof(quint32) + m_scores.capacity() * sizeof(int);
+        + m_hits.capacity() * sizeof(Hit) + m_stamps.capacity() * sizeof(quint32) + m_scores.capacity() * sizeof(int)
+        + m_folderStamps.capacity() * sizeof(quint32) + m_reaches.capacity() * sizeof(quint32);
 }
 
 quint32 SearchIndex::intern(QByteArrayView text) {
@@ -269,13 +284,63 @@ qsizetype SearchIndex::pathLength(quint32 row) const {
     return (r.parent == None ? 0 : m_folders[r.parent].length + 1) + m_names[r.name].length;
 }
 
+// Whether a name, or a path, with `held` can hold every letter in `wanted`:
+// one it lacks rules it out unread.
+static bool possible(quint64 wanted, quint64 held) {
+    return ((wanted | held) & SearchMatcher::Unknown) || !(wanted & ~held);
+}
+
 int SearchIndex::score(quint32 id, QByteArray &folded) const {
-    const Name &n = m_names[id];
-    const quint64 wanted = m_matcher.bits();
-    // A letter the query has and the name lacks rules it out unread.
-    if (!((wanted | n.bits) & SearchMatcher::Unknown) && (wanted & ~n.bits))
+    if (!possible(m_matcher.bits(), m_names[id].bits))
         return SearchMatcher::NoMatch;
     return m_matcher.name(text(id, folded));
+}
+
+// How far into the query the folders down to `folder` take it: worked out
+// once a folder a query, so a row costs only its own name.
+qsizetype SearchIndex::reach(quint32 folder) {
+    QVarLengthArray<quint32, 32> unknown;
+    for (quint32 at = folder; at != None && m_folderStamps[at] != m_stamp; at = m_folders[at].parent)
+        unknown.push_back(at);
+    QByteArray folded;
+    while (!unknown.isEmpty()) {
+        const quint32 at = unknown.back();
+        unknown.pop_back();
+        const quint32 parent = m_folders[at].parent;
+        qsizetype got = m_matcher.reach(text(m_folders[at].name, folded), parent == None ? 0 : m_reaches[parent]);
+        // The query's "/" is spent on the one after the folder.
+        if (got < m_matcher.needle().size() && m_matcher.needle()[got] == '/')
+            ++got;
+        m_folderStamps[at] = m_stamp;
+        m_reaches[at] = quint32(got);
+        ++counts.folders;
+    }
+    return m_reaches[folder];
+}
+
+// A match along the path's score: the folders' part worked out once a
+// folder, then the row's own name.
+int SearchIndex::alongPath(quint32 row, int tier, QHash<quint32, SearchMatcher::Alignment> &above) {
+    const QByteArray &needle = m_matcher.needle();
+    QVarLengthArray<quint32, 32> unknown;
+    quint32 at = m_rows[row].parent;
+    for (; at != None && !above.contains(at); at = m_folders[at].parent)
+        unknown.push_back(at);
+    QByteArray folded;
+    while (!unknown.isEmpty()) {
+        const quint32 folder = unknown.back();
+        unknown.pop_back();
+        SearchMatcher::Alignment alignment;
+        if (m_folders[folder].parent == None)
+            alignment.reset(needle.size());
+        else
+            alignment = above.value(m_folders[folder].parent);
+        alignment.advance(needle, text(m_folders[folder].name, folded).toByteArray() + '/', false);
+        above.insert(folder, alignment);
+    }
+    SearchMatcher::Alignment alignment = above.value(m_rows[row].parent);
+    alignment.advance(needle, text(m_rows[row].name, folded), true);
+    return alignment.score(tier);
 }
 
 qsizetype SearchIndex::answer(const QString &query) {
@@ -296,36 +361,59 @@ qsizetype SearchIndex::answer(const QString &query) {
     // Each name is matched once, however many rows share it.
     if (++m_stamp == 0) {
         m_stamps.fill(0);
+        m_folderStamps.fill(0);
         m_stamp = 1;
     }
     m_stamps.resize(m_names.size());
     m_scores.resize(m_names.size());
+    m_folderStamps.resize(m_folders.size());
+    m_reaches.resize(m_folders.size());
+    const QByteArray &needle = m_matcher.needle();
+    const quint64 first = needle.isEmpty() ? 0 : SearchMatcher::bitsOf(needle.first(1));
+    const quint64 folderBits = SearchMatcher::bitsOf(needle.first(m_matcher.folderPart()));
     QByteArray folded;
     const qsizetype count = narrow ? within.size() : m_rows.size();
     for (qsizetype i = 0; i < count; ++i) {
         const quint32 row = narrow ? within[i] : quint32(i);
-        const quint32 id = m_rows[row].name;
-        if (m_stamps[id] != m_stamp) {
-            m_stamps[id] = m_stamp;
-            m_scores[id] = score(id, folded);
+        const Row &r = m_rows[row];
+        if (m_stamps[r.name] != m_stamp) {
+            m_stamps[r.name] = m_stamp;
+            m_scores[r.name] = score(r.name, folded);
             ++counts.names;
         }
-        if (m_scores[id] != SearchMatcher::NoMatch)
-            m_hits.push_back({m_scores[id], row});
+        int found = m_scores[r.name];
+        // Not in the name as typed: then perhaps along the path, the
+        // folders taking the query as far as they can and the name the
+        // rest. The bits rule most paths out before any folder is read.
+        if ((found == SearchMatcher::NoMatch || (found < SearchMatcher::Named + SearchMatcher::Span && found != SearchMatcher::Pending))
+            && r.parent != None) {
+            const quint64 held = m_folders[r.parent].bits | m_names[r.name].bits;
+            if (needle.size() <= pathLength(row) && possible(first, held) && possible(folderBits, m_folders[r.parent].bits)
+                && possible(m_matcher.bits(), held)) {
+                const qsizetype got = reach(r.parent);
+                if (got >= m_matcher.folderPart() && possible(m_matcher.bitsFrom(got), m_names[r.name].bits)
+                    && m_matcher.reach(text(r.name, folded), got) == needle.size())
+                    found = m_matcher.folderPart() > 0 ? SearchMatcher::PendingAligned : SearchMatcher::PendingPath;
+            }
+        }
+        if (found != SearchMatcher::NoMatch)
+            m_hits.push_back({found, row});
     }
     return m_hits.size();
 }
 
-// The classes, best first; a Pending score is in Named.
+// The classes, best first; a pending score is in its own.
 static int classOf(int score) {
-    static constexpr int tiers[] = {SearchMatcher::Exact, SearchMatcher::Prefix, SearchMatcher::Word};
-    if (score != SearchMatcher::Pending)
+    static constexpr int tiers[] = {SearchMatcher::Exact, SearchMatcher::Prefix, SearchMatcher::Word, SearchMatcher::Aligned};
+    if (score == SearchMatcher::PendingAligned)
+        return 3;
+    if (score != SearchMatcher::Pending && score != SearchMatcher::PendingPath)
         for (int i = 0; i < int(std::size(tiers)); ++i)
             if (score >= tiers[i] - SearchMatcher::Span)
                 return i;
     return int(std::size(tiers));
 }
-static constexpr int Classes = 4;
+static constexpr int Classes = 5;
 
 // Paths in the order people number things: "photo9" before "photo10".
 static int natural(QByteArrayView a, QByteArrayView b) {
@@ -385,9 +473,13 @@ QVector<quint32> SearchIndex::rows(qsizetype from, qsizetype count) {
         const auto rest = m_hits.begin() + m_ordered;
         const auto reach = std::partition(rest, m_hits.end(), [&](const Hit &hit) { return classOf(hit.score) <= last; });
         QByteArray folded;
-        for (auto it = rest; it != reach; ++it)
+        QHash<quint32, SearchMatcher::Alignment> above;
+        for (auto it = rest; it != reach; ++it) {
             if (it->score == SearchMatcher::Pending)
                 it->score = m_matcher.align(text(m_rows[it->row].name, folded));
+            else if (it->score == SearchMatcher::PendingAligned || it->score == SearchMatcher::PendingPath)
+                it->score = alongPath(it->row, it->score == SearchMatcher::PendingAligned ? SearchMatcher::Aligned : SearchMatcher::Named, above);
+        }
         const auto order = [this](const Hit &a, const Hit &b) { return before(a, b); };
         if (rest + need < reach)
             std::nth_element(rest, rest + need, reach, order);
