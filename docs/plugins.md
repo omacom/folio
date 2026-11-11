@@ -155,7 +155,7 @@ what it offers is worked out for the file at hand.
 ```json
 {
   "folio": 1,
-  "requires": ["git"],
+  "requires": ["git", "jq"],
   "actions": [
     { "id": "link", "label": "Copy Git Link", "command": ["./link"],
       "under": ["~/Code/"], "files": true, "single": true }
@@ -185,9 +185,8 @@ printf ']\n'
 ```sh
 #!/bin/sh
 # Copies a link to the file as it is at the commit checked out.
-quote() { printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"; }
-
 cd "$(dirname "$1")" || exit 1
+# -z gives the name as it is, without Git's quoting of unusual ones.
 file=$(git ls-files -z --full-name -- "$(basename "$1")" | tr -d '\0')
 [ -n "$file" ] || { echo '{"error": "Not tracked by Git."}'; exit 1; }
 repo=$(git remote get-url origin 2>/dev/null | sed -E 's#^git@github\.com:#https://github.com/#; s#\.git$##')
@@ -195,7 +194,10 @@ case "$repo" in
   https://github.com/*) ;;
   *) echo '{"error": "Not a GitHub repository."}'; exit 1 ;;
 esac
-printf '{"copy": %s, "notice": "Git link copied."}\n' "$(quote "$repo/blob/$(git rev-parse HEAD)/$file")"
+# Each part of the path is percent-encoded, so a name like notes#1.md
+# isn't cut short at its # (or ?) by the browser.
+jq -cn --arg base "$repo/blob/$(git rev-parse HEAD)/" --arg file "$file" \
+  '{copy: ($base + ($file | split("/") | map(@uri) | join("/"))), notice: "Git link copied."}'
 ```
 
 `i18n/da.json`:
