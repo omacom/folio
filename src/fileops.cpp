@@ -22,6 +22,7 @@
 #include <linux/fs.h>
 #include <poll.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <cerrno>
 #include <clocale>
@@ -194,6 +195,50 @@ static qint64 bytesIn(const QString &path, const FileOps::Progress &progress) {
     return bytes;
 }
 
+// True when both are one file.
+static bool same(const struct stat &one, const struct stat &other) {
+    return one.st_dev == other.st_dev && one.st_ino == other.st_ino;
+}
+
+QString FileOps::setAside(const QString &path) {
+    QTemporaryFile aside(QFileInfo(path).absolutePath() + "/.folio-moved-XXXXXX");
+    if (!aside.open())
+        return {};
+    const QString held = aside.fileName();
+    if (::rename(QFile::encodeName(path).constData(), QFile::encodeName(held).constData()) != 0)
+        return {};
+    // The hidden name now holds what was at `path`, which is not this function's to remove.
+    aside.setAutoRemove(false);
+    return held;
+}
+
+bool FileOps::dropAside(const QString &held, const QString &path, const QString &twin) {
+    const QByteArray hidden = QFile::encodeName(held);
+    struct stat taken, kept;
+    if (::lstat(hidden.constData(), &taken) == 0 && ::lstat(QFile::encodeName(twin).constData(), &kept) == 0 && same(taken, kept))
+        return ::unlink(hidden.constData()) == 0;
+    // Another's save goes back under its name by link, which never replaces; where that name was taken again it stays under the hidden one.
+    if (::link(hidden.constData(), QFile::encodeName(path).constData()) == 0)
+        ::unlink(hidden.constData());
+    return false;
+}
+
+// Takes the name `path` from a file that keeps the name `twin`. Nothing removes a name only while it still leads to one file, so the name is set aside first and looked at there.
+static bool dropName(const QString &path, const QString &twin) {
+    const QString held = FileOps::setAside(path);
+    return !held.isEmpty() && FileOps::dropAside(held, path, twin);
+}
+
+bool FileOps::moveByLink(const QString &from, const QString &to) {
+    if (::link(QFile::encodeName(from).constData(), QFile::encodeName(to).constData()) != 0)
+        return false;
+    if (dropName(from, to))
+        return true;
+    // An old name that stays (its folder may not be written, or a save landed on either name meanwhile): the new one goes again, the same careful way.
+    dropName(to, from);
+    return false;
+}
+
 bool FileOps::copyRecursively(const QString &from, const QString &to, QString *error, bool move, Progress *progress) {
     // transfer() says what a stop left, so there's no error here.
     if (progress && progress->stop)
@@ -211,13 +256,20 @@ bool FileOps::copyRecursively(const QString &from, const QString &to, QString *e
         return true;
     }
     if (!info.isDir()) {
-        // A pipe, a socket or a device moved within its drive is linked across, as the refused rename would have carried it; anywhere else it's read like a file.
-        const bool carried = move && !info.isFile() && ::link(QFile::encodeName(from).constData(), QFile::encodeName(to).constData()) == 0;
-        if (!carried && !(progress ? copyFile(from, to, progress) : QFile::copy(from, to))) {
+        // Within one drive a move links a file to its new name, as the refused rename would have carried it: nothing is read, so a pipe stays a pipe.
+        if (move && moveByLink(from, to)) {
+            if (progress && info.isFile())
+                progress->done += info.size();
+            return true;
+        }
+        // A pipe, a socket or a device whose old name won't go is still never read: it keeps both names, as a copied file whose original can't be removed keeps both.
+        if (move && !info.isFile() && ::link(QFile::encodeName(from).constData(), QFile::encodeName(to).constData()) == 0)
+            return true;
+        if (!(progress ? copyFile(from, to, progress) : QFile::copy(from, to))) {
             *error = QObject::tr("Couldn't copy %1.").arg(info.fileName());
             return false;
         }
-        // Linked or copied, the original then goes by its name, as for every file this copies (nothing removes a name only while it's still the same file); one that stays is the caller's to report.
+        // A copied original goes by its name, as on every move across drives; one that stays is the caller's to report.
         if (move)
             QFile::remove(from);
         return true;

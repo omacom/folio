@@ -124,6 +124,12 @@ public:
     // can't be removed is left where it is.
     static bool copyRecursively(const QString &from, const QString &to, QString *error, bool move = false,
                                 Progress *progress = nullptr);
+    // Moves the file `from` to the free name `to` on one drive by link, never replacing what is there. False when it can't: `from` is as it was, and `to` is free again unless that name couldn't be taken back either.
+    static bool moveByLink(const QString &from, const QString &to);
+    // Moves whatever has the name `path` to a hidden name beside it, in one rename, and says that name; empty when it can't.
+    static QString setAside(const QString &path);
+    // Ends what setAside began: removes what it took if that is the file `twin` keeps (true), and puts it back under `path` if not.
+    static bool dropAside(const QString &held, const QString &path, const QString &twin);
     // The archive name for compressing these into `folder`: "name.zip" for
     // one item, "Archive.zip" for several; never one that exists.
     static QString archiveName(const QStringList &paths, const QString &folder);

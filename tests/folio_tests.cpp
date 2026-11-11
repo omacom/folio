@@ -589,12 +589,14 @@ private slots:
 
     void fileOpsMoveAPipeWithinItsDriveAsItIs()
     {
-        // The copy a move takes when its rename is refused carries a pipe across as a pipe, within one drive: read, it would wait for a writer who may never come.
+        // The copy a move takes when its rename is refused links files across within one drive. A pipe arrives as a pipe: read, it would wait for a writer who may never come.
         QTemporaryDir from, to;
         QDir(from.path()).mkdir("box");
         write(from.filePath("box/a.txt"), "a");
         const QByteArray pipe = QFile::encodeName(from.filePath("box/pipe"));
         QVERIFY(mkfifo(pipe.constData(), 0640) == 0);
+        struct stat left;
+        QCOMPARE(lstat(QFile::encodeName(from.filePath("box/a.txt")).constData(), &left), 0);
         FileOps::Progress progress;
         QString error;
         QFuture<bool> moved = QtConcurrent::run([&] {
@@ -616,7 +618,154 @@ private slots:
         QCOMPARE(QDir(to.filePath("box")).entryList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::System, QDir::Name),
                  QStringList({"a.txt", "pipe"}));
         QVERIFY(!QFileInfo::exists(from.filePath("box")));
+        // The file beside it is the same file under its new name, not a copy, and its byte is counted.
+        QCOMPARE(lstat(QFile::encodeName(to.filePath("box/a.txt")).constData(), &arrived), 0);
+        QCOMPARE(arrived.st_ino, left.st_ino);
         QCOMPARE(progress.done.load(), 1);
+    }
+
+    void fileOpsMoveByLinkNeverReplaces()
+    {
+        // A move by link takes a free name or nothing: what is there stays.
+        QTemporaryDir dir;
+        const auto read = [](const QString &path) {
+            QFile file(path);
+            return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray("(not readable)");
+        };
+        write(dir.filePath(".folio-test"), "");
+        write(dir.filePath("a.txt"), "a");
+        write(dir.filePath("taken.txt"), "kept");
+        QDir(dir.path()).mkdir("empty");
+        QVERIFY(!FileOps::moveByLink(dir.filePath("a.txt"), dir.filePath("taken.txt")));
+        QVERIFY(!FileOps::moveByLink(dir.filePath("a.txt"), dir.filePath("empty")));
+        QCOMPARE(read(dir.filePath("taken.txt")), QByteArray("kept"));
+        QCOMPARE(QDir(dir.filePath("empty")).entryList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden), QStringList());
+        QCOMPARE(read(dir.filePath("a.txt")), QByteArray("a"));
+        struct stat left, arrived;
+        QCOMPARE(lstat(QFile::encodeName(dir.filePath("a.txt")).constData(), &left), 0);
+        QVERIFY(FileOps::moveByLink(dir.filePath("a.txt"), dir.filePath("b.txt")));
+        // What arrives is the file itself under its new name, not a copy of it.
+        QCOMPARE(lstat(QFile::encodeName(dir.filePath("b.txt")).constData(), &arrived), 0);
+        QCOMPARE(arrived.st_ino, left.st_ino);
+        QCOMPARE(read(dir.filePath("b.txt")), QByteArray("a"));
+        QVERIFY(!QFileInfo::exists(dir.filePath("a.txt")));
+        // A folder can't be linked, and a file that isn't there has nothing to link: neither leaves a new name.
+        QVERIFY(!FileOps::moveByLink(dir.filePath("empty"), dir.filePath("c")));
+        QVERIFY(!FileOps::moveByLink(dir.filePath("gone.txt"), dir.filePath("c")));
+        QVERIFY(!QFileInfo::exists(dir.filePath("c")));
+        QVERIFY(QFileInfo(dir.filePath("empty")).isDir());
+    }
+
+    void fileOpsMoveOutOfAFolderThatWontLetGo()
+    {
+        // A folder that can't be written keeps its names. A file moved out of it is copied, as a move to another drive would leave it; a pipe gets a second name, and is never read.
+        if (geteuid() == 0)
+            QSKIP("Root can write to every folder.");
+        QTemporaryDir dir;
+        const auto read = [](const QString &path) {
+            QFile file(path);
+            return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray("(not readable)");
+        };
+        write(dir.filePath(".folio-test"), "");
+        QDir(dir.path()).mkdir("locked");
+        write(dir.filePath("locked/stays.txt"), "s");
+        const QByteArray pipe = QFile::encodeName(dir.filePath("locked/pipe"));
+        QVERIFY(mkfifo(pipe.constData(), 0600) == 0);
+        const auto closed = QFile::ReadOwner | QFile::ExeOwner;
+        QVERIFY(QFile::setPermissions(dir.filePath("locked"), closed));
+        // The folders are opened again whatever fails, so the temporary folder can be cleared away.
+        const auto reopened = qScopeGuard([&] {
+            for (const QString &folder : {dir.filePath("locked"), dir.filePath("there")})
+                QFile::setPermissions(folder, closed | QFile::WriteOwner);
+        });
+        // By link alone the move can't be made, and the new name it took is given back.
+        QVERIFY(!FileOps::moveByLink(dir.filePath("locked/stays.txt"), dir.filePath("d.txt")));
+        QVERIFY(!QFileInfo::exists(dir.filePath("d.txt")));
+        QCOMPARE(QDir(dir.path()).entryList({".folio-moved-*"}, QDir::Files | QDir::Hidden), QStringList());
+        QCOMPARE(read(dir.filePath("locked/stays.txt")), QByteArray("s"));
+
+        FileOps::Progress progress;
+        QString error;
+        QFuture<bool> moved = QtConcurrent::run([&] {
+            return FileOps::copyRecursively(dir.filePath("locked"), dir.filePath("there"), &error, true, &progress);
+        });
+        // Even when a check fails, a move waiting on the pipe is let go of before what it uses is gone.
+        const auto finish = qScopeGuard([&] {
+            const int writer = ::open(pipe.constData(), O_WRONLY | O_NONBLOCK);
+            if (writer >= 0)
+                close(writer);
+            moved.waitForFinished();
+        });
+        QTRY_VERIFY(moved.isFinished());
+        QVERIFY2(moved.result(), qPrintable(error));
+        struct stat left, arrived;
+        QCOMPARE(lstat(QFile::encodeName(dir.filePath("there/pipe")).constData(), &arrived), 0);
+        QVERIFY(S_ISFIFO(arrived.st_mode));
+        QCOMPARE(lstat(pipe.constData(), &left), 0);
+        QCOMPARE(arrived.st_ino, left.st_ino);
+        // The file is a copy of its own, not a second name for the one that stays.
+        QCOMPARE(lstat(QFile::encodeName(dir.filePath("there/stays.txt")).constData(), &arrived), 0);
+        QCOMPARE(lstat(QFile::encodeName(dir.filePath("locked/stays.txt")).constData(), &left), 0);
+        QVERIFY(arrived.st_ino != left.st_ino);
+        QCOMPARE(read(dir.filePath("there/stays.txt")), QByteArray("s"));
+        QCOMPARE(read(dir.filePath("locked/stays.txt")), QByteArray("s"));
+        QCOMPARE(QDir(dir.filePath("there")).entryList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::System | QDir::Hidden, QDir::Name),
+                 QStringList({"pipe", "stays.txt"}));
+    }
+
+    void fileOpsDropAMovedFilesOldNameOnlyWhileItIsThatFile()
+    {
+        // A file moved by link has two names for a moment. The old one is set aside under a hidden name and removed there, so a save over it is never what goes.
+        QTemporaryDir dir;
+        const auto read = [](const QString &path) {
+            QFile file(path);
+            return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray("(not readable)");
+        };
+        const auto twoNames = [&](const QString &first, const QString &second) {
+            write(dir.filePath(first), "old");
+            return ::link(QFile::encodeName(dir.filePath(first)).constData(), QFile::encodeName(dir.filePath(second)).constData()) == 0;
+        };
+        const auto saveOver = [&](const QString &name, const QByteArray &text) {
+            // An editor's save: a new file renamed onto the name.
+            write(dir.filePath(name + ".new"), text);
+            return ::rename(QFile::encodeName(dir.filePath(name + ".new")).constData(), QFile::encodeName(dir.filePath(name)).constData()) == 0;
+        };
+        // A save that lands between the two steps finds the name free, and stays: only the hidden name is removed.
+        QVERIFY(twoNames("a.txt", "b.txt"));
+        QString held = FileOps::setAside(dir.filePath("a.txt"));
+        QVERIFY(QFileInfo(held).fileName().startsWith(".folio-moved-"));
+        QVERIFY(!QFileInfo::exists(dir.filePath("a.txt")));
+        QCOMPARE(read(held), QByteArray("old"));
+        QVERIFY(saveOver("a.txt", "new"));
+        QVERIFY(FileOps::dropAside(held, dir.filePath("a.txt"), dir.filePath("b.txt")));
+        QVERIFY(!QFileInfo::exists(held));
+        QCOMPARE(read(dir.filePath("a.txt")), QByteArray("new"));
+        QCOMPARE(read(dir.filePath("b.txt")), QByteArray("old"));
+
+        // A save that landed before the first step is what gets set aside: it isn't the moved file, so it goes back under its name.
+        QVERIFY(twoNames("c.txt", "d.txt"));
+        QVERIFY(saveOver("c.txt", "new"));
+        held = FileOps::setAside(dir.filePath("c.txt"));
+        QVERIFY(!held.isEmpty());
+        QVERIFY(!FileOps::dropAside(held, dir.filePath("c.txt"), dir.filePath("d.txt")));
+        QVERIFY(!QFileInfo::exists(held));
+        QCOMPARE(read(dir.filePath("c.txt")), QByteArray("new"));
+        QCOMPARE(read(dir.filePath("d.txt")), QByteArray("old"));
+
+        // With a second save on the name by then, neither is replaced: the first stays under the hidden name.
+        QVERIFY(twoNames("e.txt", "f.txt"));
+        QVERIFY(saveOver("e.txt", "new"));
+        held = FileOps::setAside(dir.filePath("e.txt"));
+        QVERIFY(!held.isEmpty());
+        QVERIFY(saveOver("e.txt", "newer"));
+        QVERIFY(!FileOps::dropAside(held, dir.filePath("e.txt"), dir.filePath("f.txt")));
+        QCOMPARE(read(held), QByteArray("new"));
+        QCOMPARE(read(dir.filePath("e.txt")), QByteArray("newer"));
+        QCOMPARE(read(dir.filePath("f.txt")), QByteArray("old"));
+
+        // A name that isn't there can't be set aside, and no hidden file is left for it.
+        QCOMPARE(FileOps::setAside(dir.filePath("gone.txt")), QString());
+        QCOMPARE(QDir(dir.path()).entryList({".folio-moved-*"}, QDir::Files | QDir::Hidden), QStringList({QFileInfo(held).fileName()}));
     }
 
     void fileOpsShowACopysProgressAndStopIt()
