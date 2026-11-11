@@ -101,9 +101,8 @@ FocusScope {
         if (paths.length === 0)
             return
         const name = paths[0].slice(paths[0].lastIndexOf("/") + 1)
-        confirm.ask(qsTr("Delete for good?"),
-                    paths.length === 1 ? qsTr("%1 will be deleted permanently. This can't be undone.").arg(name)
-                                       : qsTr("%Ln items will be deleted permanently. This can't be undone.", "", paths.length),
+        confirm.ask(paths.length === 1 ? qsTr("Delete “%1” permanently?").arg(name) : qsTr("Delete %Ln items permanently?", "", paths.length),
+                    qsTr("This can't be undone."),
                     qsTr("Delete"), () => fileOps.deleteForever(paths))
     }
     function emptyTrash() {
