@@ -4329,6 +4329,65 @@ private slots:
         QCOMPARE(backend.path(), QDir::cleanPath(home.path()));
     }
 
+    void detailsDrawAPlainGlyphForSeveralPluginItems()
+    {
+        // One of a plugin's items shows its own icon in the details; several selected show the plain glyph, as several files do.
+        QTemporaryDir folder, home;
+        writePlugin(folder.path(), "servers", R"({"folio": 1, "poll": {"command": ["./servers"]},
+            "view": {"title": "Servers", "label": "All", "icon": "drive"}})",
+                    {{"servers", "#!/bin/sh\ncat <<EOF\n{\"items\": ["
+                                 "{\"id\": \"a\", \"name\": \"alpha\", \"icon\": \"peer\"},"
+                                 "{\"id\": \"b\", \"name\": \"beta\", \"icon\": \"peer\"}]}\nEOF\n"}});
+        // The window remembers its view in QSettings; here that file lands in the test's home, not the user's.
+        QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, home.path());
+        Theme theme(home.filePath("theme"));
+        Translator translator(home.filePath("language"), sourceFolder() + "/i18n");
+        Places places(home.path());
+        Plugins plugins("en", {folder.path()}, home.filePath("folio.conf"));
+        QTRY_VERIFY(plugins.hasView("plugin:servers"));
+        Backend backend(home.path());
+        backend.setPlugins(&plugins);
+        FileOps ops;
+        QQmlEngine engine;
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("places", &places);
+        engine.rootContext()->setContextProperty("plugins", &plugins);
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("fileOps", &ops);
+        QQmlComponent component(&engine, QUrl::fromLocalFile(sourceFolder() + "/Main.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        backend.navigate("plugin:servers");
+        QTRY_COMPARE(backend.folder()->count(), 2);
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowFocused(window));
+
+        // The details' large glyph: the one of its size inside the pane.
+        const int detailsGlyph = 72;
+        std::function<QQuickItem *(QQuickItem *, bool)> find = [&](QQuickItem *item, bool inPane) -> QQuickItem * {
+            const QByteArray type = item->metaObject()->className();
+            if (inPane && type.startsWith("Glyph") && item->property("size").toInt() == detailsGlyph)
+                return item;
+            for (QQuickItem *child : item->childItems())
+                if (QQuickItem *found = find(child, inPane || type.startsWith("PreviewPane")))
+                    return found;
+            return nullptr;
+        };
+        QQuickItem *glyph = find(window->contentItem(), false);
+        QVERIFY(glyph);
+
+        // The window takes no keys until it has settled.
+        QTRY_VERIFY(window->property("settled").toBool());
+        QTest::keyClick(window, Qt::Key_Down);
+        QTRY_COMPARE(glyph->property("name").toString(), QString("peer"));
+        backend.folder()->selectAll();
+        QCOMPARE(backend.folder()->selectedCount(), 2);
+        QTRY_COMPARE(glyph->property("name").toString(), QString("file"));
+    }
+
     void pluginPollsArentHeldUpByActions()
     {
         QTemporaryDir folder, home;
