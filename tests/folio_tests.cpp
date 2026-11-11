@@ -593,6 +593,48 @@ private slots:
         QCOMPARE(FolderModel::itemCount(dir.path(), true), 5);
     }
 
+    void folderSummaryPeeksWithoutSortingEveryName()
+    {
+        // Written in neither name order nor its reverse, so a listing in creation order, either way, gives the wrong two.
+        QTemporaryDir dir;
+        QDir(dir.path()).mkdir(".shots.png");
+        for (int i = 20; i > 0; --i)
+            write(dir.filePath(QString("note%1.txt").arg(i)), "x");
+        for (const char *name : {"photo10.jpg", "\xc3\x89lan.png", "Photo9.JPG", "photo9.jpg"})
+            write(dir.filePath(QString::fromUtf8(name)), "x");
+        QVERIFY(QFile::link(dir.filePath("missing"), dir.filePath("gone")));
+        QCOMPARE(::mkfifo(QFile::encodeName(dir.filePath("pipe")).constData(), 0600), 0);
+
+        // Name order is a case-sensitive compare: capitals first, photo10 before photo9, accents after z.
+        FolderModel::Entry entry;
+        entry.path = dir.path();
+        FolderModel::summarize(entry, false);
+        QCOMPARE(entry.itemCount, 26);
+        QCOMPARE(entry.peek, QStringList({dir.filePath("Photo9.JPG"), dir.filePath("photo10.jpg")}));
+        // A folder named like a picture peeks like one.
+        FolderModel::summarize(entry, true);
+        QCOMPARE(entry.itemCount, 27);
+        QCOMPARE(entry.peek, QStringList({dir.filePath(".shots.png"), dir.filePath("Photo9.JPG")}));
+
+        // A big folder is counted without holding every name at once.
+        constexpr int files = 20000;
+        constexpr long allowedKib = 4096; // about a fifth of what sorting 20,000 names holds
+        QTemporaryDir big;
+        for (int i = 0; i < files; ++i)
+            write(big.filePath(QString("f%1.txt").arg(i)), "x");
+        entry.path = big.path();
+        malloc_trim(0);
+        constexpr char resetPeak[] = "5"; // what /proc/self/clear_refs takes to set VmHWM back to the current VmRSS
+        QFile clear("/proc/self/clear_refs");
+        QVERIFY(clear.open(QIODevice::WriteOnly));
+        QVERIFY(clear.write(resetPeak) == 1);
+        clear.close();
+        const long resident = residentKib("VmRSS:");
+        FolderModel::summarize(entry, false);
+        QCOMPARE(entry.itemCount, files);
+        QVERIFY2(residentKib("VmHWM:") - resident < allowedKib, "summarizing held every name");
+    }
+
     void folderModelLoadsInTheBackground()
     {
         QTemporaryDir dir;
@@ -6172,6 +6214,18 @@ private:
     {
         const struct mallinfo2 m = mallinfo2();
         return m.uordblks + m.hblkhd;
+    }
+
+    // A line of /proc/self/status in KiB, such as "VmHWM:     12345 kB".
+    static long residentKib(const char *key)
+    {
+        QFile status("/proc/self/status");
+        if (!status.open(QIODevice::ReadOnly))
+            return -1;
+        for (const QByteArray &line : status.readAll().split('\n'))
+            if (line.startsWith(key))
+                return line.mid(qstrlen(key)).trimmed().split(' ').first().toLong();
+        return -1;
     }
 
     static void write(const QString &path, const QByteArray &contents)

@@ -419,18 +419,26 @@ QString FolderModel::recentFile() {
 }
 
 void FolderModel::summarize(Entry &entry, bool showHidden) {
-    QDir dir(entry.path);
-    const QStringList names = dir.entryList(entryFilters(showHidden), QDir::Name);
-    entry.itemCount = names.size();
+    entry.itemCount = 0;
     entry.peek.clear();
 
     static const QStringList pictures{"jpg", "jpeg", "png", "webp", "gif", "heic", "avif", "jxl"};
-    for (const QString &name : names) {
-        if (pictures.contains(QFileInfo(name).suffix().toLower()))
-            entry.peek << dir.filePath(name);
-        if (entry.peek.size() == 2)
-            break;
+    constexpr qsizetype peekSize = 2; // pictures the preview shows of a folder
+    // The first pictures in QDir::Name order (a case-sensitive compare), kept in one pass instead of sorting every name.
+    QStringList firsts;
+    for (QDirIterator it(entry.path, entryFilters(showHidden)); it.hasNext();) {
+        it.next();
+        ++entry.itemCount;
+        const QString name = it.fileName();
+        if ((firsts.size() == peekSize && name > firsts.last()) || !pictures.contains(QFileInfo(name).suffix().toLower()))
+            continue;
+        firsts.insert(std::lower_bound(firsts.cbegin(), firsts.cend(), name) - firsts.cbegin(), name);
+        if (firsts.size() > peekSize)
+            firsts.removeLast();
     }
+    const QDir dir(entry.path);
+    for (const QString &name : std::as_const(firsts))
+        entry.peek << dir.filePath(name);
 }
 
 int FolderModel::itemCount(const QString &folder, bool showHidden) {
