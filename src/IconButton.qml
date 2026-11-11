@@ -41,7 +41,8 @@ AbstractButton {
         Glyph {
             anchors.centerIn: parent
             name: button.glyph
-            color: !button.enabled ? Qt.alpha(theme.foreground, 0.35)
+            // Opaque on the bar: a translucent stroke blends twice, so 0.35 drew at 4.0:1, next to off's 5.1:1.
+            color: !button.enabled ? Qt.tint(theme.background, Qt.alpha(theme.foreground, 0.5))
                  : button.toggle ? (button.active ? button.onInk : theme.secondaryForeground)
                  : button.active ? theme.brightForeground : theme.foreground
         }
