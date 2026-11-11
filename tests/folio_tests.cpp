@@ -15,11 +15,13 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMimeDatabase>
+#include <QMutex>
 #include <QProcess>
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQmlPropertyMap>
+#include <QQuickImageProvider>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QSettings>
@@ -473,6 +475,34 @@ static Plugins::Run runBundled(const Plugins::Manifest &plugin, const QStringLis
         env.insert(it.key(), it.value());
     return Plugins::execute(plugin, command, env, 5000);
 }
+
+// Answers every picture asked of it and keeps the pixels and path of each, for a test of what a view asks for.
+class AskedPictures : public QQuickImageProvider {
+public:
+    AskedPictures() : QQuickImageProvider(QQuickImageProvider::Image) {}
+    QImage requestImage(const QString &id, QSize *size, const QSize &) override
+    {
+        const QMutexLocker locker(&m_mutex);
+        // "128/1700000000000/image%2Fpng/%2Ftmp%2Fa%20b%2Fphoto.png", or for a text file's page "page/256/1700000000000/1a1b26/a9b1d6/%2Ftmp%2Fnotes.txt": the path last and percent-encoded.
+        const bool page = id.startsWith("page/");
+        m_asked << id.section('/', 0, 0) + ' ' + QUrl::fromPercentEncoding(id.section('/', page ? 5 : 3).toUtf8());
+        // Twice as tall as wide, so a test can tell a fitted picture from a cropped one by its shape.
+        QImage image(8, 16, QImage::Format_RGB32);
+        image.fill(Qt::gray);
+        if (size)
+            *size = image.size();
+        return image;
+    }
+    QStringList asked()
+    {
+        const QMutexLocker locker(&m_mutex);
+        return m_asked;
+    }
+
+private:
+    QMutex m_mutex;
+    QStringList m_asked;
+};
 
 class FolioTests : public QObject {
     Q_OBJECT
@@ -5441,6 +5471,86 @@ private slots:
         QCOMPARE(shownWidth(second.addMSecs(600)), 128);
     }
 
+    void rowsAskForThePicturesTilesAskFor()
+    {
+        // A row of the list and the columns asks for the thumbnail its tile asks for, and only photos and video are cropped. Text is the one difference: a tile draws its page, a row keeps its icon.
+        QTemporaryDir dir;
+        Theme theme(dir.path());
+        Translator translator(dir.path() + "/language", dir.path());
+        QQmlEngine engine;
+        auto *pictures = new AskedPictures;
+        engine.addImageProvider("thumb", pictures);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        QQmlComponent row(&engine, QUrl::fromLocalFile(QFINDTESTDATA("../src/FileRow.qml")));
+        QQmlComponent tile(&engine, QUrl::fromLocalFile(QFINDTESTDATA("../src/FileTile.qml")));
+        // The thumbnail pictures an item holds, as "<pixels asked> <fill mode>".
+        const auto asks = [](QObject *item) {
+            QStringList found;
+            for (QObject *child : item->findChildren<QObject *>()) {
+                const QString source = child->inherits("QQuickImage") ? child->property("source").toUrl().toString() : QString();
+                if (source.startsWith("image://thumb/"))
+                    found << source.section('/', 3, 3) + ' ' + QString::number(child->property("fillMode").toInt());
+            }
+            return found;
+        };
+        // The first thumbnail picture an item holds.
+        const auto picture = [](QObject *item) {
+            for (QObject *child : item->findChildren<QObject *>())
+                if (child->inherits("QQuickImage") && child->property("source").toUrl().toString().startsWith("image://thumb/"))
+                    return child;
+            return static_cast<QObject *>(nullptr);
+        };
+        constexpr int stretch = 0, crop = 2, ready = 1;
+        constexpr qreal frame = 20;
+        int pictured = 0;
+        struct Case {
+            const char *name, *mime;
+            bool pictured, filled;
+        };
+        // The three that are not pictured go first, so the waits of the others cover an ask of theirs that came late.
+        for (const Case &c : {Case{"notes.txt", "text/plain", false, false}, Case{"Folder", "inode/directory", false, false},
+                              Case{"studio", "", false, false},
+                              Case{"photo.png", "image/png", true, true}, Case{"clip.mp4", "video/mp4", true, true},
+                              Case{"song.mp3", "audio/mpeg", true, false}, Case{"paper.pdf", "application/pdf", true, false},
+                              Case{"backup.zip", "application/zip", true, false}, Case{"model.stl", "model/stl", true, false}}) {
+            // A plugin's item has no type: its kind is set where the items are listed.
+            const QString kind = *c.mime ? FolderModel::kindForMime(c.mime) : QStringLiteral("item");
+            const QVariantMap item{{"index", 0}, {"name", c.name}, {"path", dir.filePath(c.name)}, {"isDir", kind == "folder"},
+                                   {"kind", kind}, {"mime", c.mime}, {"extension", QFileInfo(c.name).suffix()}, {"size", 1},
+                                   {"modified", QDateTime::currentDateTime()}, {"itemCount", 0}, {"icon", kind == "item" ? "peer" : ""},
+                                   {"selected", false}};
+            std::unique_ptr<QObject> aRow(row.createWithInitialProperties(item));
+            QVERIFY2(aRow, qPrintable(row.errorString()));
+            std::unique_ptr<QObject> aTile(tile.createWithInitialProperties(item));
+            QVERIFY2(aTile, qPrintable(tile.errorString()));
+            const QString rowFill = QString::number(c.filled ? crop : stretch);
+            QVERIFY2(asks(aRow.get()) == (c.pictured ? QStringList{"128 " + rowFill} : QStringList{}), c.name);
+            // A tile lays a fitted picture out at its own shape, so its fill mode is its own; a folder's and a plugin item's tile are drawn, not asked, and text asks for its page.
+            const bool text = kind == "text";
+            QVERIFY2(asks(aTile.get()).size() == (c.pictured || text ? 1 : 0), c.name);
+            if (c.pictured || text)
+                QVERIFY2(asks(aTile.get()).first().startsWith(text ? "page " : "256 "), c.name);
+            // What they hold is what reaches the cache: one ask of each size for this file.
+            const QString path = dir.filePath(c.name);
+            if (c.pictured) {
+                QTRY_VERIFY2(pictures->asked().count("128 " + path) == 1 && pictures->asked().count("256 " + path) == 1, c.name);
+                // Once drawn, a photo fills the row's frame; a page or a cover takes its own shape inside it, where its corners can round.
+                const QObject *shown = picture(aRow.get());
+                QVERIFY2(shown, c.name);
+                QTRY_VERIFY2(shown->property("status").toInt() == ready, c.name);
+                QVERIFY2(shown->property("width").toReal() == (c.filled ? frame : frame / 2), c.name);
+                QVERIFY2(shown->property("height").toReal() == frame, c.name);
+            }
+            // The page is waited for while its tile lives: an ask still queued when its picture goes is dropped.
+            if (text)
+                QTRY_VERIFY2(pictures->asked().count("page " + path) == 1, c.name);
+            pictured += c.pictured;
+        }
+        // Nothing else was asked but the one page: a file that is not pictured never reaches the cache.
+        QCOMPARE(pictures->asked().size(), 2 * pictured + 1);
+    }
+
     void thumbnailsReadInstalledThumbnailers()
     {
         QTemporaryDir dir;
@@ -5454,6 +5564,242 @@ private slots:
         write(dir.filePath("clip.mp4"), "not a video");
         QVERIFY(thumbnails.load(dir.filePath("clip.mp4"), "video/mp4", 128).isNull());
         QVERIFY(QFile::exists(dir.filePath("cache/" + Thumbnails::failures + "/" + Thumbnails::cacheKey(dir.filePath("clip.mp4")))));
+    }
+
+    void thumbnailsHandAThumbnailerANameThatHoldsACode()
+    {
+        QTemporaryDir dir;
+        // The thumbnailer copies its input out and notes the third argument it was given beside itself.
+        const QString script = dir.filePath("copy.sh");
+        write(script, "cp \"$1\" \"$2\" && printf %s \"$3\" > \"$0.said\"\n");
+        write(dir.filePath("demo.thumbnailer"), "[Thumbnailer Entry]\nExec=/bin/sh \"" + script.toUtf8()
+              + "\" %i %o \"--size=%s,%s 100%% %u\"\nMimeType=video/mp4;\n");
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
+
+        // A name with every code in it is still one file to the thumbnailer, by path and by URI.
+        const QString clip = dir.filePath("50%off %sale %up %in 100%%.mp4");
+        QVERIFY(QImage(10, 20, QImage::Format_RGB32).save(clip, "PNG"));
+        QCOMPARE(thumbnails.load(clip, "video/mp4", 128).size(), QSize(10, 20));
+        QFile said(script + ".said");
+        QVERIFY(said.open(QIODevice::ReadOnly));
+        QCOMPARE(QString::fromUtf8(said.readAll()),
+                 "--size=128,128 100% " + QUrl::fromLocalFile(clip).toString(QUrl::FullyEncoded));
+    }
+
+    void thumbnailsRememberOnlyAVerdictOnTheFile()
+    {
+        QTemporaryDir dir;
+        const auto marked = [&](const QString &path) {
+            return QFile::exists(dir.filePath("cache/" + Thumbnails::failures + "/" + Thumbnails::cacheKey(path)));
+        };
+        const auto thumbnailer = [&](const QString &name, const QString &exec, const QString &type) {
+            write(dir.filePath(name + ".thumbnailer"), ("[Thumbnailer Entry]\nExec=" + exec + "\nMimeType=" + type + ";\n").toUtf8());
+        };
+        const auto script = [&](const QString &name, const QByteArray &body) {
+            write(dir.filePath(name), body);
+            return "/bin/sh \"" + dir.filePath(name) + "\" %i %o";
+        };
+        const auto clip = [&](const QString &name) {
+            write(dir.filePath(name), "not a video");
+            return dir.filePath(name);
+        };
+        const QString frame = dir.filePath("frame.png"), copier = dir.filePath("copier"), unstartable = dir.filePath("unstartable");
+        const auto owner = QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner;
+        QVERIFY(QImage(10, 20, QImage::Format_RGB32).save(frame));
+        QVERIFY(QFile::copy("/bin/cp", copier) && QFile::setPermissions(copier, owner));
+        write(unstartable, "#!/no/such/interpreter\n");
+        QVERIFY(QFile::setPermissions(unstartable, owner));
+
+        thumbnailer("gone", "\"" + dir.filePath("no-such-program") + "\" %i %o", "video/mp4");
+        thumbnailer("copier", "\"" + copier + "\" \"" + frame + "\" %o", "video/webm");
+        thumbnailer("taker", script("take.sh", "rm \"$1\"\nexit 1\n"), "video/ogg");
+        thumbnailer("writer", script("write.sh", "echo more >> \"$1\"\nexit 1\n"), "video/quicktime");
+        thumbnailer("failer", script("fail.sh", "echo run >> \"$0.runs\"\nexit 1\n"), "video/mpeg");
+        thumbnailer("unstartable", "\"" + unstartable + "\" %i %o", "application/pdf");
+        // A program in a folder with a percent sign in its name is spelled with %% in Exec.
+        const QString percent = dir.filePath("100%tools/copier");
+        QVERIFY(QDir(dir.path()).mkpath("100%tools") && QFile::copy("/bin/cp", percent) && QFile::setPermissions(percent, owner));
+        thumbnailer("percent", "\"" + QString(percent).replace("%", "%%") + "\" \"" + frame + "\" %o", "video/x-matroska");
+        const Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
+
+        // A .thumbnailer file whose program is not installed is no thumbnailer, and its type's package is still the one to name.
+        QVERIFY(thumbnails.thumbnailerFor("video/mp4").isEmpty());
+        QCOMPARE(thumbnails.missingPackage("video/mp4"), QString("ffmpegthumbnailer"));
+        QVERIFY(thumbnails.load(clip("gone.mp4"), "video/mp4", 128).isNull());
+        QVERIFY(!marked(dir.filePath("gone.mp4")));
+        // One that is there under a name with a percent sign is found and draws.
+        QCOMPARE(thumbnails.load(clip("percent.mkv"), "video/x-matroska", 128).size(), QSize(10, 20));
+
+        // A thumbnailer that could not start has said nothing about the file: once it can, it draws it.
+        const QString later = clip("later.webm");
+        QVERIFY(QFile::remove(copier));
+        QVERIFY(thumbnails.load(later, "video/webm", 128).isNull());
+        QVERIFY(!marked(later));
+        QVERIFY(QFile::copy("/bin/cp", copier) && QFile::setPermissions(copier, owner));
+        QCOMPARE(thumbnails.load(later, "video/webm", 128).size(), QSize(10, 20));
+
+        // A PDF's thumbnailer that cannot start leaves the page to pdftoppm, whose verdict counts only when it ran too.
+        const QString pdftoppm = dir.filePath("bin/pdftoppm");
+        const QByteArray programs = qgetenv("PATH");
+        QVERIFY(QDir(dir.path()).mkpath("bin"));
+        const auto pageWith = [&](const QByteArray &program, const QString &pdf) {
+            write(pdftoppm, program);
+            QFile::setPermissions(pdftoppm, owner);
+            qputenv("PATH", dir.filePath("bin").toUtf8());
+            const QImage page = thumbnails.load(pdf, "application/pdf", 128);
+            qputenv("PATH", programs);
+            return page;
+        };
+        const QString torn = clip("torn.pdf"), paper = clip("paper.pdf");
+        QVERIFY(pageWith("#!/bin/sh\nexit 1\n", torn).isNull());
+        QVERIFY(marked(torn));
+        QVERIFY(pageWith("#!/no/such/interpreter\n", paper).isNull());
+        QVERIFY(!marked(paper));
+        // Its last argument is the page's path without the ending.
+        const QByteArray drawing = "#!/bin/sh\nfor last; do :; done\n/bin/cp \"" + frame.toUtf8() + "\" \"$last.png\"\n";
+        QCOMPARE(pageWith(drawing, clip("drawn.pdf")).size(), QSize(10, 20));
+
+        // A file taken away during the run, or written to, was not judged as it is now.
+        const QString taken = clip("taken.ogv"), written = clip("written.mov");
+        QVERIFY(thumbnails.load(taken, "video/ogg", 128).isNull());
+        QVERIFY(!QFile::exists(taken));
+        QVERIFY(!marked(taken));
+        {
+            QFile old(written);
+            QVERIFY(old.open(QIODevice::ReadWrite));
+            QVERIFY(old.setFileTime(QDateTime::currentDateTime().addSecs(-60), QFileDevice::FileModificationTime));
+        }
+        QVERIFY(thumbnails.load(written, "video/quicktime", 128).isNull());
+        QCOMPARE(QFileInfo(written).size(), 16);
+        QVERIFY(!marked(written));
+
+        // A file that cannot be read is not tried, so it is not held back once it can be; one that fails is.
+        if (geteuid() == 0)
+            QSKIP("root reads every file");
+        const QString locked = clip("locked.mpg"), runs = dir.filePath("fail.sh.runs");
+        QVERIFY(QFile::setPermissions(locked, QFile::WriteOwner));
+        QVERIFY(thumbnails.load(locked, "video/mpeg", 128).isNull());
+        QVERIFY(!QFile::exists(runs));
+        QVERIFY(!marked(locked));
+        QVERIFY(QFile::setPermissions(locked, QFile::ReadOwner | QFile::WriteOwner));
+        QVERIFY(thumbnails.load(locked, "video/mpeg", 128).isNull());
+        QVERIFY(thumbnails.load(locked, "video/mpeg", 128).isNull());
+        QVERIFY(marked(locked));
+        QCOMPARE(QFileInfo(runs).size(), 4);
+    }
+
+    void thumbnailsStopAThumbnailerWithWhatItStarted()
+    {
+        QTemporaryDir dir;
+        // The thumbnailer starts a helper of its own, notes the helper's number beside itself, and never ends.
+        const QString script = dir.filePath("hang.sh"), clip = dir.filePath("clip.mp4");
+        write(script, "sleep 300 &\necho $! > \"$0.helper\"\nwait\n");
+        write(dir.filePath("demo.thumbnailer"),
+              "[Thumbnailer Entry]\nExec=/bin/sh \"" + script.toUtf8() + "\" %i %o\nMimeType=video/mp4;\n");
+        write(clip, "not a video");
+        const Thumbnails thumbnails(dir.filePath("cache"), {dir.path()}, 1000);
+        QVERIFY(thumbnails.load(clip, "video/mp4", 128).isNull());
+
+        // Past its time the helper is stopped as well.
+        QFile noted(script + ".helper");
+        QVERIFY(noted.open(QIODevice::ReadOnly));
+        const QString helper = QString::fromLatin1(noted.readAll()).trimmed();
+        QVERIFY(helper.toInt() > 0);
+        QTRY_VERIFY(ended(helper.toInt()));
+        // A file its thumbnailer hangs on is held back like any other it fails on.
+        QVERIFY(QFile::exists(dir.filePath("cache/" + Thumbnails::failures + "/" + Thumbnails::cacheKey(clip))));
+    }
+
+    void thumbnailsStopAThumbnailerWhenFolioGoes()
+    {
+        // Started again by itself with a folder to work in, this test only loads the clip, so the first run can end it mid-load.
+        const QString given = qEnvironmentVariable("FOLIO_TEST_LOADS_IN");
+        QTemporaryDir made;
+        const QDir dir(given.isEmpty() ? made.path() : given);
+        const QString script = dir.filePath("hang.sh"), clip = dir.filePath("clip.mp4");
+        if (!given.isEmpty()) {
+            Thumbnails(dir.filePath("cache"), {dir.path()}).load(clip, "video/mp4", 128);
+            return;
+        }
+        // The thumbnailer starts a helper of its own, notes the helper's number and its own beside itself, and never ends.
+        write(script, "sleep 300 &\necho $! > \"$0.helper\"\necho $$ > \"$0.number\"\nwait\n");
+        write(dir.filePath("demo.thumbnailer"),
+              "[Thumbnailer Entry]\nExec=/bin/sh \"" + script.toUtf8() + "\" %i %o\nMimeType=video/mp4;\n");
+        write(clip, "not a video");
+        QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+        environment.insert("FOLIO_TEST_LOADS_IN", dir.path());
+        QProcess loading;
+        loading.setProcessEnvironment(environment);
+        loading.start(QCoreApplication::applicationFilePath(), {"thumbnailsStopAThumbnailerWhenFolioGoes"});
+        QTRY_VERIFY(QFileInfo(script + ".number").size() > 1);
+        const auto number = [&](const QString &ending) {
+            QFile noted(script + ending);
+            return noted.open(QIODevice::ReadOnly) ? QString::fromLatin1(noted.readAll()).trimmed() : QString();
+        };
+        const QString thumbnailer = number(".number"), helper = number(".helper");
+        QVERIFY(thumbnailer.toInt() > 0 && helper.toInt() > 0);
+        loading.kill();
+        QVERIFY(loading.waitForFinished());
+        QTRY_VERIFY(ended(thumbnailer.toInt()) && ended(helper.toInt()));
+    }
+
+    void thumbnailsStopWhatAFinishedThumbnailerLeft()
+    {
+        QTemporaryDir dir;
+        // The thumbnailer starts a helper of its own, notes the helper's number beside itself, and ends at once.
+        const QString script = dir.filePath("leave.sh"), clip = dir.filePath("clip.mp4");
+        write(script, "sleep 300 &\necho $! > \"$0.helper\"\n");
+        write(dir.filePath("demo.thumbnailer"),
+              "[Thumbnailer Entry]\nExec=/bin/sh \"" + script.toUtf8() + "\" %i %o\nMimeType=video/mp4;\n");
+        write(clip, "not a video");
+        const Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
+        QVERIFY(thumbnails.load(clip, "video/mp4", 128).isNull());
+
+        QFile noted(script + ".helper");
+        QVERIFY(noted.open(QIODevice::ReadOnly));
+        const QString helper = QString::fromLatin1(noted.readAll()).trimmed();
+        QVERIFY(helper.toInt() > 0);
+        QTRY_VERIFY(ended(helper.toInt()));
+    }
+
+    void thumbnailsStopAThumbnailerWhenFolioQuits()
+    {
+        QTemporaryDir dir;
+        // The thumbnailer notes its number beside itself and never ends; Folio would wait a minute for it.
+        const QString script = dir.filePath("hang.sh"), clip = dir.filePath("clip.mp4");
+        write(script, "echo $$ > \"$0.number\"\nexec sleep 300\n");
+        write(dir.filePath("demo.thumbnailer"),
+              "[Thumbnailer Entry]\nExec=/bin/sh \"" + script.toUtf8() + "\" %i %o\nMimeType=video/mp4;\n");
+        write(clip, "not a video");
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.path()}, 60000);
+        QFuture<QImage> loaded = QtConcurrent::run([&] { return thumbnails.load(clip, "video/mp4", 128); });
+        QTRY_VERIFY(QFileInfo(script + ".number").size() > 1);
+
+        // Quitting stops it at once, and a file it was stopped on is not held back.
+        thumbnails.quit();
+        QTRY_VERIFY_WITH_TIMEOUT(loaded.isFinished(), 5000);
+        QVERIFY(loaded.result().isNull());
+        QFile noted(script + ".number");
+        QVERIFY(noted.open(QIODevice::ReadOnly));
+        QTRY_VERIFY(ended(QString::fromLatin1(noted.readAll()).trimmed().toInt()));
+        QVERIFY(!QFile::exists(dir.filePath("cache/" + Thumbnails::failures + "/" + Thumbnails::cacheKey(clip))));
+    }
+
+    void thumbnailsServeASmallerSizeFromALargerOne()
+    {
+        QTemporaryDir dir;
+        // The thumbnailer copies its input out and notes each run beside itself.
+        const QString script = dir.filePath("copy.sh"), clip = dir.filePath("clip.mp4");
+        write(script, "cp \"$1\" \"$2\" && echo run >> \"$0.runs\"\n");
+        write(dir.filePath("demo.thumbnailer"),
+              "[Thumbnailer Entry]\nExec=/bin/sh \"" + script.toUtf8() + "\" %i %o\nMimeType=video/mp4;\n");
+        QVERIFY(QImage(512, 256, QImage::Format_RGB32).save(clip, "PNG"));
+        const Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
+
+        // A tile's thumbnail, scaled down, is a row's: the thumbnailer runs once, and each run notes four bytes.
+        QCOMPARE(thumbnails.load(clip, "video/mp4", 512).size(), QSize(512, 256));
+        QCOMPARE(thumbnails.load(clip, "video/mp4", 128).size(), QSize(128, 64));
+        QCOMPARE(QFileInfo(script + ".runs").size(), 4);
     }
 
     void thumbnailsTryAgainWhatAnOlderVersionCouldnt()

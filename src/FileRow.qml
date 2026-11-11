@@ -80,7 +80,11 @@ Item {
             implicitHeight: 20
             Image {
                 id: thumb
-                anchors.fill: parent
+                // A fitted picture is laid out at its own shape, as on a tile, so its corners can round.
+                readonly property real fit: Format.filled(row.kind) || implicitWidth <= 0 ? 0 : Math.min(parent.width / implicitWidth, parent.height / implicitHeight)
+                width: fit > 0 ? implicitWidth * fit : parent.width
+                height: fit > 0 ? implicitHeight * fit : parent.height
+                anchors.centerIn: parent
                 layer.enabled: theme.radius > 0 && status === Image.Ready
                 layer.effect: MultiEffect {
                     maskEnabled: true
@@ -89,14 +93,14 @@ Item {
                     maskSpreadAtMin: 1
                 }
                 asynchronous: true
-                fillMode: Image.PreserveAspectCrop
-                source: row.kind === "image" || row.kind === "video" ? Format.thumb(row.path, row.mime, 128, row.modified) : ""
+                fillMode: Format.filled(row.kind) ? Image.PreserveAspectCrop : Image.Stretch
+                source: Format.pictured(row.kind) ? Format.thumb(row.path, row.mime, 128, row.modified) : ""
                 visible: status === Image.Ready
             }
             Rectangle {
                 id: rowMask
-                width: 20
-                height: 20
+                width: thumb.width
+                height: thumb.height
                 radius: Math.min(4, theme.radius)
                 visible: false
                 layer.enabled: true

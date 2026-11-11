@@ -2,6 +2,7 @@
 #include "rawembed.h"
 
 #include <QBuffer>
+#include <QDeadlineTimer>
 #include <QCryptographicHash>
 #include <QtEndian>
 #include <zlib.h>
@@ -23,6 +24,12 @@
 #include <QTemporaryDir>
 #include <QUrl>
 #include <atomic>
+#include <cerrno>
+#include <csignal>
+#include <cstdlib>
+#include <sys/prctl.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 namespace {
 
@@ -70,14 +77,108 @@ QByteArray withPlainText(const QByteArray &png) {
     return out;
 }
 
-// The spec's Exec field: %i input path, %u input URI, %o output, %s size.
+// The spec's Exec field, such as "ffmpegthumbnailer -i %i -o %o -s %s -f": %i input path, %u input URI, %o output, %s size, %% a percent sign.
+// Each code is read once, so a name that holds one arrives as it is.
 QStringList expandCommand(const QString &command, const QString &input, const QString &output, int size) {
     QStringList args = QProcess::splitCommand(command);
     for (QString &arg : args) {
-        arg.replace("%i", input).replace("%u", fileUri(input)).replace("%o", output)
-           .replace("%s", QString::number(size)).replace("%%", "%");
+        QString expanded;
+        for (qsizetype at = 0; at < arg.size(); ++at) {
+            const QChar code = arg.at(at) == '%' && at + 1 < arg.size() ? arg.at(at + 1) : QChar();
+            if (code == 'i')
+                expanded += input;
+            else if (code == 'u')
+                expanded += fileUri(input);
+            else if (code == 'o')
+                expanded += output;
+            else if (code == 's')
+                expanded += QString::number(size);
+            else if (code == '%')
+                expanded += '%';
+            else {
+                expanded += arg.at(at);
+                continue;
+            }
+            ++at;
+        }
+        arg = expanded;
     }
     return args;
+}
+
+// How long a stopped helper has to be collected, in milliseconds.
+constexpr int stoppedPatience = 1000;
+
+// How long a helper is waited for at a time, in milliseconds, before Folio checks whether it is quitting.
+constexpr int waitSlice = 100;
+
+// How a helper ended. One that never started, or was stopped as Folio quit, has said nothing about the file it was given.
+enum class Ran { Unjudged, Failed, Finished };
+
+// What a keeper is sent when Folio is gone: it stops its whole session, itself included.
+void stopSession(int) { ::kill(0, SIGKILL); }
+
+// Runs in the child Qt forks, before the helper's program: a lock another thread held may still be held there, so it calls only what a signal handler may.
+void keepInASession(pid_t folio) {
+    // A session of its own, so whatever the helper starts can be stopped with it; a terminal's signals no longer reach it there.
+    ::setsid();
+    const pid_t helper = ::_Fork();
+    // Back to Qt in the helper, and in a child that could fork none and so becomes the helper itself.
+    if (helper <= 0)
+        return;
+    // The child stays as the helper's keeper; one of Folio's files held open would keep Qt waiting for the helper's start.
+    ::close_range(0, ~0U, 0);
+    struct sigaction gone = {};
+    gone.sa_handler = stopSession;
+    ::sigaction(SIGTERM, &gone, nullptr);
+    ::prctl(PR_SET_PDEATHSIG, SIGTERM);
+    // Folio may have gone before the line above asked to be told.
+    if (::getppid() != folio)
+        stopSession(SIGTERM);
+    int status = 0;
+    pid_t ended = 0;
+    do ended = ::waitpid(helper, &status, 0); while (ended < 0 && errno == EINTR);
+    // An ending that could not be read is a failure, never a thumbnail.
+    ::_exit(ended == helper && WIFEXITED(status) ? WEXITSTATUS(status) : EXIT_FAILURE);
+}
+
+// Stops a helper's whole session, which its keeper's number names (none for a helper that never had one). The session
+// outlives the keeper while anything is left in it, and the kernel hands a freed number out again only after going
+// round all the others.
+void stop(QProcess &process, qint64 session) {
+    if (session > 0)
+        ::kill(-pid_t(session), SIGKILL);
+    process.kill();
+    process.waitForFinished(stoppedPatience);
+}
+
+Ran run(QProcess &process, const QString &program, const QStringList &args, int patience, const std::atomic_bool &quitting) {
+    // A thumbnail asked for as Folio quits is never started.
+    if (quitting)
+        return Ran::Unjudged;
+    // One deadline for the start and the finish together.
+    const QDeadlineTimer deadline(patience);
+    process.setChildProcessModifier([folio = ::getpid()] { keepInASession(folio); });
+    process.start(program, args);
+    // In slices, so quitting doesn't wait on a program slow to start (one on a stalled network mount, say).
+    while (process.state() == QProcess::Starting && !deadline.hasExpired() && !quitting)
+        process.waitForStarted(int(qMin<qint64>(waitSlice, deadline.remainingTime())));
+    if (process.state() != QProcess::Running) {
+        // One still on its way to its program after that long is stopped too, or its keeper would be killed alone.
+        stop(process, process.processId());
+        return Ran::Unjudged;
+    }
+    // Read now: a keeper that has ended has no number left.
+    const qint64 session = process.processId();
+    // A broken file must never hang a tile forever, nor Folio as it quits.
+    bool finished = false;
+    while (!finished && !deadline.hasExpired() && !quitting)
+        finished = process.waitForFinished(int(qMin<qint64>(waitSlice, deadline.remainingTime())));
+    // What a helper started in the background is stopped with it even when it finished.
+    stop(process, session);
+    if (!finished)
+        return quitting ? Ran::Unjudged : Ran::Failed;
+    return process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0 ? Ran::Finished : Ran::Failed;
 }
 
 // Each optional package's thumbnailers and the MimeType= lines they ship, as "video/mp4;video/webm;". Copied from the
@@ -149,10 +250,11 @@ const QHash<QString, QString> &packageFor() {
 
 } // namespace
 
-Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbnailerDirectories)
+Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbnailerDirectories, int patience)
     : m_cache(cacheDirectory.isEmpty()
                   ? QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + "/thumbnails"
-                  : cacheDirectory) {
+                  : cacheDirectory),
+      m_patience(patience) {
     QStringList directories = thumbnailerDirectories;
     if (directories.isEmpty()) {
         // Later directories win, so the user's own thumbnailers override the
@@ -184,7 +286,10 @@ Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbna
             }
             const QString exec = fields.value("Exec");
             const QString tryExec = fields.value("TryExec");
-            if (exec.isEmpty() || (!tryExec.isEmpty() && QStandardPaths::findExecutable(tryExec).isEmpty()))
+            // The program Exec names, read as it will run (%% is one percent sign), has to be there: a .thumbnailer file a removed program left behind draws nothing.
+            const QStringList command = expandCommand(exec, {}, {}, 0);
+            const auto missing = [](const QString &program) { return QStandardPaths::findExecutable(program).isEmpty(); };
+            if (command.isEmpty() || missing(command.first()) || (!tryExec.isEmpty() && missing(tryExec)))
                 continue;
             for (const QString &declared : fields.value("MimeType").split(';', Qt::SkipEmptyParts)) {
                 const QString mime = declared.trimmed();
@@ -263,8 +368,12 @@ QImage Thumbnails::load(const QString &path, const QString &mime, int size) cons
         return {};
 
     const QDateTime modified = info.lastModified();
-    if (const QImage image(cachePath(path, size)); madeFor(image, path, modified))
-        return image;
+    const int pixels = bucketPixels(bucketFor(size));
+    // One made for a larger size serves this one too, so a folder seen as tiles and then as rows is not drawn twice.
+    for (int larger = pixels; larger <= 1024; larger *= 2) {
+        if (const QImage image(cachePath(path, larger)); madeFor(image, path, modified))
+            return larger == pixels ? image : image.scaled(pixels, pixels, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    }
 
     // A folder's peek asks for any picture ("image/*"); named by extension,
     // as the grid names it, it goes to the same thumbnailer as its tile.
@@ -274,13 +383,16 @@ QImage Thumbnails::load(const QString &path, const QString &mime, int size) cons
     const QString thumbnailer = m_thumbnailers.value(type);
     if (failedBefore(path, modified, thumbnailer))
         return {};
-    const int pixels = bucketPixels(bucketFor(size));
+    // A file that cannot be read is not a broken one: nothing is tried, so nothing is remembered.
+    if (!info.isReadable())
+        return {};
     bool attempted = false;
     QImage image = generate(path, type, pixels, attempted);
     if (image.isNull()) {
         // Only a reader or thumbnailer that ran and failed is remembered, so
-        // one installed later still gets its turn.
-        if (attempted)
+        // one installed later still gets its turn. A file moved away or
+        // written to meanwhile was never judged as it is now.
+        if (attempted && QFileInfo(path).lastModified() == modified)
             rememberFailure(path, modified, thumbnailer);
         return {};
     }
@@ -314,14 +426,18 @@ QImage Thumbnails::generate(const QString &path, const QString &mime, int pixels
     }
     const QString command = m_thumbnailers.value(mime);
     if (!command.isEmpty()) {
-        attempted = true;
-        return runThumbnailer(command, path, pixels);
+        // A thumbnailer that could not start has not judged the file, whatever a reader made of it first; a PDF is then left to pdftoppm.
+        QImage image;
+        attempted = runThumbnailer(command, path, pixels, image);
+        if (attempted)
+            return image;
     }
     // Without a PDF thumbnailer installed, Poppler's pdftoppm (there with
     // CUPS) draws the first page.
     if (mime == "application/pdf" && !QStandardPaths::findExecutable("pdftoppm").isEmpty()) {
-        attempted = true;
-        return pdfPage(path, pixels);
+        QImage image;
+        attempted = pdfPage(path, pixels, image);
+        return image;
     }
     return {};
 }
@@ -373,31 +489,26 @@ QImage Thumbnails::textPage(const QString &path, int pixels, const QColor &paper
     return page;
 }
 
-QImage Thumbnails::pdfPage(const QString &path, int pixels) {
+bool Thumbnails::pdfPage(const QString &path, int pixels, QImage &image) const {
     QTemporaryDir scratch;
     if (!scratch.isValid())
-        return {};
+        return false;
     QProcess process;
-    process.start("pdftoppm", {"-f", "1", "-l", "1", "-singlefile", "-png", "-scale-to", QString::number(pixels),
-                               path, scratch.filePath("page")});
-    if (!process.waitForFinished(15000)) {
-        process.kill();
-        process.waitForFinished(1000);
-        return {};
-    }
-    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0)
-        return {};
-    return QImage(scratch.filePath("page.png"));
+    const Ran ran = run(process, "pdftoppm", {"-f", "1", "-l", "1", "-singlefile", "-png", "-scale-to", QString::number(pixels),
+                                              path, scratch.filePath("page")}, m_patience, m_quitting);
+    if (ran == Ran::Finished)
+        image = QImage(scratch.filePath("page.png"));
+    return ran != Ran::Unjudged;
 }
 
-QImage Thumbnails::runThumbnailer(const QString &command, const QString &path, int pixels) const {
+bool Thumbnails::runThumbnailer(const QString &command, const QString &path, int pixels, QImage &image) const {
     QTemporaryDir scratch;
     if (!scratch.isValid())
-        return {};
+        return false;
     const QString output = scratch.filePath("thumbnail.png");
     QStringList args = expandCommand(command, path, output, pixels);
     if (args.isEmpty())
-        return {};
+        return false;
     const QString program = args.takeFirst();
     // ffmpegthumbnailer's -f frames the picture as a film strip; the tile
     // marks a video with its own play badge instead.
@@ -406,16 +517,10 @@ QImage Thumbnails::runThumbnailer(const QString &command, const QString &path, i
 
     QProcess process;
     process.setProcessChannelMode(QProcess::ForwardedErrorChannel);
-    process.start(program, args);
-    // A broken file must never hang a tile forever.
-    if (!process.waitForFinished(15000)) {
-        process.kill();
-        process.waitForFinished(1000);
-        return {};
-    }
-    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0)
-        return {};
-    return QImage(output);
+    const Ran ran = run(process, program, args, m_patience, m_quitting);
+    if (ran == Ran::Finished)
+        image = QImage(output);
+    return ran != Ran::Unjudged;
 }
 
 void Thumbnails::remember(QImage image, const QString &path, int size, const QDateTime &modified) const {

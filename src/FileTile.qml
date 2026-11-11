@@ -192,7 +192,7 @@ Item {
         Item {
             // The picture is laid out at its own shape (cropped to fill for
             // photos and video, fitted for pages), so its corners can round.
-            readonly property bool crop: tile.kind === "image" || tile.kind === "video"
+            readonly property bool crop: Format.filled(tile.kind)
             readonly property size natural: thumb.implicitWidth > 0 ? Qt.size(thumb.implicitWidth, thumb.implicitHeight) : Qt.size(1, 1)
             readonly property real fit: Math.min(width / natural.width, height / natural.height)
             Image {

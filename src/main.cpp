@@ -95,6 +95,7 @@ static int preview(QGuiApplication &app) {
     app.installTranslator(&translator);
     Theme theme;
     Thumbnails thumbnails;
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, &thumbnails, &Thumbnails::quit);
     Previewer previewer;
     previewer.start(path, showHidden, sort);
     if (follow)
@@ -131,6 +132,7 @@ int main(int argc, char *argv[]) {
     Theme theme;
     Places places;
     Thumbnails thumbnails;
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, &thumbnails, &Thumbnails::quit);
     // Plugins' text follows the language too.
     Plugins plugins(translator.language());
     QObject::connect(&translator, &Translator::changed, &plugins, [&] { plugins.setLanguage(translator.language()); });
