@@ -168,6 +168,7 @@
     "one": "Do this for the other %Ln clash",
     "other": "Do this for the other %Ln clashes"
   },
+  "Drag / Ctrl+drag": "Drag / Ctrl+drag",
   "Drag on empty space": "Drag on empty space",
   "Drives can't be changed without udisks2.": "Drives can't be changed without udisks2.",
   "Drop to pin": "Drop to pin",
@@ -241,6 +242,7 @@
   "Modified": "Modified",
   "Mount": "Mount",
   "Move between the sidebar, the panes and the details": "Move between the sidebar, the panes and the details",
+  "Move files to a folder / copy them": "Move files to a folder / copy them",
   "Move here": "Move here",
   "Move the selection": "Move the selection",
   "Move to the trash": "Move to the trash",

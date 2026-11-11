@@ -52,6 +52,7 @@ Rectangle {
         ["Ctrl+I", qsTr("Show or hide the details pane")],
         ["Ctrl+P", qsTr("Pin or unpin the folder (or drag it to the sidebar)")],
         ["Ctrl+C / X / V", qsTr("Copy, cut, paste files")],
+        [qsTr("Drag / Ctrl+drag"), qsTr("Move files to a folder / copy them")],
         ["Ctrl+Shift+C", qsTr("Copy the path as text")],
         ["F2 / Ctrl+Shift+D", qsTr("Rename / duplicate")],
         ["Ctrl+N", qsTr("New window")],
