@@ -54,6 +54,7 @@ public:
         bool isDir = false;
         qint64 size = 0;
         QDateTime modified;
+        // Null for a regular file the model listed: typed() reads them from its name when they're asked for.
         QString kind;
         QString mime;
         // A file's extension; a plugin item's subtitle.
@@ -110,10 +111,13 @@ public:
     // A listing stops, empty, as soon as `stop` returns true. Names sort
     // by `locale`'s alphabet; a background pass passes the one it was
     // started with, because the default locale may only be read on the
-    // thread that sets it.
+    // thread that sets it. Untyped, it leaves a regular file's type to typed().
     static QVector<Entry> list(const QString &path, bool showHidden, const QString &sort, QString *error,
-                               const std::function<bool()> &stop = {}, const QLocale &locale = QLocale());
+                               const std::function<bool()> &stop = {}, const QLocale &locale = QLocale(),
+                               bool typed = true);
     static Entry entryFor(const QFileInfo &info, const QMimeDatabase &mimes);
+    // The entry with its kind, MIME type and extension, read from its name when it was listed untyped.
+    static Entry typed(const Entry &entry);
     // An entry as QML reads it, by the names of its fields.
     static QVariantMap toMap(const Entry &entry);
     // A folder's item count and first pictures, for the preview window.

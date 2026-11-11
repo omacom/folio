@@ -564,6 +564,70 @@ private slots:
         QCOMPARE(entries.at(3).extension, QString("TXT"));
     }
 
+    void folderTypesOnlyWhatsAskedFor()
+    {
+        // Two screens and more of plain files, beside one of every other sort of entry.
+        constexpr int files = 2000;
+        QTemporaryDir dir;
+        for (int i = 0; i < files; ++i)
+            write(dir.filePath(QString("f%1.%2").arg(i).arg(i % 3 ? "txt" : "png")), QByteArray(i % 7, 'x'));
+        const auto named = {".bashrc", "a.tar.gz", "X.JpG", "noext", "CMakeLists.txt", "notes.md"};
+        for (const char *name : named)
+            write(dir.filePath(name), "x");
+        QDir(dir.path()).mkdir("folder.png");
+        QVERIFY(QFile::link("notes.md", dir.filePath("link.txt")));
+        constexpr int fileLinks = 1; // link.txt: a link to a regular file is listed as one
+        QVERIFY(QFile::link(dir.filePath("folder.png"), dir.filePath("linked")));
+        QVERIFY(QFile::link(dir.filePath("nowhere"), dir.filePath("broken.jpg")));
+        QCOMPARE(::mkfifo(QFile::encodeName(dir.filePath("pipe.txt")).constData(), 0600), 0);
+        constexpr int others = 4; // the folder, the link to it, the broken link and the pipe
+        const int all = files + int(named.size()) + fileLinks + others;
+
+        // Listed untyped, only what isn't a regular file has a type yet; asked, each entry is as typed listing has it.
+        QString error;
+        for (const QString &sort : FolderModel::sortModes()) {
+            const auto untyped = FolderModel::list(dir.path(), true, sort, &error, {}, QLocale(), false);
+            const auto whole = FolderModel::list(dir.path(), true, sort, &error);
+            QCOMPARE(untyped.size(), all);
+            const auto typedCount = std::count_if(untyped.cbegin(), untyped.cend(), [](const auto &e) { return !e.mime.isNull(); });
+            QCOMPARE(typedCount, sort == "kind" ? untyped.size() : others);
+            for (int i = 0; i < whole.size(); ++i) {
+                QCOMPARE(untyped.at(i).path, whole.at(i).path);
+                QCOMPARE(untyped.at(i).size, whole.at(i).size);
+                QCOMPARE(untyped.at(i).modified, whole.at(i).modified);
+                const auto asked = FolderModel::typed(untyped.at(i));
+                QCOMPARE(asked.kind, whole.at(i).kind);
+                QCOMPARE(asked.mime, whole.at(i).mime);
+                QCOMPARE(asked.extension, whole.at(i).extension);
+            }
+        }
+
+        // Through the model, a row's name, size, date and type roles, and the types get() gives, match a whole entry.
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setShowHidden(true);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), all);
+        const QMimeDatabase mimes;
+        for (int row = 0; row < model.count(); ++row) {
+            const QModelIndex at = model.index(row);
+            const auto whole = FolderModel::entryFor(QFileInfo(at.data(FolderModel::PathRole).toString()), mimes);
+            QCOMPARE(at.data(FolderModel::NameRole).toString(), whole.name);
+            QCOMPARE(at.data(FolderModel::IsDirRole).toBool(), whole.isDir);
+            QCOMPARE(at.data(FolderModel::SizeRole).toLongLong(), whole.size);
+            QCOMPARE(at.data(FolderModel::ModifiedRole).toDateTime(), whole.modified);
+            QCOMPARE(at.data(FolderModel::KindRole).toString(), whole.kind);
+            QCOMPARE(at.data(FolderModel::MimeRole).toString(), whole.mime);
+            QCOMPARE(at.data(FolderModel::ExtensionRole).toString(), whole.extension);
+            QCOMPARE(at.data(FolderModel::ExtensionRole).toString().isNull(), whole.extension.isNull());
+            const QVariantMap map = model.get(row);
+            QCOMPARE(map.value("kind").toString(), whole.kind);
+            QCOMPARE(map.value("mime").toString(), whole.mime);
+            QCOMPARE(map.value("extension").toString(), whole.extension);
+        }
+    }
+
     void folderReportsMissingFolders()
     {
         QString error;
@@ -3597,6 +3661,21 @@ private slots:
         QCOMPARE(Backend::mountLabel("smb-share:server=nas,share=media"), QString("nas"));
         QCOMPARE(Backend::mountLabel("ftp:host=ftp.example.com"), QString("ftp.example.com"));
         QCOMPARE(Backend::mountLabel("dav:host=cloud.example.com,ssl=true,prefix=%2Fremote.php"), QString("cloud.example.com"));
+    }
+
+    void pluginItemsAreNotTypedFromTheirNames()
+    {
+        // A plugin's item is shown as listed: its kind and subtitle are not read again from its name.
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setItems({QVariantMap{{"name", "notes.txt"}, {"path", "plugin:servers/a"}, {"subtitle", "Windows"}}});
+        model.setPath("plugin:servers");
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.get(0).value("name").toString(), QString("notes.txt"));
+        QCOMPARE(model.get(0).value("kind").toString(), QString("item"));
+        QCOMPARE(model.get(0).value("extension").toString(), QString("Windows"));
+        QCOMPARE(model.data(model.index(0), FolderModel::KindRole).toString(), QString("item"));
+        QCOMPARE(model.data(model.index(0), FolderModel::ExtensionRole).toString(), QString("Windows"));
     }
 
     void typedServerAddressesAreMounted()

@@ -4,9 +4,11 @@
 #include <QCollator>
 #include <QDir>
 #include <QDirIterator>
+#include <QDirListing>
 #include <QXmlStreamReader>
 #include <QUrl>
 #include <QStandardPaths>
+#include <QTimeZone>
 #include <QFile>
 #include <QFileInfo>
 #include <QFutureWatcher>
@@ -103,9 +105,9 @@ QVariant FolderModel::data(const QModelIndex &index, int role) const {
     case IsDirRole: return e.isDir;
     case SizeRole: return e.size;
     case ModifiedRole: return e.modified;
-    case KindRole: return e.kind;
-    case MimeRole: return e.mime;
-    case ExtensionRole: return e.extension;
+    case KindRole: return typed(e).kind;
+    case MimeRole: return typed(e).mime;
+    case ExtensionRole: return typed(e).extension;
     case ItemCountRole: return e.itemCount;
     case SelectedRole: return m_selected.contains(e.path);
     case IconRole: return e.icon;
@@ -237,7 +239,7 @@ static QDir::Filters entryFilters(bool showHidden) {
 
 QVector<FolderModel::Entry> FolderModel::list(const QString &path, bool showHidden, const QString &sort,
                                               QString *error, const std::function<bool()> &stop,
-                                              const QLocale &locale) {
+                                              const QLocale &locale, bool typed) {
     if (path == recentPath()) {
         // Recents are always most recently used first; that's what they're for.
         return listRecent(recentFile(), showHidden, 200, stop);
@@ -258,20 +260,43 @@ QVector<FolderModel::Entry> FolderModel::list(const QString &path, bool showHidd
     QMimeDatabase mimes;
     // One string per type and extension, shared by every entry that has it.
     QSet<QString> shared;
-    QDirIterator it(path, entryFilters(showHidden));
-    while (it.hasNext()) {
+    // Sorting by kind compares types, so they're read here.
+    const bool typing = typed || sort == "kind";
+    // Links unresolved, so broken ones, sockets and fifos are listed too, as entryFilters() has them.
+    const auto flags = showHidden ? QDirListing::IteratorFlag::IncludeHidden : QDirListing::IteratorFlag::Default;
+    for (const QDirListing::DirEntry &item : QDirListing(path, flags)) {
         if (stop && stop())
             return {};
-        Entry e = entryFor(it.nextFileInfo(), mimes);
-        e.mime = *shared.insert(e.mime);
-        if (!e.extension.isEmpty())
-            e.extension = *shared.insert(e.extension);
+        Entry e;
+        if (typing || !item.isFile()) {
+            e = entryFor(item.fileInfo(), mimes);
+            e.mime = *shared.insert(e.mime);
+            if (!e.extension.isEmpty())
+                e.extension = *shared.insert(e.extension);
+        } else {
+            // A regular file's type comes from its name alone, so it can wait until it's asked for.
+            e.name = item.fileName();
+            e.path = item.absoluteFilePath();
+            e.size = item.size();
+            e.modified = item.lastModified(QTimeZone::LocalTime);
+        }
         entries.push_back(std::move(e));
     }
     // Growing left room for many more entries than were read; the listing is kept, so give it back.
     entries.squeeze();
     sortEntries(entries, sort, locale);
     return entries;
+}
+
+FolderModel::Entry FolderModel::typed(const Entry &entry) {
+    // A plugin's item has a kind and no file type: its name says nothing about it.
+    if (!entry.mime.isNull() || !entry.kind.isNull())
+        return entry;
+    Entry e = entry;
+    e.mime = QMimeDatabase().mimeTypeForFile(e.name, QMimeDatabase::MatchExtension).name();
+    e.kind = kindForMime(e.mime);
+    e.extension = QFileInfo(e.name).suffix().toUpper();
+    return e;
 }
 
 FolderModel::Entry FolderModel::entryFor(const QFileInfo &info, const QMimeDatabase &mimes) {
@@ -503,7 +528,7 @@ void FolderModel::reload() {
         QString error;
         const auto overtaken = [&] { return *latest != generation; };
         auto entries = isPluginView(path) ? listItems(items, query)
-                     : query.isEmpty() || path == recentPath() ? list(path, showHidden, sort, &error, overtaken, locale)
+                     : query.isEmpty() || path == recentPath() ? list(path, showHidden, sort, &error, overtaken, locale, false)
                      : search(path, query, showHidden, sort, overtaken, 1000, locale);
         return qMakePair(entries, error);
     }));
@@ -563,7 +588,8 @@ QVariantMap FolderModel::get(int row) const {
     return map;
 }
 
-QVariantMap FolderModel::toMap(const Entry &entry) {
+QVariantMap FolderModel::toMap(const Entry &listed) {
+    const Entry entry = typed(listed);
     return {
         {"name", entry.name}, {"path", entry.path}, {"isDir", entry.isDir}, {"size", entry.size},
         {"modified", entry.modified}, {"kind", entry.kind}, {"mime", entry.mime},
