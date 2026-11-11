@@ -10,6 +10,7 @@
 #include <QPointer>
 #include <memory>
 #include <functional>
+#include <future>
 #include <thread>
 #include <QFile>
 #include <QGuiApplication>
@@ -4361,6 +4362,40 @@ private slots:
         places.refresh();
         QCOMPARE(pinnedSpy.count(), 1);
         QCOMPARE(places.pinned().at(0).toMap().value("name").toString(), QString("hype"));
+    }
+
+    void placesAreReadWhileTheWindowLoads()
+    {
+        QTemporaryDir home;
+        QDir(home.path()).mkpath("Work/folio");
+        QDir(home.path()).mkpath(".config/gtk-3.0");
+        // A bookmarks file that can't be read until something writes to it, as a slow disk would hold it.
+        const QByteArray fifo = QFile::encodeName(home.filePath(".config/gtk-3.0/bookmarks"));
+        QCOMPARE(::mkfifo(fifo.constData(), 0600), 0);
+        const QByteArray pin = QUrl::fromLocalFile(home.filePath("Work/folio")).toEncoded() + "\n";
+        std::promise<void> made;
+        // Written once the constructor is back, or after 3 s when the constructor waits on it itself.
+        std::thread writer([&fifo, &pin, made = made.get_future()] {
+            made.wait_for(std::chrono::seconds(3));
+            int fd = -1;
+            for (int tries = 0; tries < 1000 && fd < 0; ++tries)
+                if ((fd = ::open(fifo.constData(), O_WRONLY | O_NONBLOCK)) < 0)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            QFile file;
+            if (fd >= 0 && file.open(fd, QIODevice::WriteOnly, QFileDevice::AutoCloseHandle))
+                file.write(pin);
+        });
+        QElapsedTimer clock;
+        clock.start();
+        Places places(home.path());
+        const qint64 constructing = clock.elapsed();
+        made.set_value();
+        // The first look, with no event loop run, has every list whole, as the first frame draws them.
+        QCOMPARE(namesOf(places.places()), QStringList({"Work"}));
+        QCOMPARE(namesOf(places.pinned()), QStringList({"folio"}));
+        QCOMPARE(places.views().size(), 2);
+        writer.join();
+        QVERIFY2(constructing < 1000, qPrintable(QString("the constructor waited %1 ms on the disk").arg(constructing)));
     }
 
     void typedViewsGoToTheirView()

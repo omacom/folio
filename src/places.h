@@ -1,6 +1,8 @@
 #pragma once
 
+#include <QFuture>
 #include <QFutureWatcher>
+#include <QLocale>
 #include <QObject>
 #include <QTimer>
 #include <QVariantList>
@@ -20,11 +22,12 @@ public:
     // `home` is overridable for tests; the real home also consults the XDG
     // user-dirs, so renamed or translated folders are found.
     explicit Places(const QString &home = {}, QObject *parent = nullptr);
+    ~Places() override;
 
     QString home() const { return m_home; }
-    QVariantList places() const { return m_places; }
-    QVariantList pinned() const { return m_pinned; }
-    QVariantList views() const { return m_views; }
+    QVariantList places() const { take(); return m_places; }
+    QVariantList pinned() const { take(); return m_pinned; }
+    QVariantList views() const { take(); return m_views; }
     QVariantList devices() const { return m_devices; }
 
     Q_INVOKABLE void refresh();
@@ -73,6 +76,13 @@ signals:
     void failed(const QString &message);
 
 private:
+    struct Lists {
+        QVariantList places, views, pinned;
+        QString systemDevice;
+    };
+    // The first lists are read on a thread the constructor starts, at some moment before the first look at any list, which waits for them.
+    void take() const;
+    QVariantList homeFolders(const QLocale &locale) const;
     void setList(QVariantList &list, const QVariantList &next, void (Places::*announce)());
     void refreshPlaces();
     void refreshDevices();
@@ -89,11 +99,13 @@ private:
 
     QString m_home;
     bool m_realHome;
-    QVariantList m_places, m_pinned, m_views, m_devices;
+    mutable QVariantList m_places, m_pinned, m_views;
+    QVariantList m_devices;
+    mutable QFuture<Lists> m_first;
     QTimer m_poll;
     QFutureWatcher<QList<Mount>> m_mounts;
     // Another refresh was asked for while one was reading.
     bool m_rereadMounts = false;
     // The device the system runs from, read once: it doesn't change.
-    QString m_systemDevice;
+    mutable QString m_systemDevice;
 };
