@@ -6500,7 +6500,7 @@ private slots:
         const std::unique_ptr<QQmlPropertyMap> translator(QQmlPropertyMap::create());
         const std::unique_ptr<QQmlPropertyMap> backend(QQmlPropertyMap::create());
         const std::unique_ptr<QQmlPropertyMap> folder(QQmlPropertyMap::create());
-        for (const char *role : {"accent", "accentMark", "foreground", "brightForeground", "secondaryForeground", "lighterBackground",
+        for (const char *role : {"accent", "accentMark", "quietMark", "foreground", "brightForeground", "secondaryForeground", "lighterBackground",
                                  "darkBackground", "background", "red", "blue", "magenta", "orange", "yellow", "cyan"})
             theme->insert(role, QColor(Qt::gray));
         theme->insert("radius", 0);
@@ -6679,6 +6679,39 @@ private slots:
         write(dir.filePath("theme/colors.toml"), mocha);
         Theme passing(dir.path());
         QCOMPARE(passing.accentMark(), QColor("#89b4fa"));
+    }
+
+    void themeFloorsTheQuietRing()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("theme");
+        write(dir.filePath("theme/colors.toml"), roseDawn);
+        Theme low(dir.path());
+        QCOMPARE(low.quietMark().alpha(), 255);
+        QVERIFY(contrast(low.quietMark(), low.background()) >= 3);
+        QVERIFY(contrast(low.quietMark(), low.lighterBackground()) >= 3);
+        QVERIFY(snug(low.quietMark(), {low.background(), low.lighterBackground()}, 3));
+        // A theme where it reads keeps the translucent foreground, so it blends with a card as before.
+        write(dir.filePath("theme/colors.toml"), mocha);
+        Theme passing(dir.path());
+        QColor ring("#cdd6f4");
+        ring.setAlphaF(0.6);
+        QCOMPARE(passing.quietMark(), ring);
+    }
+
+    void themeFloorsTheDisabledGlyph()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("theme");
+        write(dir.filePath("theme/colors.toml"), roseDawn);
+        Theme low(dir.path());
+        QVERIFY(contrast(low.disabledForeground(), low.background()) >= 3);
+        QVERIFY(snug(low.disabledForeground(), {low.background()}, 3));
+        // Still dimmer than an off toggle.
+        QVERIFY(contrast(low.disabledForeground(), low.background()) < contrast(low.secondaryForeground(), low.background()) - 1);
+        write(dir.filePath("theme/colors.toml"), mocha);
+        Theme passing(dir.path());
+        QCOMPARE(passing.disabledForeground(), blend(QColor("#1e1e2e"), QColor("#cdd6f4"), 0.5));
     }
 
 private:

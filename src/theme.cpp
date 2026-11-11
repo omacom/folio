@@ -248,3 +248,23 @@ QColor Theme::accentMark() const {
     return mark;
 }
 
+// The other pane's ring: the foreground at 60% where that reads on background and cards, else an opaque ink that does.
+QColor Theme::quietMark() const {
+    // The foreground's share of the ring, as its alpha or as an opaque mix.
+    constexpr double share = 0.6;
+    const QColor bg = background(), card = lighterBackground(), fg = foreground();
+    if (ratio(mix(bg, fg, share), bg) >= markFloor && ratio(mix(card, fg, share), card) >= markFloor) {
+        QColor ring = fg;
+        ring.setAlphaF(share);
+        return ring;
+    }
+    return ensureRatio(ensureRatio(mix(bg, fg, share), bg, markFloor), card, markFloor);
+}
+
+// A disabled glyph: 3:1 on the bar, while the secondary ink of an off toggle keeps 4.5:1.
+QColor Theme::disabledForeground() const {
+    // The foreground's share of a disabled glyph before the floor.
+    constexpr double share = 0.5;
+    return ensureRatio(mix(background(), foreground(), share), background(), markFloor);
+}
+
