@@ -100,7 +100,8 @@ Translator::Translator(const QString &languageFile, const QString &catalogDirect
 // ~QTranslator unregisters only after the catalog and its lock are gone, while
 // a worker thread may still be translating through the application.
 Translator::~Translator() {
-    QCoreApplication::removeTranslator(this);
+    if (QCoreApplication::instance())
+        QCoreApplication::removeTranslator(this);
 }
 
 QString Translator::language() const {
