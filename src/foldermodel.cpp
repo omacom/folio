@@ -678,6 +678,21 @@ int FolderModel::itemCount(const QString &folder, bool showHidden) {
     return count;
 }
 
+// A search shows its best matches this many at a time, more as the view
+// scrolls to them.
+static constexpr int SearchWindow = 350;
+// Sorted another way than best first, it shows this many of the best, as
+// many as a search ever showed.
+static constexpr int SortedMatches = 1000;
+
+// What a read in the background brings back: the entries, what went wrong,
+// and how many match when it's a search.
+struct Listing {
+    QVector<FolderModel::Entry> entries;
+    QString error;
+    int matches = -1;
+};
+
 // The open search: its index, read once in the background, and the lock
 // its answers take turns at.
 struct FolderModel::Search {
@@ -754,13 +769,13 @@ void FolderModel::read() {
     const auto search = query.isEmpty() || isView(path) ? nullptr : m_search;
     if (search && !search->landed)
         return;
-    auto *watcher = new QFutureWatcher<QPair<QVector<Entry>, QString>>(this);
+    auto *watcher = new QFutureWatcher<Listing>(this);
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation] {
         watcher->deleteLater();
         if (generation != m_generation)
             return; // A newer listing replaced this one while it ran.
         m_staleClear.stop();
-        auto [entries, error] = watcher->future().takeResult();
+        auto [entries, error, matches] = watcher->future().takeResult();
         // Unchanged (the usual case after showing a remembered listing):
         // leave the items alone, and only fill in folder counts still missing.
         const bool same = error == m_error && !m_entries.isEmpty() && sameListing(m_entries, entries);
@@ -782,6 +797,10 @@ void FolderModel::read() {
             }
         }
         setError(error);
+        if (matches != m_matches) {
+            m_matches = matches;
+            emit matchesChanged();
+        }
         setLoading(false);
         emit loaded();
         if (error.isEmpty())
@@ -789,24 +808,64 @@ void FolderModel::read() {
         countFolders(generation);
     });
     watcher->setFuture(QtConcurrent::run([path, showHidden, sort, query, items, latest, generation, locale, read, search] {
-        QString error;
+        Listing listing;
         const auto overtaken = [&] { return *latest != generation; };
-        if (search) {
-            // As many matches as a search has always shown.
-            constexpr int shown = 1000;
-            QMutexLocker hold(&search->lock);
-            return qMakePair(search->index.find(query, sort, shown, overtaken, locale), error);
+        if (!search) {
+            listing.entries = isPluginView(path) ? listItems(items, query)
+                                                 : list(path, showHidden, sort, &listing.error, overtaken, locale, false);
+            for (Entry &e : listing.entries) {
+                if (!e.unread || !read.contains(e.path))
+                    continue;
+                if (overtaken())
+                    break;
+                readSizeAndDate(e);
+            }
+            return listing;
         }
-        auto entries = isPluginView(path) ? listItems(items, query)
-                                          : list(path, showHidden, sort, &error, overtaken, locale, false);
-        for (Entry &e : entries) {
-            if (!e.unread || !read.contains(e.path))
-                continue;
-            if (overtaken())
-                break;
-            readSizeAndDate(e);
-        }
-        return qMakePair(entries, error);
+        QMutexLocker hold(&search->lock);
+        if (overtaken())
+            return listing;
+        listing.matches = int(search->index.answer(query));
+        // Best first, a window at a time; another order puts the best
+        // matches in it instead.
+        listing.entries = search->index.entries(search->index.rows(0, sort == "name" ? SearchWindow : SortedMatches), overtaken);
+        if (sort != "name")
+            sortEntries(listing.entries, sort, locale);
+        return listing;
+    }));
+}
+
+bool FolderModel::canFetchMore(const QModelIndex &parent) const {
+    return !parent.isValid() && m_search && m_search->landed && !m_loading && !m_fetching && m_sort == "name"
+        && m_entries.size() < m_matches;
+}
+
+// The views ask as they scroll near the end of what's shown.
+void FolderModel::fetchMore(const QModelIndex &parent) {
+    if (!canFetchMore(parent))
+        return;
+    m_fetching = true;
+    const auto search = m_search;
+    const qsizetype from = m_entries.size();
+    const quint64 generation = m_generation;
+    const auto latest = m_latest;
+    auto *watcher = new QFutureWatcher<QVector<Entry>>(this);
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, from] {
+        watcher->deleteLater();
+        m_fetching = false;
+        const QVector<Entry> more = watcher->result();
+        if (generation != m_generation || from != m_entries.size() || more.isEmpty())
+            return;
+        beginInsertRows({}, from, from + more.size() - 1);
+        m_entries += more;
+        endInsertRows();
+        emit countChanged();
+        countFolders(generation);
+    });
+    watcher->setFuture(QtConcurrent::run([search, from, latest, generation] {
+        const auto overtaken = [&] { return *latest != generation; };
+        QMutexLocker hold(&search->lock);
+        return overtaken() ? QVector<Entry>() : search->index.entries(search->index.rows(from, SearchWindow), overtaken);
     }));
 }
 

@@ -1387,6 +1387,70 @@ private slots:
         QCOMPARE(model.searchIndex()->counts.walks, 1);
     }
 
+    void searchListsTheBestMatchesFirst()
+    {
+        // The name itself first, however deep; then names that start with
+        // it, then a word that does, then its letters in order. A folder
+        // goes before a file that matches as well, and a shorter path first.
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("deep/down/frame");
+        QDir(dir.path()).mkpath("src/frame_old");
+        write(dir.filePath("for_a_meeting.txt"), "x");
+        write(dir.filePath("src/render_frame.rs"), "x");
+        write(dir.filePath("frame_new.txt"), "x");
+        write(dir.filePath("Frame notes.txt"), "x");
+        write(dir.filePath("frog.txt"), "x");
+        SearchIndex index;
+        QVERIFY(index.walk(dir.path(), false));
+        QCOMPARE(index.answer("frame"), 6);
+        QStringList order;
+        for (quint32 row : index.rows(0, 10))
+            order << QString::fromUtf8(index.path(row));
+        QCOMPARE(order, QStringList({"deep/down/frame", "src/frame_old", "frame_new.txt", "Frame notes.txt",
+                                     "src/render_frame.rs", "for_a_meeting.txt"}));
+        // Each name is matched once, and a longer query only among these.
+        const qsizetype names = index.counts.names;
+        QCOMPARE(index.answer("framen"), 3);
+        QCOMPARE(index.counts.names, names + 6);
+    }
+
+    void searchShowsItsMatchesAWindowAtATime()
+    {
+        // The first matches show at once and the rest as the view scrolls,
+        // each looked at only when it's shown; nothing is cut off.
+        QTemporaryDir dir;
+        for (int i = 0; i < 1100; ++i)
+            write(dir.filePath(QString("match%1.txt").arg(i)), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.matches(), -1);
+        model.setQuery("match");
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.matches(), 1100);
+        QCOMPARE(model.count(), 350);
+        QCOMPARE(model.get(0).value("name").toString(), QString("match0.txt"));
+        QCOMPARE(model.get(349).value("name").toString(), QString("match349.txt"));
+        const auto index = model.searchIndex();
+        QCOMPARE(index->counts.stats, index->counts.opens + 350);
+        for (int shown : {700, 1050, 1100}) {
+            QVERIFY(model.canFetchMore({}));
+            model.fetchMore({});
+            QTRY_COMPARE(model.count(), shown);
+        }
+        QVERIFY(!model.canFetchMore({}));
+        QCOMPARE(model.get(1099).value("name").toString(), QString("match1099.txt"));
+        QCOMPARE(index->counts.stats, index->counts.opens + 1100);
+        // Another order puts the best matches in it, as many as ever.
+        model.setSortMode("size");
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 1000);
+        QVERIFY(!model.canFetchMore({}));
+        model.setSortMode("name");
+        QVERIFY(loaded.wait(3000));
+    }
+
     void folderModelSwapsFoldersWithoutAnEmptyFrame()
     {
         QTemporaryDir a, b;

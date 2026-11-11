@@ -34,6 +34,8 @@ class FolderModel : public QAbstractListModel {
     Q_PROPERTY(QString query READ query WRITE setQuery NOTIFY queryChanged)
     // The items a plugin's view lists, as Plugins::views gives them.
     Q_PROPERTY(QVariantList items READ items WRITE setItems NOTIFY itemsChanged)
+    // How many match the query, shown or not; -1 until a search has answered.
+    Q_PROPERTY(int matches READ matches NOTIFY matchesChanged)
 
 public:
     enum Role {
@@ -76,6 +78,8 @@ public:
 
     int rowCount(const QModelIndex &parent = {}) const override;
     QVariant data(const QModelIndex &index, int role) const override;
+    bool canFetchMore(const QModelIndex &parent) const override;
+    void fetchMore(const QModelIndex &parent) override;
     QHash<int, QByteArray> roleNames() const override;
 
     QString path() const { return m_path; }
@@ -90,6 +94,7 @@ public:
     void setQuery(const QString &query);
     QVariantList items() const { return m_items; }
     void setItems(const QVariantList &items);
+    int matches() const { return m_matches; }
 
     void setPath(const QString &path);
     Q_INVOKABLE void reload();
@@ -151,9 +156,9 @@ public:
     // Recents and plugins' views: lists of their own, not folders.
     static bool isView(const QString &path) { return path == recentPath() || isPluginView(path); }
     static QString kindForMime(const QString &mime);
-    // Everything under `root` whose name contains `query` (ignoring case),
-    // named by its path from `root`. Stops at `limit` matches, at other
-    // filesystems and at symlinks, and as soon as `stop` returns true.
+    // The best `limit` matches for `query` under `root` (see SearchIndex),
+    // named by their path from `root`. Stops at other filesystems and at
+    // symlinks, and as soon as `stop` returns true.
     static QVector<Entry> search(const QString &root, const QString &query, bool showHidden, const QString &sort,
                                  const std::function<bool()> &stop = {}, int limit = 1000,
                                  const QLocale &locale = QLocale());
@@ -169,6 +174,7 @@ signals:
     void sortModeChanged();
     void queryChanged();
     void itemsChanged();
+    void matchesChanged();
     void selectionChanged();
     void loaded();
 
@@ -204,6 +210,8 @@ private:
     QString m_sort = "name";
     QString m_query;
     QVariantList m_items;
+    int m_matches = -1;
+    bool m_fetching = false;
     quint64 m_generation = 0;
     // The newest listing's generation, shared with the background listing,
     // search and folder counts, so work that's been overtaken (more typing,
