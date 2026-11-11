@@ -426,6 +426,18 @@ static QString binWith(const QString &folder, const QHash<QString, QByteArray> &
     return folder;
 }
 
+// Runs the event loop as Folio's runs once its last window has closed: it
+// ends as soon as nothing holds the application, or fails after ten seconds.
+static int lastWindowClosed()
+{
+    QTimer::singleShot(0, qApp, [] { QEventLoopLocker lastWindow; });
+    QTimer failsafe;
+    failsafe.setSingleShot(true);
+    QObject::connect(&failsafe, &QTimer::timeout, qApp, [] { QCoreApplication::exit(1); });
+    failsafe.start(10000);
+    return QCoreApplication::exec();
+}
+
 // Puts PATH at `path` for as long as the returned guard does.
 [[nodiscard]] static auto pathAt(const QString &path)
 {
@@ -1806,18 +1818,33 @@ private slots:
         });
         QVERIFY(QTest::qWaitFor([&] { return (writer = open(pipe.constData(), O_WRONLY | O_NONBLOCK)) >= 0; }));
 
-        // The last window closing lets go of the application, as a locker
-        // does when it goes; the copy is done once its writer closes.
         QObject scope;
-        QTimer::singleShot(0, &scope, [] { QEventLoopLocker lastWindow; });
         QTimer::singleShot(300, &scope, [&] { close(std::exchange(writer, -1)); });
-        QTimer failsafe;
-        failsafe.setSingleShot(true);
-        connect(&failsafe, &QTimer::timeout, qApp, [] { QCoreApplication::exit(1); });
-        failsafe.start(10000);
-        QCOMPARE(QCoreApplication::exec(), 0);
+        QCOMPARE(lastWindowClosed(), 0);
         QVERIFY(ops.busy().isEmpty());
         QVERIFY(QFileInfo::exists(to.filePath("pipe")));
+    }
+
+    void fileOpsKeepFolioRunningUntilAHelperIsDone()
+    {
+        // Compressing runs bsdtar, which a closed last window waits for too,
+        // and one that can't start doesn't keep Folio running.
+        if (QStandardPaths::findExecutable("bsdtar").isEmpty())
+            QSKIP("Compressing needs bsdtar.");
+        QTemporaryDir dir;
+        write(dir.filePath("x.txt"), "x");
+        FileOps ops;
+        ops.compress({dir.filePath("x.txt")});
+        QVERIFY(!ops.busy().isEmpty());
+        QCOMPARE(lastWindowClosed(), 0);
+        QVERIFY(ops.busy().isEmpty());
+        QVERIFY(QFileInfo::exists(dir.filePath("x.txt.zip")));
+
+        QTemporaryDir empty;
+        const auto path = pathAt(empty.path());
+        ops.compress({dir.filePath("x.txt")});
+        QCOMPARE(lastWindowClosed(), 0);
+        QVERIFY(ops.busy().isEmpty());
     }
 
     void fileOpsCancelledMoveAcrossDrivesKeepsOriginals()
