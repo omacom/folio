@@ -88,6 +88,8 @@ FocusScope {
     readonly property bool inView: backend.path.startsWith("plugin:")
     readonly property bool fileKeys: keys && !inView
     Binding { target: backend.folder; property: "items"; value: (plugins.views[backend.path] || {}).items || [] }
+    // The bands showing above the files, which push the view down.
+    readonly property int bandsHeight: (banner.visible ? banner.height : 0) + (trashBand.visible ? trashBand.height : 0)
     function deleteSelected() {
         const paths = pane.selectedPaths()
         if (pane.inTrash)
@@ -346,6 +348,7 @@ FocusScope {
         }
         // Problems and slow work are said in the window, not swallowed.
         Rectangle {
+            id: banner
             Layout.fillWidth: true
             implicitHeight: 40
             visible: bannerText.text.length > 0
@@ -382,6 +385,7 @@ FocusScope {
 
         // The trash offers one thing: emptying it.
         Rectangle {
+            id: trashBand
             Layout.fillWidth: true
             implicitHeight: 48
             visible: pane.inTrash && backend.folder.count > 0
@@ -425,8 +429,8 @@ FocusScope {
                 items: view.item
             }
         }
-        Component { id: gridView; FolderGrid { zoom: pane.zoom; inactive: pane.keysElsewhere; onZoomRequested: (step) => pane.zoomBy(step) } }
-        Component { id: listView; FolderList { inactive: pane.keysElsewhere } }
+        Component { id: gridView; FolderGrid { zoom: pane.zoom; inactive: pane.keysElsewhere; captionOffset: -pane.bandsHeight / 2; onZoomRequested: (step) => pane.zoomBy(step) } }
+        Component { id: listView; FolderList { inactive: pane.keysElsewhere; captionOffset: -pane.bandsHeight / 2 } }
         Component { id: columnsView; FolderColumns { inactive: pane.keysElsewhere } }
     }
 

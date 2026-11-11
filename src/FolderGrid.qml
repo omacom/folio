@@ -7,6 +7,8 @@ GridView {
 
     // In a pane the keys don't go to: the selection is drawn without the accent.
     property bool inactive: false
+    // Keeps the empty caption on the pane's middle line, level with the details pane's, while bands push the view down.
+    property real captionOffset: 0
 
     function select(row, keep) { selecting.select(row, keep) }
     // A click on empty space lets go of the cursor; the pane then keeps it
@@ -105,6 +107,7 @@ GridView {
 
     Text {
         anchors.centerIn: parent
+        anchors.verticalCenterOffset: grid.captionOffset
         visible: grid.count === 0 && !backend.folder.loading && backend.folder.error.length === 0
         text: backend.folder.query ? qsTr("Nothing matches “%1”").arg(backend.folder.query)
             : plugins.views[backend.path] ? plugins.views[backend.path].empty : qsTr("This folder is empty")
