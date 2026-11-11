@@ -34,7 +34,7 @@ Files (`folio`) is Omarchy's file manager. It's one quiet window that follows yo
 
 ## Building
 
-Files is C++ and Qt Quick. `bin/build` compiles it into `build/folio`, and `bin/test` runs the tests. Omarchy installs it from [omarchy-pkgs](https://github.com/omacom/omarchy-pkgs).
+Files is C++ and Qt Quick. `bin/build` compiles it into `build/folio`, `bin/test` runs the tests, and `bin/install` builds and installs the Arch package from the checkout. Omarchy installs it from [omarchy-pkgs](https://github.com/omacom/omarchy-pkgs).
 
 ## License
 

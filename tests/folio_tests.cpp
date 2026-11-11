@@ -1340,7 +1340,7 @@ private slots:
         const QList<QUrl> install{QUrl::fromLocalFile(home.filePath("project/install"))};
         FileOps ops;
         QSignalSpy done(&ops, &FileOps::done);
-        for (const QString &folder : {"project/install", "project", "shortcut"}) {
+        for (const QString folder : {"project/install", "project", "shortcut"}) {
             QVERIFY2(!ops.canDrop(install, home.filePath(folder)), qPrintable(folder));
             ops.dropInto(install, home.filePath(folder));
         }
@@ -1361,12 +1361,12 @@ private slots:
         QTemporaryDir home;
         QDir(home.path()).mkpath("project/install");
         FileOps ops;
-        QQmlPropertyMap theme;
-        theme.insert("accent", QColor(Qt::blue));
-        theme.insert("radius", 0);
+        const std::unique_ptr<QQmlPropertyMap> theme(QQmlPropertyMap::create());
+        theme->insert("accent", QColor(Qt::blue));
+        theme->insert("radius", 0);
         QQmlEngine engine;
         engine.rootContext()->setContextProperty("fileOps", &ops);
-        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("theme", theme.get());
         engine.rootContext()->setContextProperty("home", home.path());
         QQmlComponent component(&engine);
         component.setData("import QtQuick\n"
@@ -1391,7 +1391,7 @@ private slots:
         QMimeData data;
         data.setUrls({QUrl::fromLocalFile(home.filePath("project/install"))});
         const auto dropAt = [&](QPointF at) {
-            QDragEnterEvent enter(at.toPoint(), Qt::MoveAction, &data, Qt::LeftButton, Qt::NoModifier);
+            QDragEnterEvent enter(at, Qt::MoveAction, &data, Qt::LeftButton, Qt::NoModifier);
             QGuiApplication::sendEvent(window, &enter);
             QDropEvent drop(at, Qt::MoveAction, &data, Qt::LeftButton, Qt::NoModifier);
             QGuiApplication::sendEvent(window, &drop);
@@ -4846,7 +4846,7 @@ private slots:
 
         QMetaObject::invokeMethod(window, "ask");
         QCOMPARE(focused(), QString("Empty"));
-        for (const QString &next : {"Cancel", "Empty", "Cancel"}) {
+        for (const QString next : {"Cancel", "Empty", "Cancel"}) {
             QTest::keyClick(window, Qt::Key_Tab);
             QCOMPARE(focused(), next);
         }
