@@ -39,8 +39,10 @@ ApplicationWindow {
     // are drawn at the size asked for above (or the compositor's first
     // guess), then the real size arrives and everything moves. The contents
     // stay hidden until that size is in, or until it's clear none is coming,
-    // so they first appear where they'll stay.
+    // so they first appear where they'll stay. Until then they take no
+    // clicks or keys either, so nothing acts on files no one can see yet.
     property bool settled: false
+    onSettledChanged: activePane.focusView()
     property bool drawn: false
     onFrameSwapped: if (!drawn) { drawn = true; settleTimer.start() }
     onWidthChanged: if (drawn) settled = true
@@ -130,6 +132,7 @@ ApplicationWindow {
 
     Item {
         anchors.fill: parent
+        enabled: win.settled
         opacity: win.settled ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: 100 } }
 
