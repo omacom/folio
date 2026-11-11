@@ -1,6 +1,7 @@
 name: Sync translations
 
-# Keeps the 49 translations in step with src/i18n/en.json without ever
+# Keeps the 49 translations in step with src/i18n/en.json, and each bundled
+# plugin's plugins/<id>/i18n/en.json, without ever
 # blocking English, the way Omarchy's i18n-sync workflow does. One
 # credential-less Muse runner per pending language translates; a
 # credential-less collect job takes only each language's own catalog,
@@ -17,6 +18,7 @@ on:
     branches: [main]
     paths:
       - 'src/i18n/en.json'
+      - 'plugins/*/i18n/en.json'
   workflow_dispatch:
   schedule:
     # Retry unfinished translations.
@@ -102,7 +104,11 @@ jobs:
         if: always()
         with:
           name: translations-${{ matrix.locale }}
-          path: src/i18n/${{ matrix.locale }}.json
+          # Both folders, so the artifact keeps the paths from the
+          # repository's top that collect looks for.
+          path: |
+            src/i18n/${{ matrix.locale }}.json
+            plugins/*/i18n/${{ matrix.locale }}.json
           retention-days: 3
           if-no-files-found: error
 
@@ -137,12 +143,15 @@ jobs:
               qt6-base qt6-declarative qt6-imageformats qt6-multimedia qt6-svg qt6-wayland >/dev/null
             cmake -S . -B build -DCMAKE_BUILD_TYPE=Release >/dev/null
             cmake --build build --target folio_tests -j"$(nproc)"
-            QT_QPA_PLATFORM=offscreen build/folio_tests catalogsMatchTheEnglishOne everyCatalogIsCompiledIn
+            QT_QPA_PLATFORM=offscreen build/folio_tests catalogsMatchTheEnglishOne everyCatalogIsCompiledIn bundledPluginsCatalogTheirText
           '
       - name: Package the collected translations
         run: |
           mkdir -p "$RUNNER_TEMP/collected"
-          git diff --binary --no-renames -- src/i18n > "$RUNNER_TEMP/collected/translations.patch"
+          # A plugin's first catalog in a language is a new file, which the
+          # diff only shows once git knows it's coming.
+          git add --intent-to-add -- 'plugins/*/i18n/*.json'
+          git diff --binary --no-renames -- src/i18n plugins > "$RUNNER_TEMP/collected/translations.patch"
       - uses: actions/upload-artifact@v4
         with:
           name: collected
@@ -183,9 +192,10 @@ jobs:
             echo "No translations to land."
             exit 0
           fi
-          # Language catalogs only: never en.json, nothing outside src/i18n.
+          # Language catalogs only: never an en.json, nothing outside
+          # src/i18n and the plugins' i18n folders.
           while IFS=$'\t' read -r -d '' added deleted path; do
-            if ! [[ "$path" =~ ^src/i18n/[a-zA-Z-]+\.json$ ]] || [ "$path" = src/i18n/en.json ]; then
+            if ! [[ "$path" =~ ^(src|plugins/[a-z0-9-]+)/i18n/[a-zA-Z-]+\.json$ ]] || [[ "$path" == */en.json ]]; then
               echo "collected translations contain a disallowed path: $path" >&2
               exit 1
             fi

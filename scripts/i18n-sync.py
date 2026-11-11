@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Keep Folio's 49 translations in step with its English catalog.
+"""Keep Folio's 49 translations in step with its English catalogs: Folio's
+own (src/i18n) and each bundled plugin's (plugins/<id>/i18n).
 
 Subcommands:
   pending    Print what each language still needs, as JSON.
   translate  Fill one language's pending strings with Muse. Muse only
              returns text; this script validates every value and writes
-             src/i18n/<code>.json itself.
-  collect    Take each language's catalog from its translate runner,
-             re-validate it against en.json, and write it in place.
+             each <code>.json itself.
+  collect    Take each language's catalogs from its translate runner,
+             re-validate them against their en.json, and write them in place.
 
 A catalog maps English source text to its translation, so a changed
 English string is a new key: a string is pending when its key is missing
@@ -26,7 +27,10 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-I18N = ROOT / "src/i18n"
+# Every folder of catalogs: Folio's, then each bundled plugin's. A language
+# is translated in one pass over all of them, so a term reads the same in
+# Folio and its plugins, and each folder gets back only its own strings.
+CATALOGS = [ROOT / "src/i18n", *sorted(path.parent for path in ROOT.glob("plugins/*/i18n/en.json"))]
 MODEL = os.environ.get("MUSE_MODEL", "muse-spark-1.3-contributor")
 MUSE = os.environ.get("MUSE_BIN", "muse")
 TIMEOUT = 600
@@ -121,6 +125,23 @@ def checked(code, catalog, english):
             if key in english and valid(english[key], value, categories)}
 
 
+def english():
+    """Every English string, from all the catalogs."""
+    return {key: value for folder in CATALOGS for key, value in read_json(folder / "en.json").items()}
+
+
+def translations(code):
+    """A language's translations, from all its catalogs."""
+    return {key: value for folder in CATALOGS for key, value in read_json(folder / f"{code}.json", {}).items()}
+
+
+def write_translations(code, catalog):
+    """Writes each folder's <code>.json with the valid entries for its own
+    English strings."""
+    for folder in CATALOGS:
+        write_catalog(folder / f"{code}.json", checked(code, catalog, read_json(folder / "en.json")))
+
+
 def language(code):
     if code not in LANGUAGES:
         raise SyncError(f"not one of Omarchy's language codes: {code}")
@@ -128,13 +149,17 @@ def language(code):
 
 
 def cmd_pending(args):
-    english = read_json(I18N / "en.json")
+    source = english()
     jobs = {}
     for code in [language(args.locale)] if args.locale else LANGUAGES:
-        catalog = read_json(I18N / f"{code}.json", {})
-        good = checked(code, catalog, english)
-        pending = [key for key in english if key not in good]
-        stale = [key for key in catalog if key not in good]
+        catalog = translations(code)
+        good = checked(code, catalog, source)
+        pending = [key for key in source if key not in good]
+        # A folder's entries for strings it doesn't have, even ones another
+        # folder has, are stale there.
+        stale = [key for folder in CATALOGS
+                 for key in read_json(folder / f"{code}.json", {})
+                 if key not in checked(code, catalog, read_json(folder / "en.json"))]
         if pending or stale:
             jobs[code] = {"pending": pending, "stale": stale}
     print(json.dumps({"locales": sorted(jobs), "jobs": jobs}, ensure_ascii=False, indent=2))
@@ -198,16 +223,15 @@ Return ONLY a JSON object mapping each input key to its translation, with exactl
 
 def cmd_translate(args):
     code = language(args.locale)
-    english = read_json(I18N / "en.json")
-    path = I18N / f"{code}.json"
-    catalog = checked(code, read_json(path, {}), english)
-    pending = [key for key in english if key not in catalog]
-    write_catalog(path, catalog)
+    source = english()
+    catalog = checked(code, translations(code), source)
+    pending = [key for key in source if key not in catalog]
+    write_translations(code, catalog)
     failed = 0
     # One batch at a time, each seeing what the earlier ones chose, so a
     # term like "Trash" comes out the same throughout.
     for start in range(0, len(pending), BATCH):
-        batch = {key: english[key] for key in pending[start:start + BATCH]}
+        batch = {key: source[key] for key in pending[start:start + BATCH]}
         reference = {key: catalog[key] for key in list(catalog)[-REFERENCE:]}
         try:
             translated, rejected = translate_batch(batch, code, args.model, reference)
@@ -217,32 +241,36 @@ def cmd_translate(args):
             continue
         failed += rejected
         catalog.update(translated)
-        write_catalog(path, catalog)
+        write_translations(code, catalog)
     print(f"{code}: {len(pending) - failed} translated, {failed} still pending")
     return 1 if failed else 0
 
 
 def cmd_collect(args):
-    """Takes <directory>/translations-<code>/<code>.json for each expected
-    language and nothing else, and merges its current, valid entries into
-    src/i18n/<code>.json."""
-    english = read_json(I18N / "en.json")
+    """Takes <directory>/translations-<code>/<folder>/<code>.json, for each
+    expected language and each catalog folder, and nothing else, and merges
+    its current, valid entries into that folder's <code>.json."""
     directory = Path(args.directory)
     collected = []
     for code in filter(None, args.expected.split(",")):
-        source = directory / f"translations-{language(code)}" / f"{code}.json"
-        if not source.is_file():
-            continue
-        try:
-            incoming = json.loads(source.read_text(encoding="utf-8"))
-        except ValueError:
-            print(f"{code}: result is not JSON; left pending", file=sys.stderr)
-            continue
-        if not isinstance(incoming, dict):
-            continue
-        path = I18N / f"{code}.json"
-        write_catalog(path, {**checked(code, read_json(path, {}), english), **checked(code, incoming, english)})
-        collected.append(code)
+        found = False
+        for folder in CATALOGS:
+            source = directory / f"translations-{language(code)}" / folder.relative_to(ROOT) / f"{code}.json"
+            if not source.is_file():
+                continue
+            try:
+                incoming = json.loads(source.read_text(encoding="utf-8"))
+            except ValueError:
+                print(f"{code}: {source.name} in {folder.relative_to(ROOT)} is not JSON; left pending", file=sys.stderr)
+                continue
+            if not isinstance(incoming, dict):
+                continue
+            own = read_json(folder / "en.json")
+            path = folder / f"{code}.json"
+            write_catalog(path, {**checked(code, read_json(path, {}), own), **checked(code, incoming, own)})
+            found = True
+        if found:
+            collected.append(code)
     print(f"Collected {len(collected)} languages: {', '.join(collected) or 'none'}")
 
 
