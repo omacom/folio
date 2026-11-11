@@ -468,7 +468,7 @@ void FolderModel::reload() {
             setEntries(entries);
         if (!m_selected.isEmpty()) {
             QSet<QString> still;
-            for (const Entry &e : m_entries)
+            for (const Entry &e : std::as_const(m_entries))
                 if (m_selected.contains(e.path))
                     still.insert(e.path);
             if (still != m_selected) {
@@ -498,8 +498,8 @@ void FolderModel::countFolders(quint64 generation) {
     // counting was overtaken by a re-read (and so remembered without them).
     QVector<QPair<int, Entry>> folders;
     for (int row = 0; row < m_entries.size(); ++row)
-        if (m_entries[row].isDir && m_entries[row].itemCount < 0)
-            folders.push_back({row, m_entries[row]});
+        if (m_entries.at(row).isDir && m_entries.at(row).itemCount < 0)
+            folders.push_back({row, m_entries.at(row)});
     if (folders.isEmpty())
         return;
 
@@ -511,7 +511,7 @@ void FolderModel::countFolders(quint64 generation) {
             return;
         bool updated = false;
         for (const auto &[row, summary] : watcher->result()) {
-            if (row >= m_entries.size() || m_entries[row].path != summary.path)
+            if (row >= m_entries.size() || m_entries.at(row).path != summary.path)
                 continue;
             m_entries[row].itemCount = summary.itemCount;
             const QModelIndex at = index(row);
@@ -566,14 +566,14 @@ void FolderModel::setSelected(const QSet<QString> &paths) {
 }
 
 void FolderModel::selectOnly(int row) {
-    setSelected(row >= 0 && row < m_entries.size() ? QSet<QString>{m_entries[row].path} : QSet<QString>{});
+    setSelected(row >= 0 && row < m_entries.size() ? QSet<QString>{m_entries.at(row).path} : QSet<QString>{});
 }
 
 void FolderModel::toggleSelected(int row) {
     if (row < 0 || row >= m_entries.size())
         return;
     QSet<QString> paths = m_selected;
-    const QString path = m_entries[row].path;
+    const QString path = m_entries.at(row).path;
     if (!paths.remove(path))
         paths.insert(path);
     setSelected(paths);
@@ -586,7 +586,7 @@ void FolderModel::selectRange(int from, int to, bool add) {
     to = qBound(0, to, int(m_entries.size()) - 1);
     QSet<QString> paths = add ? m_selected : QSet<QString>{};
     for (int row = qMin(from, to); row <= qMax(from, to); ++row)
-        paths.insert(m_entries[row].path);
+        paths.insert(m_entries.at(row).path);
     setSelected(paths);
 }
 
@@ -594,13 +594,13 @@ void FolderModel::selectRows(const QList<int> &rows) {
     QSet<QString> paths;
     for (int row : rows)
         if (row >= 0 && row < m_entries.size())
-            paths.insert(m_entries[row].path);
+            paths.insert(m_entries.at(row).path);
     setSelected(paths);
 }
 
 void FolderModel::selectAll() {
     QSet<QString> paths;
-    for (const Entry &e : m_entries)
+    for (const Entry &e : std::as_const(m_entries))
         paths.insert(e.path);
     setSelected(paths);
 }
