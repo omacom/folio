@@ -1,5 +1,6 @@
 #include <QDir>
 #include <QMimeData>
+#include <malloc.h>
 #include <memory>
 #include <QFile>
 #include <QImage>
@@ -288,6 +289,36 @@ private slots:
         QCOMPARE(model.selectedCount(), 3);
         model.clearSelection();
         QCOMPARE(model.selectedCount(), 0);
+    }
+
+    void folderSelectsWithoutCopyingTheListing()
+    {
+        // Enough rows that a copy of the listing shows in the heap.
+        constexpr int files = 4000;
+        QTemporaryDir dir;
+        QDir(dir.path()).mkdir("sub");
+        write(dir.filePath("sub/a.jpg"), "x");
+        for (int i = 0; i < files; ++i)
+            write(dir.filePath(QString("f%1.txt").arg(i)), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        QSignalSpy summaries(&model, &QAbstractItemModel::dataChanged);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QVERIFY(!summaries.isEmpty() || summaries.wait(3000));
+        QCOMPARE(model.get(0).value("itemCount").toInt(), 1);
+
+        // The summarized listing is also the remembered one: selecting reads it and leaves it shared.
+        const auto heap = [] { const struct mallinfo2 m = mallinfo2(); return m.uordblks + m.hblkhd; };
+        const size_t before = heap();
+        model.selectAll();
+        QCOMPARE(model.selectedCount(), files + 1);
+        model.selectRows({1, 2});
+        model.toggleSelected(2);
+        model.selectRange(3, 5, true);
+        model.selectOnly(4);
+        QVERIFY2(heap() < before + files * sizeof(FolderModel::Entry) / 2, "selecting copied the listing");
+        QVERIFY(model.isSelected(4) && model.selectedCount() == 1);
     }
 
     void trashRestoresAndEmpties()
