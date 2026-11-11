@@ -1646,6 +1646,37 @@ void FileOps::newFolder(const QString &folder) {
     emit done(folder, name);
 }
 
+QString FileOps::newFile(const QString &folder) {
+    if (!canStart(Lane::Files)) {
+        emit failed(tr("Try again once the work under way is done."));
+        return {};
+    }
+    if (!QFileInfo(folder).isDir()) {
+        emit failed(tr("Files can't be made here."));
+        return {};
+    }
+    // Readable and writable by all, less the umask, as touch makes one.
+    constexpr mode_t newFileMode = 0666;
+    // O_EXCL never opens what's there, not even a link that leads nowhere, so a taken name goes on to the next.
+    QString name = tr("Untitled File");
+    int fd;
+    for (int n = 2; (fd = ::open(QFile::encodeName(QDir(folder).filePath(name)).constData(),
+                                 O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, newFileMode)) < 0
+                    && errno == EEXIST;
+         ++n)
+        name = tr("Untitled File %1").arg(n);
+    if (fd < 0) {
+        emit failed(tr("Couldn't create a file here."));
+        return {};
+    }
+    ::close(fd);
+    Step made = identified({true, QDir(folder).filePath(name), {}});
+    made.empty = true;
+    remember({MakingFile, name, 1, {made}});
+    emit done(folder, name);
+    return QDir(folder).filePath(name);
+}
+
 // Undo and redo.
 
 // Adds a change to the undos or redos, letting go of the oldest past the
@@ -1699,6 +1730,7 @@ QString FileOps::undoName() const {
     case Copying: return tr("Undo Copy");
     case Duplicating: return tr("Undo Duplicate");
     case MakingFolder: return tr("Undo New Folder");
+    case MakingFile: return tr("Undo New File");
     case Compressing: return tr("Undo Compress");
     case Extracting: return tr("Undo Extract");
     case Trashing: return tr("Undo Delete");
@@ -1720,6 +1752,7 @@ static QString didMessage(const FileOps::Change &change, bool undoing) {
     case FileOps::Duplicating:
         return undoing ? FileOps::tr("Undid duplicating %1.").arg(name) : FileOps::tr("Redid duplicating %1.").arg(name);
     case FileOps::MakingFolder:
+    case FileOps::MakingFile:
         return undoing ? FileOps::tr("Undid making %1.").arg(name) : FileOps::tr("Redid making %1.").arg(name);
     case FileOps::Compressing:
         return undoing ? FileOps::tr("Undid compressing into %1.").arg(name)
@@ -1760,6 +1793,10 @@ static QString unchanged(const QList<FileOps::Step> &steps, bool undoing) {
             return undoing ? FileOps::tr("Can't undo that: %1 isn't where it was left.").arg(name)
                            : FileOps::tr("Can't redo that: %1 isn't where it was left.").arg(name);
         }
+        struct stat made;
+        if (step->empty && step->other.isEmpty() && !after.contains(now)
+            && (::lstat(QFile::encodeName(now).constData(), &made) != 0 || made.st_size != 0))
+            return FileOps::tr("Can't undo that: %1 has been written to since it was made.").arg(QFileInfo(now).fileName());
         if (!next.isEmpty() && there(next)) {
             const QFileInfo blocked(next);
             const QString folder = QFileInfo(blocked.absolutePath()).fileName();

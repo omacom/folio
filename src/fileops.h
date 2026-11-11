@@ -74,9 +74,11 @@ public:
         // What an undo or redo stopped partway had moved of an item, put
         // back (`back`) before the item goes again, and never redone.
         bool back = false;
+        // A file made empty (`empty`), which undo takes only while it still is.
+        bool empty = false;
     };
     // What undo names: the kind of change, and the item or how many.
-    enum Kind { Renaming, Moving, Copying, Duplicating, MakingFolder, Compressing, Extracting, Trashing };
+    enum Kind { Renaming, Moving, Copying, Duplicating, MakingFolder, MakingFile, Compressing, Extracting, Trashing };
     struct Change {
         Kind kind;
         QString name;
@@ -91,8 +93,7 @@ public:
     Q_INVOKABLE static bool shiftHeld();
     Q_INVOKABLE void copy(const QStringList &paths);
     Q_INVOKABLE void cut(const QStringList &paths);
-    // The paths as text, one line each: as they are, or `as` "name", "stem"
-    // (the name without its extension), "uri" or "quoted" (for a shell).
+    // The paths as text, one line each, `as` "path", "name", "stem" (no extension), "uri" or "quoted" (for a shell).
     Q_INVOKABLE void yank(const QStringList &paths, const QString &as = QStringLiteral("path"));
     Q_INVOKABLE void paste(const QString &folder);
     // Files dropped on a folder: moved when they're on the same drive,
@@ -143,6 +144,8 @@ public:
     Q_INVOKABLE static int extensionStart(const QString &name, bool isDir);
     // Makes "New Folder" (or "New Folder 2"...); done() names it.
     Q_INVOKABLE void newFolder(const QString &folder);
+    // Makes an empty "Untitled File" (or "Untitled File 2"...) over nothing, names it in done(), and returns its path.
+    Q_INVOKABLE QString newFile(const QString &folder);
 
     // The apps that can open a file, from the desktop's MIME database:
     // {id, name, isDefault}, the default first.

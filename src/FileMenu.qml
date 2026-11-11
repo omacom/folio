@@ -4,7 +4,7 @@ import QtQuick
 // Preview, Rename, Duplicate, Copy, Cut, Paste Into, Copy as Text, Compress,
 // Extract (for archives), Burn (for disk images), plugins' own actions for
 // it, Share (whatever plugins offer for it), Pin, Terminal, Trash. On empty
-// space: Undo, Paste, New Folder, Copy as Text, Terminal, hidden files. In the
+// space: Undo, Paste, New Folder, New File, Copy as Text, Terminal, hidden files. In the
 // trash: Restore, Empty Trash and Delete…, without the entries that change
 // files or plugins' actions. On a plugin's item: Open, and nothing for files. Entries show their
 // keys, so the menu also teaches the shortcuts.
@@ -204,6 +204,16 @@ FolioMenu {
         text: qsTr("New Folder")
         keys: "Ctrl+Shift+N"
         onTriggered: fileOps.newFolder(fileMenu.folder)
+    }
+    // Named as it's made: the rename dialog opens on it.
+    FolioMenuItem {
+        shown: !fileMenu.forItem && !fileMenu.trashView
+        text: qsTr("New File")
+        onTriggered: {
+            const made = fileOps.newFile(fileMenu.folder)
+            if (made)
+                fileMenu.renameRequested({ path: made, isDir: false })
+        }
     }
     MenuLine { shown: fileMenu.forFiles }
     // Archives are extracted, not compressed again.

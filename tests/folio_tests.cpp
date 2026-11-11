@@ -1499,6 +1499,44 @@ private slots:
         QCOMPARE(done.takeFirst().at(1).toString(), QString("Untitled Folder 2"));
     }
 
+    void newFileTakesNoNameAndUndoLeavesWhatsWritten()
+    {
+        // A new file never opens what's there, not even a link that leads nowhere, and undo takes it only while it's empty.
+        QTemporaryDir data, dir;
+        const auto restore = dataHomeAt(data.path());
+        FileOps::forgetHistory();
+        write(dir.filePath("Untitled File"), "kept");
+        QVERIFY(QFile::link(dir.filePath("gone"), dir.filePath("Untitled File 2")));
+        FileOps ops;
+        QSignalSpy done(&ops, &FileOps::done), failed(&ops, &FileOps::failed), notice(&ops, &FileOps::notice);
+        const QString made = ops.newFile(dir.path());
+        QCOMPARE(made, dir.filePath("Untitled File 3"));
+        QCOMPARE(done.takeFirst().at(1).toString(), QString("Untitled File 3"));
+        QCOMPARE(contents(dir.filePath("Untitled File")), QByteArray("kept"));
+        QVERIFY(!QFileInfo::exists(dir.filePath("gone")));
+        QCOMPARE(QFileInfo(made).size(), 0);
+        QCOMPARE(ops.undoName(), QString("Undo New File"));
+
+        write(made, "draft");
+        ops.undo();
+        QVERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.takeFirst().at(0).toString(), QString("Can't undo that: Untitled File 3 has been written to since it was made."));
+        QCOMPARE(contents(made), QByteArray("draft"));
+        write(made, "");
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QVERIFY(!QFileInfo::exists(made));
+        QCOMPARE(notice.last().first().toString(), QString("Undid making Untitled File 3."));
+
+        if (geteuid() != 0) {
+            QDir(dir.path()).mkdir("locked");
+            QVERIFY(QFile::setPermissions(dir.filePath("locked"), QFile::ReadOwner | QFile::ExeOwner));
+            QCOMPARE(ops.newFile(dir.filePath("locked")), QString());
+            QCOMPARE(failed.takeFirst().at(0).toString(), QString("Couldn't create a file here."));
+            QVERIFY(QFile::setPermissions(dir.filePath("locked"), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+        }
+    }
+
     void recentsReadGtkRecentFiles()
     {
         QTemporaryDir dir;
