@@ -2,6 +2,7 @@
 
 #include <QDateTime>
 #include <QObject>
+#include <QSet>
 #include <QStringList>
 #include <QUrl>
 #include <QVariantList>
@@ -24,6 +25,7 @@ class FileOps : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(bool canPaste READ canPaste NOTIFY clipboardChanged)
+    Q_PROPERTY(int cutCount READ cutCount NOTIFY clipboardChanged)
     Q_PROPERTY(QVariantMap clash READ clash NOTIFY clashChanged)
     Q_PROPERTY(QString undoName READ undoName NOTIFY historyChanged)
 
@@ -33,6 +35,9 @@ public:
 
     QString busy() const { return m_busy; }
     bool canPaste() const;
+    // How many items the clipboard holds cut, and whether `path` is one, which the views draw dimmer.
+    int cutCount() const { return int(m_cut.size()); }
+    Q_INVOKABLE bool isCut(const QString &path) const;
 
     // How far a piece of work has got, and whether it's been asked to stop:
     // the worker counts and checks, the UI thread shows and asks.
@@ -330,6 +335,8 @@ private:
                       const QString &stopped, const std::function<void(QProcess *, int)> &finished);
 
     QString m_busy;
+    // The clipboard's cut items, read once each time it changes.
+    QSet<QString> m_cut;
     std::shared_ptr<Job> m_job;
     // The lane this pane's work under way is counted in.
     std::optional<Lane> m_lane;

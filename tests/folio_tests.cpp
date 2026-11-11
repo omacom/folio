@@ -1099,6 +1099,89 @@ private slots:
         QCOMPARE(yanked({odd, folder}, "quoted").count('\n'), 2);
     }
 
+    void fileOpsForgetTheCutWhenTheClipboardMovesOn()
+    {
+        // Cut items stay cut, in every pane, until the paste lands or something else takes the clipboard.
+        QTemporaryDir from, to;
+        write(from.filePath("a.txt"), "a");
+        write(from.filePath("b.txt"), "b");
+        FileOps ops, other;
+        QSignalSpy done(&ops, &FileOps::done);
+        ops.cut({from.filePath("a.txt")});
+        QTRY_VERIFY(other.isCut(from.filePath("a.txt")));
+        QVERIFY(ops.isCut(from.filePath("a.txt")) && !ops.isCut(from.filePath("b.txt")));
+        ops.copy({from.filePath("a.txt")});
+        QTRY_COMPARE(ops.cutCount(), 0);
+        ops.cut({from.filePath("b.txt")});
+        QTRY_VERIFY(ops.isCut(from.filePath("b.txt")));
+        ops.cut({from.filePath("a.txt")});
+        QTRY_VERIFY(!ops.isCut(from.filePath("b.txt")));
+
+        QGuiApplication::clipboard()->setText("from another app");
+        QTRY_COMPARE(other.cutCount(), 0);
+        QTRY_COMPARE(ops.cutCount(), 0);
+        ops.cut({from.filePath("a.txt"), from.filePath("b.txt")});
+        QTRY_COMPARE(ops.cutCount(), 2);
+        QTRY_COMPARE(other.cutCount(), 2);
+        ops.paste(to.path());
+        QVERIFY(done.wait(3000));
+        QTRY_COMPARE(ops.cutCount(), 0);
+        QCOMPARE(other.cutCount(), 0);
+    }
+
+    void cutItemsDrawDimmerInEveryView()
+    {
+        QTemporaryDir home;
+        write(home.filePath("cut.txt"), "x");
+        write(home.filePath("kept.txt"), "x");
+        Backend backend(home.path());
+        backend.navigate(home.path());
+        QTRY_COMPARE(backend.folder()->rowCount(), 2);
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("plugins", QVariantMap{{"views", QVariantMap()}});
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window { width: 1000; height: 600; visible: true\n"
+                          "    property string view\n"
+                          "    Loader { id: loader; anchors.fill: parent; source: view + '.qml' }\n"
+                          "    function dim(name) {\n"
+                          "        const find = item => {\n"
+                          "            if (item instanceof Text && item.text === name) return item\n"
+                          "            for (const child of Array.from(item.children).concat(item.contentItem ? [item.contentItem] : [])) {\n"
+                          "                const found = find(child); if (found) return found }\n"
+                          "            return null }\n"
+                          "        const text = find(loader.item)\n"
+                          "        return text ? '' + text.color === '' + theme.secondaryForeground : 'not shown'\n"
+                          "    }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/CutViewsTest.qml"));
+        // The columns make a model for each folder on the way, as main() lets them.
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        const auto dim = [](QObject *window, const QString &name) {
+            QVariant result;
+            QMetaObject::invokeMethod(window, "dim", Q_RETURN_ARG(QVariant, result), Q_ARG(QVariant, name));
+            return result.toString();
+        };
+        // Drawn dimmer at once in each view, and bright again once a copy takes the clipboard.
+        fileOps.cut({home.filePath("cut.txt")});
+        std::vector<std::unique_ptr<QObject>> windows;
+        for (const char *view : {"FolderGrid", "FolderList", "FolderColumns"}) {
+            windows.emplace_back(component.createWithInitialProperties({{"view", view}}));
+            QVERIFY2(windows.back(), qPrintable(component.errorString()));
+            QTRY_COMPARE(dim(windows.back().get(), "cut.txt"), QString("true"));
+            QTRY_COMPARE(dim(windows.back().get(), "kept.txt"), QString("false"));
+        }
+        fileOps.copy({home.filePath("cut.txt")});
+        for (const auto &window : windows)
+            QTRY_COMPARE(dim(window.get(), "cut.txt"), QString("false"));
+    }
+
     void fileOpsCompressAcrossFolders()
     {
         // Search results and Recents can hold items from different folders:

@@ -52,8 +52,20 @@ static void tellEveryone() {
 }
 
 FileOps::FileOps(QObject *parent) : QObject(parent) {
-    if (auto *clipboard = QGuiApplication::clipboard())
-        connect(clipboard, &QClipboard::dataChanged, this, &FileOps::clipboardChanged);
+    if (auto *clipboard = QGuiApplication::clipboard()) {
+        const auto readCut = [this, clipboard] {
+            bool cut = false;
+            const QMimeData *data = clipboard->mimeData();
+            const QStringList paths = data && data->hasFormat("x-special/gnome-copied-files") ? pathsFrom(data, &cut) : QStringList();
+            m_cut.clear();
+            if (cut)
+                for (const QString &path : paths)
+                    m_cut.insert(QDir::cleanPath(path));
+            emit clipboardChanged();
+        };
+        readCut();
+        connect(clipboard, &QClipboard::dataChanged, this, readCut);
+    }
     s_everyone << this;
 }
 
@@ -142,6 +154,10 @@ QStringList FileOps::pathsFrom(const QMimeData *data, bool *cut) {
 bool FileOps::canPaste() const {
     const auto *clipboard = QGuiApplication::clipboard();
     return clipboard && !pathsFrom(clipboard->mimeData(), nullptr).isEmpty();
+}
+
+bool FileOps::isCut(const QString &path) const {
+    return m_cut.contains(QDir::cleanPath(path));
 }
 
 bool FileOps::shiftHeld() {
