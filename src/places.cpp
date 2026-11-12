@@ -5,6 +5,7 @@
 
 #include <QCollator>
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QSaveFile>
 #include <QUrl>
@@ -119,6 +120,11 @@ void released(GObject *source, GAsyncResult *result, gpointer data) {
 
 Places::Places(const QString &home, QObject *parent)
     : QObject(parent), m_home(home.isEmpty() ? QDir::homePath() : home), m_realHome(home.isEmpty()) {
+    m_trashSettle.setSingleShot(true);
+    m_trashSettle.setInterval(150);
+    connect(&m_trashSettle, &QTimer::timeout, this, &Places::refreshTrash);
+    connect(&m_trashWatcher, &QFileSystemWatcher::directoryChanged, &m_trashSettle, qOverload<>(&QTimer::start));
+
     // Drives get plugged in and folders come and go: a gentle poll keeps
     // the sidebar honest without any background service.
     m_systemDevice = QString::fromUtf8(QStorageInfo::root().device());
@@ -134,6 +140,8 @@ void Places::refresh() {
     refreshPlaces();
     refreshPinned();
     refreshDevices();
+    // A drive plugged in may bring a trash of its own.
+    refreshTrash();
     emit changed();
 }
 
@@ -180,6 +188,44 @@ void Places::refreshPlaces() {
     // them, so a language switch renames them at once.
     m_views = {QVariantMap{{"path", FolderModel::recentPath()}, {"icon", "recent"}},
                QVariantMap{{"path", QDir::cleanPath(FileOps::homeTrash() + "/files")}, {"icon", "trash"}}};
+}
+
+bool Places::anyTrashed(const QStringList &trashDirs) {
+    for (const QString &dir : trashDirs) {
+        QDirIterator items(dir + "/files", QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System);
+        if (items.hasNext())
+            return true;
+    }
+    return false;
+}
+
+void Places::refreshTrash() {
+    const QStringList dirs = FileOps::trashDirs();
+    // Each trash's files folder; and the trash itself, which sees files/
+    // made, or the whole trash removed and made again by something that
+    // empties it that way. With no home trash yet, where it will be made.
+    QStringList watch;
+    for (const QString &dir : dirs) {
+        for (const QString &path : {dir + "/files", dir})
+            if (QFileInfo(path).isDir())
+                watch << path;
+    }
+    const QString home = FileOps::homeTrash();
+    if (!QFileInfo(home).isDir() && QFileInfo(QFileInfo(home).absolutePath()).isDir())
+        watch << QFileInfo(home).absolutePath();
+    const QStringList watched = m_trashWatcher.directories();
+    for (const QString &path : watched)
+        if (!watch.contains(path))
+            m_trashWatcher.removePath(path);
+    for (const QString &path : watch)
+        if (!watched.contains(path))
+            m_trashWatcher.addPath(path);
+
+    const bool full = anyTrashed(dirs);
+    if (full != m_trashFull) {
+        m_trashFull = full;
+        emit trashChanged();
+    }
 }
 
 QString Places::bookmarksPath() const {

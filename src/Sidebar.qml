@@ -204,14 +204,35 @@ Rectangle {
                 drop.accept(Qt.MoveAction)
             }
         }
-        contentItem: RowLayout {
-            spacing: 14
+        readonly property color glyphColor: row.active ? theme.brightForeground : theme.foreground
+        // What the icon sits on: the sidebar, with the row's highlight over it.
+        readonly property color backdrop: row.active || row.dropHover ? Qt.tint(theme.background, Qt.alpha(theme.accent, 0.16))
+                                        : row.hovered && row.enabled ? Qt.tint(theme.background, Qt.alpha(theme.foreground, 0.06))
+                                        : theme.background
+        Component {
+            id: lineGlyph
             // Kept in its place, but empty, while the row shows a button
             // over it. A plugin's mark can give the row an icon of its own.
             Glyph {
                 name: row.mark && row.mark.icon ? row.mark.icon : row.glyph
                 opacity: row.glyph ? 1 : 0
-                color: row.active ? theme.brightForeground : theme.foreground
+                color: row.glyphColor
+            }
+        }
+        Component {
+            id: binGlyph
+            TrashGlyph {
+                hasItems: places.trashFull
+                color: row.glyphColor
+                gap: row.backdrop
+            }
+        }
+
+        contentItem: RowLayout {
+            spacing: 14
+            // The trash's bin takes in what's deleted, the rest are still.
+            Loader {
+                sourceComponent: row.dropTrashes ? binGlyph : lineGlyph
             }
             ColumnLayout {
                 Layout.fillWidth: true
@@ -375,6 +396,9 @@ Rectangle {
                     onDropHoverChanged: sidebar.dropHovers += dropHover ? 1 : -1
                     text: modelData.icon === "trash" ? qsTr("Trash") : qsTr("Recents")
                     glyph: modelData.icon
+                    // The icon shows a bag when something's in the trash, as
+                    // other desktops' trash does; this says so too.
+                    Accessible.name: dropTrashes ? (places.trashFull ? qsTr("Trash (has items)") : qsTr("Trash (empty)")) : text
                     active: sidebar.activePath === modelData.path
                     onClicked: sidebar.target.navigate(modelData.path)
                     keyed: sidebar.activeFocus && sidebar.cursor === sidebar.viewsAt + index

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QFileSystemWatcher>
 #include <QFutureWatcher>
 #include <QObject>
 #include <QTimer>
@@ -15,6 +16,10 @@ class Places : public QObject {
     Q_PROPERTY(QVariantList pinned READ pinned NOTIFY changed)
     Q_PROPERTY(QVariantList views READ views NOTIFY changed)
     Q_PROPERTY(QVariantList devices READ devices NOTIFY changed)
+    // Whether anything is in the trash (the home one or a drive's), for the
+    // sidebar's full or empty trash. Its own signal, so the sidebar's lists
+    // aren't rebuilt every time something is trashed.
+    Q_PROPERTY(bool trashFull READ trashFull NOTIFY trashChanged)
 
 public:
     // `home` is overridable for tests; the real home also consults the XDG
@@ -26,6 +31,7 @@ public:
     QVariantList pinned() const { return m_pinned; }
     QVariantList views() const { return m_views; }
     QVariantList devices() const { return m_devices; }
+    bool trashFull() const { return m_trashFull; }
 
     Q_INVOKABLE void refresh();
 
@@ -35,6 +41,11 @@ public:
     Q_INVOKABLE QString pin(const QString &path);
     Q_INVOKABLE void unpin(const QString &path);
     Q_INVOKABLE bool isPinned(const QString &path) const;
+
+    // Whether any of these trashes (as FileOps::trashDirs() lists them)
+    // holds anything. Stops at the first item, so a trash of thousands
+    // costs no more than one of one.
+    static bool anyTrashed(const QStringList &trashDirs);
 
     // Lets go of the drive at `path`: ejects it when it can be (so a stick
     // or card is safe to pull out), otherwise unmounts it. Off the UI
@@ -63,6 +74,7 @@ public:
 
 signals:
     void changed();
+    void trashChanged();
     // A drive is about to be let go of: whatever shows a folder on it
     // leaves, so Folio itself doesn't keep it busy.
     void releasing(const QString &root);
@@ -81,11 +93,20 @@ private:
     QStringList readBookmarkLines() const;
     bool writeBookmarkLines(const QStringList &lines);
     QString userDirectory(int location, const QString &fallback) const;
+    // Looks again at whether the trash is full, and watches the folders
+    // that say so.
+    void refreshTrash();
 
     QString m_home;
     bool m_realHome;
     QVariantList m_places, m_pinned, m_views, m_devices;
     QTimer m_poll;
+    // The trash changes from every window and from other apps (gio trash,
+    // another file manager, rm), so it's watched rather than told. Trashing
+    // a hundred files changes it a hundred times; they're looked at once.
+    QFileSystemWatcher m_trashWatcher;
+    QTimer m_trashSettle;
+    bool m_trashFull = false;
     QFutureWatcher<QList<Mount>> m_mounts;
     // Another refresh was asked for while one was reading.
     bool m_rereadMounts = false;
