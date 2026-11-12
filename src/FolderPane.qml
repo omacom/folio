@@ -281,7 +281,12 @@ FocusScope {
             if (!view.item)
                 return
             const pending = backend.takeSelection()
-            const same = backend.folder.path === pane.loadedPath && backend.folder.query === pane.loadedQuery
+            // A new query is a new listing, so the cursor goes to its first
+            // result. A query that has just been cleared is not: ending a
+            // search keeps the cursor on the item it found.
+            const newSearch = backend.folder.query.length > 0
+                            && backend.folder.query !== pane.loadedQuery
+            const same = backend.folder.path === pane.loadedPath && !newSearch
             pane.loadedPath = backend.folder.path
             pane.loadedQuery = backend.folder.query
             const row = backend.folder.indexOfPath(pane.lastPath)
