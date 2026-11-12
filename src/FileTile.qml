@@ -5,11 +5,13 @@ import "Format.js" as Format
 
 // One item in the grid: a preview on top, its name below. Folders are a
 // quiet card; files show a real thumbnail when one
-// can be made, and a drawn stand-in for their kind when not.
+// can be made, and a drawn stand-in for their kind when not; a plugin's
+// items are their icon.
 Item {
     id: tile
 
     required property int index
+    property real zoom: 1
     required property string name
     required property string path
     required property bool isDir
@@ -17,6 +19,7 @@ Item {
     required property string mime
     required property string extension
     required property int itemCount
+    required property string icon
     required property var size
     required property var modified
     required property bool selected
@@ -39,33 +42,34 @@ Item {
                                      : kind === "image" ? theme.cyan
                                      : theme.secondaryForeground
 
+    // The art is drawn at 128×92 and scaled, so a zoom keeps its shapes;
+    // the box around it takes the scaled size for the layout.
     Item {
-        id: art
-        width: 128
-        height: 92
+        id: artBox
+        width: 128 * tile.zoom
+        height: 92 * tile.zoom
         anchors.top: parent.top
         anchors.topMargin: 18
         anchors.horizontalCenter: parent.horizontalCenter
 
-        Loader {
-            anchors.fill: parent
-            sourceComponent: tile.isDir ? folderArt : fileArt
-        }
+        Item {
+            id: art
+            width: 128
+            height: 92
+            scale: tile.zoom
+            transformOrigin: Item.TopLeft
 
-        // A folder takes files dropped on it, lighting up while they hover.
-        DropArea {
-            id: folderDrop
-            anchors.fill: parent
-            enabled: tile.isDir
-            keys: ["text/uri-list"]
-            onEntered: (drag) => { drag.accepted = fileOps.canDrop(drag.urls, tile.path) }
-            onDropped: (drop) => { fileOps.dropInto(drop.urls, tile.path); drop.accept(Qt.MoveAction) }
+            Loader {
+                anchors.fill: parent
+                sourceComponent: tile.isDir ? folderArt : tile.kind === "item" ? itemArt : fileArt
+            }
+
         }
     }
 
     Text {
         id: label
-        anchors.top: art.bottom
+        anchors.top: artBox.bottom
         anchors.topMargin: 12
         anchors.horizontalCenter: parent.horizontalCenter
         width: parent.width - 28
@@ -80,7 +84,8 @@ Item {
     }
 
     // Size and when, quietly, under the name: "28.0 KB · 2:14 PM" today,
-    // "28.0 KB · 11/9/26" before; the item count for a folder.
+    // "28.0 KB · 11/9/26" before; just the item count for a folder, the
+    // subtitle for a plugin's item.
     Text {
         anchors.top: label.bottom
         anchors.topMargin: 3
@@ -88,14 +93,30 @@ Item {
         width: parent.width - 28
         text: {
             translator.language // Re-read when the language (and so the default locale) changes.
+            if (tile.kind === "item")
+                return tile.extension
             const size = tile.isDir ? Format.count(tile.itemCount) : Format.size(tile.size)
-            const date = Format.when(tile.modified)
-            return [size, date].filter(part => part.length > 0).join(" · ")
+            // A folder's own date says little (it changes when anything in
+            // it is added or removed), so only files show one.
+            const date = tile.isDir ? "" : Format.when(tile.modified)
+            return size && date ? qsTr("%1 · %2").arg(size).arg(date) : size || date
         }
         color: theme.secondaryForeground
         font.pixelSize: 10
         horizontalAlignment: Text.AlignHCenter
         elide: Text.ElideRight
+    }
+
+    // A folder takes files dropped anywhere on its tile, picture or name,
+    // lighting up while they hover: the view's own drop area refuses the
+    // whole cell, so the tile has to take all of it.
+    DropArea {
+        id: folderDrop
+        anchors.fill: parent
+        enabled: tile.isDir
+        keys: ["text/uri-list"]
+        onEntered: (drag) => { drag.accepted = fileOps.canDrop(drag.urls, tile.path) }
+        onDropped: (drop) => { fileOps.dropInto(drop.urls, tile.path); drop.accept(Qt.MoveAction) }
     }
 
     HoverHandler {
@@ -111,8 +132,10 @@ Item {
     Drag.supportedActions: Qt.CopyAction | Qt.LinkAction
     Drag.hotSpot.x: tile.width / 2
     Drag.hotSpot.y: 40
+    // A plugin's item isn't a file to hand anywhere.
     DragHandler {
         target: null
+        enabled: tile.kind !== "item"
         // Dragging a selected item takes the whole selection along. The list
         // is built as the drag starts, not again on every change of selection.
         onActiveChanged: {
@@ -180,9 +203,14 @@ Item {
                 y: (parent.height - height) / 2
                 asynchronous: true
                 fillMode: parent.crop ? Image.PreserveAspectCrop : Image.Stretch
-                source: tile.kind === "text" ? "" : Format.thumb(tile.path, tile.mime, 256, tile.modified)
+                source: tile.kind === "text" ? Format.page(tile.path, tile.zoom > 1 ? 512 : 256, tile.modified, theme.lighterBackground, theme.foreground)
+                                              : Format.thumb(tile.path, tile.mime, tile.zoom > 1 ? 512 : 256, tile.modified)
                 visible: status === Image.Ready
                 layer.enabled: tile.iconRadius > 0 && status === Image.Ready
+                // The layer is drawn before the zoom scales it, so it's made
+                // at the zoomed size to keep the bigger thumbnail's detail.
+                layer.textureSize: Qt.size(Math.ceil(width * tile.zoom * Screen.devicePixelRatio),
+                                           Math.ceil(height * tile.zoom * Screen.devicePixelRatio))
                 layer.effect: MultiEffect {
                     maskEnabled: true
                     maskSource: thumbMask
@@ -197,6 +225,7 @@ Item {
                 radius: tile.iconRadius
                 visible: false
                 layer.enabled: true
+                layer.textureSize: thumb.layer.textureSize
             }
 
             // Videos get a play mark over their frame.
@@ -233,6 +262,30 @@ Item {
                 y: parent.shown.y - 3
                 width: parent.shown.width + 6
                 height: parent.shown.height + 6
+                color: "transparent"
+                border.width: tile.current ? 2 : 1
+                border.color: tile.current ? theme.accent : Qt.alpha(theme.foreground, 0.2)
+                radius: tile.iconRadius > 0 ? tile.iconRadius + 3 : 0
+            }
+        }
+    }
+
+    Component {
+        id: itemArt
+
+        Item {
+            Glyph {
+                id: computer
+                anchors.centerIn: parent
+                name: tile.icon
+                size: 76
+                stroke: 1.2
+                color: tile.current ? theme.accent : theme.foreground
+            }
+            Rectangle {
+                visible: tile.current || hover.hovered
+                anchors.fill: computer
+                anchors.margins: -3
                 color: "transparent"
                 border.width: tile.current ? 2 : 1
                 border.color: tile.current ? theme.accent : Qt.alpha(theme.foreground, 0.2)

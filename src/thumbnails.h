@@ -10,9 +10,10 @@
 // Thumbnails per the freedesktop thumbnail spec: one shared cache under
 // ~/.cache/thumbnails, keyed by the MD5 of the file's URI and invalidated by
 // its modification time, so thumbnails made by any other app are reused and
-// ours are useful to them. Images are scaled in-process; everything else goes
-// through the thumbnailers installed in /usr/share/thumbnailers (videos via
-// ffmpegthumbnailer, PDFs via Papers, and so on). Nothing is generated until a
+// ours are useful to them. Images are scaled and text is set on a page
+// in-process; everything else goes through the thumbnailers installed in
+// /usr/share/thumbnailers (videos via ffmpegthumbnailer, and so on), with
+// Poppler's pdftoppm drawing PDFs when no thumbnailer does. Nothing is generated until a
 // tile asks for it: there is no background crawl.
 class Thumbnails {
 public:
@@ -24,6 +25,9 @@ public:
 
     static QString cacheKey(const QString &path);
     static QString bucketFor(int size);
+    // A text file's first lines set on a page in the given colors. Made
+    // fresh each time rather than cached, since the colors follow the theme.
+    static QImage textPage(const QString &path, int pixels, const QColor &paper, const QColor &ink);
     QString thumbnailerFor(const QString &mime) const { return m_thumbnailers.value(mime); }
 
 private:
@@ -32,6 +36,7 @@ private:
     // Sets `attempted` when Qt's reader or a thumbnailer could take the file.
     QImage generate(const QString &path, const QString &mime, int pixels, bool &attempted) const;
     QImage runThumbnailer(const QString &command, const QString &path, int pixels) const;
+    static QImage pdfPage(const QString &path, int pixels);
     void remember(QImage image, const QString &path, int size, const QDateTime &modified) const;
     void rememberFailure(const QString &path, const QDateTime &modified) const;
     bool failedBefore(const QString &path, const QDateTime &modified) const;

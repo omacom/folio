@@ -7,8 +7,8 @@
 #include "backend.h"
 #include "fileops.h"
 
-Windows::Windows(QQmlEngine *engine, QObject *parent)
-    : QObject(parent), m_engine(engine), m_component(engine, QUrl("qrc:/Main.qml")),
+Windows::Windows(QQmlEngine *engine, Plugins *plugins, QObject *parent)
+    : QObject(parent), m_engine(engine), m_plugins(plugins), m_component(engine, QUrl("qrc:/Main.qml")),
       m_pane(engine, QUrl("qrc:/FolderPane.qml")) {
     // Main.qml calls windows.openSplit() and windows.closeSplit().
     engine->rootContext()->setContextProperty("windows", this);
@@ -20,6 +20,7 @@ Windows::Pane Windows::makePane(QQmlComponent &component, QQmlContext *parent) {
     Pane pane;
     pane.context = new QQmlContext(parent, this);
     pane.backend = new Backend({}, this);
+    pane.backend->setPlugins(m_plugins);
     pane.fileOps = new FileOps(this);
     pane.context->setContextProperty("backend", pane.backend);
     pane.context->setContextProperty("fileOps", pane.fileOps);
@@ -105,13 +106,14 @@ void Windows::closeSplit(QObject *window) {
 }
 
 void Windows::release(Pane &pane) {
-    // The pane goes first, then what its QML was bound to.
+    // The pane goes first, then what its QML was bound to. Its file work
+    // goes once it's done, so what that changes can still be undone.
     if (pane.item)
         pane.item->deleteLater();
     if (pane.backend)
         pane.backend->deleteLater();
     if (pane.fileOps)
-        pane.fileOps->deleteLater();
+        pane.fileOps->deleteWhenDone();
     if (pane.context)
         pane.context->deleteLater();
     pane = {};

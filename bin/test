@@ -2,9 +2,7 @@
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-mkdir -p "$ROOT/build/tests"
-cd "$ROOT/build/tests"
-
-qmake6 "$ROOT/tests/folio_tests.pro"
-make -j"$(nproc)"
+cmake -S "$ROOT" -B "$ROOT/build" -DCMAKE_BUILD_TYPE=Release >/dev/null
+cmake --build "$ROOT/build" --target folio_tests -j"$(nproc)"
+cd "$ROOT/build"
 QT_QPA_PLATFORM=offscreen ./folio_tests

@@ -7,9 +7,10 @@ Rectangle {
     id: bar
 
     property bool previewVisible: true
+    property bool previewFits: true
     property string viewMode: "grid"
-    // Ctrl+L: the path as text to edit. Enter goes there, Escape cancels,
-    // Tab completes a folder name.
+    // Ctrl+L: the path as text to edit. Enter goes there (or connects to a
+    // server's address), Escape cancels, Tab completes a folder name.
     property bool editing: false
     // The right pane of a split has a close button (Ctrl+W).
     property bool closable: false
@@ -73,6 +74,7 @@ Rectangle {
             Layout.fillWidth: true
             visible: bar.editing
             font.pixelSize: 14
+            placeholderText: qsTr("A folder, or a server's address like sftp://host/")
             onAccepted: {
                 if (backend.goTyped(text))
                     bar.stopEditing()
@@ -90,15 +92,24 @@ Rectangle {
             Layout.fillWidth: true
             visible: bar.searching && !bar.editing
             font.pixelSize: 14
-            rightPadding: scope.implicitWidth + 24
+            // Room at the end for where it searches; padding isn't mirrored.
+            leftPadding: LayoutMirroring.enabled ? scope.implicitWidth + 24 : 12
+            rightPadding: LayoutMirroring.enabled ? 12 : scope.implicitWidth + 24
             // Where it searches, at the end of the field. Unlike a
-            // placeholder, it stays while typing.
+            // placeholder, it stays while typing. Plugins' views have
+            // nothing below them.
             Text {
                 id: scope
+                // Recents, Trash and plugins' views are named in C++, which
+                // retranslating QML doesn't redo.
+                readonly property string here: {
+                    translator.language
+                    return backend.crumbs.length > 0 ? backend.crumbs[backend.crumbs.length - 1].name : ""
+                }
                 anchors.right: parent.right
                 anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
-                text: qsTr("Search %1 and below").arg(backend.crumbs.length > 0 ? backend.crumbs[backend.crumbs.length - 1].name : "")
+                text: backend.path.startsWith("plugin:") ? qsTr("Search %1").arg(here) : qsTr("Search %1 and below").arg(here)
                 color: theme.secondaryForeground
                 font.pixelSize: 12
             }
@@ -121,20 +132,28 @@ Rectangle {
             visible: !bar.editing && !bar.searching
             Layout.fillWidth: true
             Layout.fillHeight: true
-            contentWidth: crumbs.implicitWidth
+            contentWidth: Math.max(width, crumbs.implicitWidth)
             clip: true
             boundsBehavior: Flickable.StopAtBounds
             // Long paths keep their end in view; that's where you are.
-            onContentWidthChanged: contentX = Math.max(0, contentWidth - width)
-            onWidthChanged: contentX = Math.max(0, contentWidth - width)
+            // Mirrored, the end is on the left.
+            function revealEnd() { contentX = LayoutMirroring.enabled ? 0 : Math.max(0, contentWidth - width) }
+            onContentWidthChanged: revealEnd()
+            onWidthChanged: revealEnd()
+            LayoutMirroring.onEnabledChanged: revealEnd()
 
             Row {
                 id: crumbs
+                // A Row isn't placed by its Flickable, so it's moved to the
+                // right edge by hand when mirrored.
+                x: LayoutMirroring.enabled ? parent.width - width : 0
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 10
 
                 Repeater {
-                    model: backend.crumbs
+                    // Recents, Trash and plugins' views are named in C++, which
+                    // retranslating QML doesn't redo.
+                    model: { translator.language; return backend.crumbs }
                     Row {
                         id: crumb
                         required property var modelData
@@ -142,7 +161,8 @@ Rectangle {
                         readonly property bool last: index === backend.crumbs.length - 1
                         spacing: 10
                         Text {
-                            visible: crumb.index > 0
+                            // No separator after / itself: "/ run", not "/ / run".
+                            visible: crumb.index > 0 && !(crumb.index === 1 && backend.crumbs[0].name === "/")
                             text: "/"
                             color: Qt.alpha(theme.foreground, 0.35)
                             font.pixelSize: 14
@@ -157,8 +177,9 @@ Rectangle {
                                 anchors.fill: parent
                                 anchors.margins: -4
                                 hoverEnabled: true
-                                cursorShape: crumb.last ? Qt.ArrowCursor : Qt.PointingHandCursor
-                                onClicked: if (!crumb.last) backend.navigate(crumb.modelData.path)
+                                // The folder you're in opens the path for typing, as Ctrl+L does.
+                                cursorShape: crumb.last ? Qt.IBeamCursor : Qt.PointingHandCursor
+                                onClicked: crumb.last ? bar.editPath() : backend.navigate(crumb.modelData.path)
                             }
                         }
                     }
@@ -170,9 +191,10 @@ Rectangle {
         // Shows the current view; clicking moves to the next one.
         IconButton {
             glyph: bar.viewMode
-            text: bar.viewMode === "grid" ? qsTr("Grid (Ctrl+1); click for list")
-                : bar.viewMode === "list" ? qsTr("List (Ctrl+2); click for columns")
-                : qsTr("Columns (Ctrl+3); click for grid")
+            // Names what a click does, like the buttons beside it.
+            text: bar.viewMode === "grid" ? qsTr("Show as list")
+                : bar.viewMode === "list" ? qsTr("Show as columns")
+                : qsTr("Show as grid")
             onClicked: bar.cycleView()
         }
         IconButton {
@@ -181,25 +203,22 @@ Rectangle {
             glyph: sortMenu.current.glyph
             text: sortMenu.current.tip
             active: sortMenu.visible
-            onClicked: sortMenu.popup(sortButton, 0, sortButton.height + 4)
+            // Under the button, reaching toward the files.
+            onClicked: sortMenu.popup(sortButton, LayoutMirroring.enabled ? sortButton.width - sortMenu.width : 0, sortButton.height + 4)
         }
         SortMenu { id: sortMenu }
         IconButton {
-            glyph: "hidden"
-            text: qsTr("Show hidden files (Ctrl+H)")
-            active: backend.folder.showHidden
-            onClicked: backend.folder.showHidden = !backend.folder.showHidden
-        }
-        IconButton {
             glyph: "preview"
-            text: qsTr("Details (Ctrl+I)")
+            // Only where the window has room to show them.
+            visible: bar.previewFits
+            text: qsTr("Details")
             active: bar.previewVisible
             onClicked: bar.togglePreview()
         }
         IconButton {
             visible: bar.closable
             glyph: "close"
-            text: qsTr("Close this pane (Ctrl+W)")
+            text: qsTr("Close this pane")
             onClicked: bar.closeRequested()
         }
     }

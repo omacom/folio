@@ -2,10 +2,7 @@
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-mkdir -p "$ROOT/build"
-cd "$ROOT/build"
-
-qmake6 "$ROOT/folio.pro"
-make -j"$(nproc)"
+cmake -S "$ROOT" -B "$ROOT/build" -DCMAKE_BUILD_TYPE=Release >/dev/null
+cmake --build "$ROOT/build" --target folio -j"$(nproc)"
 
 echo "Built $ROOT/build/folio"

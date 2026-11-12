@@ -7,11 +7,11 @@ FolioMenu {
 
     // Each with its entry here, and the sort button's glyph and tooltip.
     readonly property var orders: [
-        { mode: "name", label: qsTr("Name"), glyph: "sort-name", tip: qsTr("Sorted by name (S)") },
-        { mode: "kind", label: qsTr("Kind"), glyph: "sort-kind", tip: qsTr("Sorted by kind (S)") },
-        { mode: "modified", label: qsTr("Newest"), glyph: "sort-newest", tip: qsTr("Newest first (S)") },
-        { mode: "oldest", label: qsTr("Oldest"), glyph: "sort-oldest", tip: qsTr("Oldest first (S)") },
-        { mode: "size", label: qsTr("Size"), glyph: "sort-size", tip: qsTr("Biggest first (S)") }
+        { mode: "name", label: qsTr("Name"), glyph: "sort-name", tip: qsTr("Sorted by name") },
+        { mode: "kind", label: qsTr("Kind"), glyph: "sort-kind", tip: qsTr("Sorted by kind") },
+        { mode: "modified", label: qsTr("Newest"), glyph: "sort-newest", tip: qsTr("Newest first") },
+        { mode: "oldest", label: qsTr("Oldest"), glyph: "sort-oldest", tip: qsTr("Oldest first") },
+        { mode: "size", label: qsTr("Size"), glyph: "sort-size", tip: qsTr("Biggest first") }
     ]
     readonly property var current: orders.find(o => o.mode === backend.folder.sortMode) || orders[0]
     function step(by) {

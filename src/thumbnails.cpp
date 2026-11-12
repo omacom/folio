@@ -5,6 +5,10 @@
 #include <QtEndian>
 #include <zlib.h>
 #include <QDir>
+#include <QFont>
+#include <QFontMetricsF>
+#include <QPainter>
+#include <QStringDecoder>
 #include <QDirIterator>
 #include <QFileInfo>
 #include <QImageReader>
@@ -196,10 +200,81 @@ QImage Thumbnails::generate(const QString &path, const QString &mime, int pixels
         }
     }
     const QString command = m_thumbnailers.value(mime);
-    if (command.isEmpty())
+    if (!command.isEmpty()) {
+        attempted = true;
+        return runThumbnailer(command, path, pixels);
+    }
+    // Without a PDF thumbnailer installed, Poppler's pdftoppm (there with
+    // CUPS) draws the first page.
+    if (mime == "application/pdf" && !QStandardPaths::findExecutable("pdftoppm").isEmpty()) {
+        attempted = true;
+        return pdfPage(path, pixels);
+    }
+    return {};
+}
+
+QImage Thumbnails::textPage(const QString &path, int pixels, const QColor &paper, const QColor &ink) {
+    // Only a regular file: a FIFO or device named like text would block the
+    // read, and the worker with it, until something writes to it.
+    if (!QFileInfo(path).isFile())
         return {};
-    attempted = true;
-    return runThumbnailer(command, path, pixels);
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return {};
+    const QByteArray head = file.read(4096);
+    // Binary that merely claims to be text (or a cut through a multibyte
+    // character at the very end, which is fine) gets the stand-in instead.
+    if (head.contains('\0'))
+        return {};
+    QStringDecoder decode(QStringDecoder::Utf8);
+    QString text = decode(head);
+    if (decode.hasError() && head.size() < 4096)
+        return {};
+
+    // A sheet a little narrower than it is tall, so it still reads as a page
+    // rather than a folder, in the theme's colors: the monospace font at a
+    // size that stays readable on the tile, as many lines as fit, no wrapping.
+    const QSize size(qRound(pixels * 0.85), pixels);
+    QImage page(size, QImage::Format_ARGB32_Premultiplied);
+    page.fill(paper);
+    QPainter painter(&page);
+    painter.setRenderHint(QPainter::TextAntialiasing);
+    QFont font("monospace");
+    font.setStyleHint(QFont::Monospace);
+    font.setPixelSize(qMax(6, pixels / 17));
+    painter.setFont(font);
+    painter.setPen(ink);
+    const QFontMetricsF metrics(font);
+    const qreal margin = size.width() * 0.08, line = metrics.lineSpacing();
+    // Long lines stop at the right margin rather than the page's edge.
+    painter.setClipRect(QRectF(margin, 0, size.width() - 2 * margin, size.height()));
+    qreal y = margin + metrics.ascent();
+    for (QString row : text.replace("\r\n", "\n").split('\n')) {
+        if (y > size.height() - margin)
+            break;
+        row.replace('\t', "    ");
+        painter.drawText(QPointF(margin, y), row);
+        y += line;
+    }
+    painter.end();
+    return page;
+}
+
+QImage Thumbnails::pdfPage(const QString &path, int pixels) {
+    QTemporaryDir scratch;
+    if (!scratch.isValid())
+        return {};
+    QProcess process;
+    process.start("pdftoppm", {"-f", "1", "-l", "1", "-singlefile", "-png", "-scale-to", QString::number(pixels),
+                               path, scratch.filePath("page")});
+    if (!process.waitForFinished(15000)) {
+        process.kill();
+        process.waitForFinished(1000);
+        return {};
+    }
+    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0)
+        return {};
+    return QImage(scratch.filePath("page.png"));
 }
 
 QImage Thumbnails::runThumbnailer(const QString &command, const QString &path, int pixels) const {
@@ -211,6 +286,10 @@ QImage Thumbnails::runThumbnailer(const QString &command, const QString &path, i
     if (args.isEmpty())
         return {};
     const QString program = args.takeFirst();
+    // ffmpegthumbnailer's -f frames the picture as a film strip; the tile
+    // marks a video with its own play badge instead.
+    if (QFileInfo(program).fileName() == "ffmpegthumbnailer")
+        args.removeAll("-f");
 
     QProcess process;
     process.setProcessChannelMode(QProcess::ForwardedErrorChannel);
@@ -283,13 +362,18 @@ public:
     }
 
     void run() override {
-        // id = <size>/<modified>/<url-encoded mime>/<url-encoded path>. The
-        // time is only there to tell Qt's own cache apart; load() checks
+        // id = <size>/<modified>/<url-encoded mime>/<url-encoded path>, or
+        // page/<size>/<modified>/<paper>/<ink>/<url-encoded path> for text.
+        // The time is only there to tell Qt's own cache apart; load() checks
         // the file's.
         const QStringList parts = m_id.split('/');
         // A tile scrolled away before its turn came shouldn't keep the pool
         // from the ones on screen.
-        if (!m_cancelled && parts.size() >= 4) {
+        if (!m_cancelled && parts.size() >= 6 && parts.at(0) == "page") {
+            const QString path = QUrl::fromPercentEncoding(parts.mid(5).join('/').toUtf8());
+            m_image = Thumbnails::textPage(path, qBound(64, parts.at(1).toInt(), 1024),
+                                           QColor::fromString("#" + parts.at(3)), QColor::fromString("#" + parts.at(4)));
+        } else if (!m_cancelled && parts.size() >= 4) {
             const int size = parts.at(0).toInt();
             const QString mime = QUrl::fromPercentEncoding(parts.at(2).toUtf8());
             const QString path = QUrl::fromPercentEncoding(parts.mid(3).join('/').toUtf8());

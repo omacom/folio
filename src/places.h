@@ -1,14 +1,14 @@
 #pragma once
 
 #include <QFileSystemWatcher>
+#include <QFutureWatcher>
 #include <QObject>
-#include <QProcess>
 #include <QTimer>
 #include <QVariantList>
 
-// The sidebar: the user's places (with Dropbox first-class when it's set up),
-// the drives, and the machines on the tailnet. Each list is small, so it is
-// handed to QML as plain maps rather than a model.
+// The sidebar's own rows: the user's places, pinned folders, views and
+// drives (plugins add the rest). Each list is small, so it is handed to QML
+// as plain maps rather than a model.
 class Places : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString home READ home CONSTANT)
@@ -16,8 +16,6 @@ class Places : public QObject {
     Q_PROPERTY(QVariantList pinned READ pinned NOTIFY changed)
     Q_PROPERTY(QVariantList views READ views NOTIFY changed)
     Q_PROPERTY(QVariantList devices READ devices NOTIFY changed)
-    Q_PROPERTY(QVariantList peers READ peers NOTIFY changed)
-    Q_PROPERTY(QString dropboxStatus READ dropboxStatus NOTIFY changed)
     // Whether anything is in the trash (the home one or a drive's), for the
     // sidebar's full or empty trash. Its own signal, so the sidebar's lists
     // aren't rebuilt every time something is trashed.
@@ -33,8 +31,6 @@ public:
     QVariantList pinned() const { return m_pinned; }
     QVariantList views() const { return m_views; }
     QVariantList devices() const { return m_devices; }
-    QVariantList peers() const { return m_peers; }
-    QString dropboxStatus() const { return m_dropboxStatus; }
     bool trashFull() const { return m_trashFull; }
 
     Q_INVOKABLE void refresh();
@@ -51,32 +47,51 @@ public:
     // costs no more than one of one.
     static bool anyTrashed(const QStringList &trashDirs);
 
-    static QVariantList parseTailscale(const QByteArray &json);
-    static QString parseDropboxStatus(const QByteArray &output);
+    // Lets go of the drive at `path`: ejects it when it can be (so a stick
+    // or card is safe to pull out), otherwise unmounts it. Off the UI
+    // thread, in GIO; `failed` says why when it can't.
+    Q_INVOKABLE void eject(const QString &path);
+    // Whatever shows a folder on the drive mounted at `root` leaves it,
+    // before the drive is let go of or changed.
+    Q_INVOKABLE void leave(const QString &root);
 
     struct Mount {
         QString root;
         QString device;
         QString type;
         QString label;
+        // What GIO can do with it, and the bytes left on it for the user;
+        // -1 when that isn't known.
+        bool canEject = false;
+        bool canUnmount = false;
+        qint64 free = -1;
     };
     // The physical drives among the mounts, one entry per drive: removable
-    // and extra internal disks, never the system's own partitions.
+    // and extra internal disks, never the system's own partitions. Each
+    // says how it's let go of ("release": "eject", "unmount", or empty when
+    // it can't be) and how much is free.
     static QVariantList physicalDrives(const QList<Mount> &mounts, const QString &systemDevice);
 
 signals:
     void changed();
     void trashChanged();
+    // A drive is about to be let go of: whatever shows a folder on it
+    // leaves, so Folio itself doesn't keep it busy.
+    void releasing(const QString &root);
+    void failed(const QString &message);
 
 private:
     void refreshPlaces();
     void refreshDevices();
+    // Every mount and its free space, read off the UI thread: reading them
+    // asks each filesystem, and a network one (an NFS or SMB server that's
+    // gone away) can take its time answering, or never answer.
+    static QList<Mount> readMounts();
+    void mountsRead();
     void refreshPinned();
     QString bookmarksPath() const;
     QStringList readBookmarkLines() const;
     bool writeBookmarkLines(const QStringList &lines);
-    void pollTailscale();
-    void pollDropbox();
     QString userDirectory(int location, const QString &fallback) const;
     // Looks again at whether the trash is full, and watches the folders
     // that say so.
@@ -84,9 +99,7 @@ private:
 
     QString m_home;
     bool m_realHome;
-    QVariantList m_places, m_pinned, m_views, m_devices, m_peers;
-    QString m_dropboxStatus;
-    QProcess m_tailscale, m_dropbox;
+    QVariantList m_places, m_pinned, m_views, m_devices;
     QTimer m_poll;
     // The trash changes from every window and from other apps (gio trash,
     // another file manager, rm), so it's watched rather than told. Trashing
@@ -94,4 +107,9 @@ private:
     QFileSystemWatcher m_trashWatcher;
     QTimer m_trashSettle;
     bool m_trashFull = false;
+    QFutureWatcher<QList<Mount>> m_mounts;
+    // Another refresh was asked for while one was reading.
+    bool m_rereadMounts = false;
+    // The device the system runs from, read once: it doesn't change.
+    QString m_systemDevice;
 };
