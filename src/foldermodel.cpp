@@ -266,6 +266,12 @@ QVector<FolderModel::Entry> FolderModel::list(const QString &path, bool showHidd
     return entries;
 }
 
+QString FolderModel::typeByContent(const QString &path, const QString &mime) {
+    if (mime != "application/octet-stream")
+        return mime;
+    return QMimeDatabase().mimeTypeForFile(path, QMimeDatabase::MatchContent).name();
+}
+
 FolderModel::Entry FolderModel::entryFor(const QFileInfo &info, const QMimeDatabase &mimes) {
     Entry e;
     e.name = info.fileName();

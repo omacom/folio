@@ -5479,6 +5479,40 @@ private slots:
         QVERIFY(qGray(page.pixel(page.width() - 3, page.height() - 3)) > 200);
     }
 
+    void thumbnailsFollowWhatAFileHoldsWhenItsNameSaysNothing()
+    {
+        // A picture or a PDF whose name gives no type is thumbnailed as what it holds, and a name that gives one is believed.
+        QTemporaryDir dir;
+        QImage picture(64, 32, QImage::Format_RGB32);
+        picture.fill(Qt::green);
+        const QString bare = dir.filePath("holiday"), odd = dir.filePath("holiday.oxQCuj"), zip = dir.filePath("holiday.zip");
+        for (const QString &copy : {bare, odd, zip})
+            QVERIFY(picture.save(copy, "PNG"));
+        QImage frame(40, 20, QImage::Format_RGB32);
+        frame.fill(Qt::blue);
+        QVERIFY(frame.save(dir.filePath("frame.png")));
+        write(dir.filePath("pdf.thumbnailer"),
+              "[Thumbnailer Entry]\nExec=/bin/cp \"" + dir.filePath("frame.png").toUtf8() + "\" %o\nMimeType=application/pdf;\n");
+        write(dir.filePath("report.download"), "%PDF-1.4\n1 0 obj\n");
+        write(dir.filePath("blob"), QByteArray("\0\1\2\3", 4));
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
+        const QString unnamed = "application/octet-stream";
+
+        // Qt's own reader draws the picture at the size asked for; the thumbnailer's frame comes as it was made.
+        QCOMPARE(thumbnails.load(bare, unnamed, 128).size(), QSize(128, 64));
+        QCOMPARE(thumbnails.load(odd, unnamed, 128).size(), QSize(128, 64));
+        QCOMPARE(thumbnails.load(dir.filePath("report.download"), unnamed, 128).size(), QSize(40, 20));
+        // The name said a type: the file isn't read to doubt it.
+        QVERIFY(thumbnails.load(zip, "application/zip", 128).isNull());
+        // Nothing can draw these bytes, so nothing failed.
+        QVERIFY(thumbnails.load(dir.filePath("blob"), unnamed, 128).isNull());
+        QVERIFY(!QFile::exists(dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(dir.filePath("blob")))));
+        // A pipe is told by its kind and never opened: with nobody writing, the open would wait for good.
+        const QString pipe = dir.filePath("events");
+        QCOMPARE(mkfifo(QFile::encodeName(pipe).constData(), 0600), 0);
+        QCOMPARE(FolderModel::typeByContent(pipe, unnamed), QString("inode/fifo"));
+    }
+
     void previewerPicksAViewerForEachType()
     {
         QCOMPARE(Previewer::viewerFor("image/png", false), QString("image"));

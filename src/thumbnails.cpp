@@ -1,4 +1,5 @@
 #include "thumbnails.h"
+#include "foldermodel.h"
 
 #include <QBuffer>
 #include <QCryptographicHash>
@@ -164,9 +165,11 @@ QImage Thumbnails::load(const QString &path, const QString &mime, int size) cons
 
     // A folder's peek asks for any picture ("image/*"); named by extension,
     // as the grid names it, it goes to the same thumbnailer as its tile.
-    const QString type = mime.endsWith("/*")
+    const QString named = mime.endsWith("/*")
         ? QMimeDatabase().mimeTypeForFile(path, QMimeDatabase::MatchExtension).name()
         : mime;
+    // A file its extension could not name goes to the reader or thumbnailer for what it holds.
+    const QString type = FolderModel::typeByContent(path, named);
     const int pixels = bucketPixels(bucketFor(size));
     bool attempted = false;
     QImage image = generate(path, type, pixels, attempted);
