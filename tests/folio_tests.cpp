@@ -5731,6 +5731,112 @@ private slots:
         }
     }
 
+    void viewsMakeTheRowsPastTheirEdgesWithTheOnesShown_data()
+    {
+        QTest::addColumn<QString>("pane");
+        QTest::addColumn<int>("views");
+        QTest::addColumn<bool>("margins");
+        // A grid makes a row past each edge by itself, and its tiles are too dear to draw unseen.
+        QTest::newRow("grid") << "FolderGrid" << 1 << false;
+        QTest::newRow("list") << "FolderList" << 1 << true;
+        // The folder before this one, this one, and the folder selected in it.
+        QTest::newRow("columns") << "FolderColumns" << 3 << true;
+    }
+
+    void viewsMakeTheRowsPastTheirEdgesWithTheOnesShown()
+    {
+        // Qt's cache buffer makes those rows later, from a 16 ms timer of its own that can leave an idle window drawing every refresh.
+        QFETCH(QString, pane);
+        QFETCH(int, views);
+        QFETCH(bool, margins);
+        // How far Qt's default cache buffer reached, in pixels, and longer than its timer takes to add its rows, in milliseconds.
+        const int reach = 320;
+        const int settle = 300;
+        QTemporaryDir home;
+        QVERIFY(QDir(home.path()).mkpath("top/a/a"));
+        for (int i = 10; i < 70; ++i) {
+            QVERIFY(QDir(home.path()).mkpath(QString("top/b%1").arg(i)));
+            write(home.filePath(QString("top/a/f%1").arg(i)), "x");
+            write(home.filePath(QString("top/a/a/g%1").arg(i)), "x");
+        }
+        Backend backend(home.path());
+        backend.navigate(home.filePath("top/a"));
+        QTRY_COMPARE(backend.folder()->rowCount(), 61);
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        Translator translator(home.filePath("language"), home.path());
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine);
+        component.setData(QByteArray("import QtQuick\n"
+                                     "Window {\n"
+                                     "    width: 1003; height: 300; visible: true\n"
+                                     "    PANE { id: pane; anchors.fill: parent }\n"
+                                     "    // The views of many rows, wherever the pane keeps them: a view's content is among its children.\n"
+                                     "    function views(item = pane, found = []) {\n"
+                                     "        if ((item instanceof ListView || item instanceof GridView) && item.count > 40)\n"
+                                     "            found.push(item)\n"
+                                     "        for (const child of item.children)\n"
+                                     "            views(child, found)\n"
+                                     "        return found\n"
+                                     "    }\n"
+                                     "    function rows(view) {\n"
+                                     "        view.forceLayout()\n"
+                                     "        const made = []\n"
+                                     "        for (let row = 0; row < view.count; ++row)\n"
+                                     "            if (view.itemAtIndex(row))\n"
+                                     "                made.push(view.itemAtIndex(row))\n"
+                                     "        return made\n"
+                                     "    }\n"
+                                     "    // The columns show a folder's contents once it is selected.\n"
+                                     "    function selectFirst() {\n"
+                                     "        if (!(pane instanceof ListView) && !(pane instanceof GridView))\n"
+                                     "            pane.currentIndex = 0\n"
+                                     "    }\n"
+                                     "    // Moved to its end and back, in one go: whether rows reached REACH pixels behind the top edge, then as far past the bottom one, and the rows made.\n"
+                                     "    property var judged: []\n"
+                                     "    function moved() {\n"
+                                     "        judged = views()\n"
+                                     "        return judged.map(view => {\n"
+                                     "            view.positionViewAtEnd()\n"
+                                     "            const behind = rows(view).some(item => item.y <= view.contentY - REACH)\n"
+                                     "            view.positionViewAtBeginning()\n"
+                                     "            const made = rows(view)\n"
+                                     "            return behind + '/' + made.some(item => item.y + item.height >= view.contentY + view.height + REACH) + '/' + made.length\n"
+                                     "        }).join(' ')\n"
+                                     "    }\n"
+                                     "    function made() { return (judged.length ? judged : views()).map(view => rows(view).length).join(' ') }\n"
+                                     "}\n").replace("PANE", pane.toUtf8()).replace("REACH", QByteArray::number(reach)),
+                          QUrl::fromLocalFile(sourceFolder() + "/ViewRowsTest.qml"));
+        std::unique_ptr<QObject> window(component.create());
+        QVERIFY2(window, qPrintable(component.errorString()));
+        const auto said = [&](const char *function) {
+            QVariant result;
+            QMetaObject::invokeMethod(window.get(), function, Q_RETURN_ARG(QVariant, result));
+            return result;
+        };
+        QMetaObject::invokeMethod(window.get(), "selectFirst");
+        const auto made = [&] { return said("made").toString().split(' ', Qt::SkipEmptyParts); };
+        // A window just made has its views without rows yet.
+        QTRY_VERIFY(made().size() == views && !made().contains("0"));
+        const QStringList moved = said("moved").toString().split(' ', Qt::SkipEmptyParts);
+        QCOMPARE(moved.size(), views);
+        QStringList atOnce;
+        for (const QString &view : moved) {
+            const QStringList parts = view.split('/');
+            QVERIFY2(!margins || (parts.at(0) == "true" && parts.at(1) == "true"), qPrintable("behind the top / past the bottom / rows: " + moved.join(' ')));
+            atOnce << parts.at(2);
+        }
+        QTest::qWait(settle);
+        QCOMPARE(made(), atOnce);
+    }
+
     void themeFallsBack()
     {
         QTemporaryDir dir;
