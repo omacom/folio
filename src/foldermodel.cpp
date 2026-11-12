@@ -217,9 +217,12 @@ void FolderModel::readAsked() {
                 continue;
             // In place, without a copy: the remembered listing and every view sharing it keep what's read.
             Entry &e = const_cast<Entry &>(m_entries.at(row));
-            e.unread = false;
-            e.size = read.size;
-            e.modified = read.modified;
+            // A folder counted since it was asked for keeps the date its count was made with.
+            if (e.unread) {
+                e.unread = false;
+                e.size = read.size;
+                e.modified = read.modified;
+            }
             const QModelIndex at = index(row);
             emit dataChanged(at, at, {SizeRole, ModifiedRole});
             updated = true;
@@ -761,9 +764,18 @@ void FolderModel::countFolders(quint64 generation) {
         for (const auto &[row, summary] : watcher->result()) {
             if (row >= m_entries.size() || m_entries.at(row).path != summary.path)
                 continue;
-            m_entries[row].itemCount = summary.itemCount;
+            Entry &entry = m_entries[row];
+            entry.itemCount = summary.itemCount;
+            QList<int> roles{ItemCountRole};
+            // A count goes with the date read before it: one a view read meanwhile may be newer, and would hide the change from a re-read.
+            if (!summary.unread && (entry.unread || entry.modified != summary.modified)) {
+                entry.unread = false;
+                entry.size = summary.size;
+                entry.modified = summary.modified;
+                roles = {SizeRole, ModifiedRole, ItemCountRole};
+            }
             const QModelIndex at = index(row);
-            emit dataChanged(at, at, {ItemCountRole});
+            emit dataChanged(at, at, roles);
             updated = true;
         }
         // QML re-reads its get() snapshots (the current item, which the
@@ -780,6 +792,9 @@ void FolderModel::countFolders(quint64 generation) {
         for (auto &folder : folders) {
             if (*latest != generation)
                 break;
+            // The date is read first: a change made while it's counted then shows as a newer date at the next re-read.
+            if (folder.second.unread)
+                readSizeAndDate(folder.second);
             folder.second.itemCount = itemCount(folder.second.path, showHidden);
         }
         return folders;

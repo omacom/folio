@@ -1195,6 +1195,41 @@ private slots:
         QCOMPARE(model.get(0).value("name").toString(), QString("Photos"));
     }
 
+    void folderModelCountsAFolderNoViewAskedForAgainWhenItChanged()
+    {
+        // Past the rows read at first and never asked for by a view, a folder is counted all the same: a re-read must see it changed.
+        QTemporaryDir dir;
+        const int last = FolderModel::firstRows + 9;
+        for (int i = 0; i <= last; ++i)
+            QVERIFY(QDir(dir.path()).mkpath(QString("d%1").arg(i, 4, 10, QChar('0'))));
+        const QString far = dir.filePath(QString("d%1").arg(last, 4, 10, QChar('0')));
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.index(last).data(FolderModel::NameRole).toString(), QFileInfo(far).fileName());
+        // The count is read as a view's delegate reads it, which asks for nothing.
+        QTRY_COMPARE(model.index(last).data(FolderModel::ItemCountRole).toInt(), 0);
+        write(far + "/a.jpg", "x");
+        const timespec later[2] = {{0, UTIME_OMIT}, {QDateTime::currentSecsSinceEpoch() + 60, 0}};
+        QCOMPARE(::utimensat(AT_FDCWD, QFile::encodeName(far).constData(), later, 0), 0);
+        model.reload();
+        QVERIFY(loaded.wait(3000));
+        QTRY_COMPARE(model.index(last).data(FolderModel::ItemCountRole).toInt(), 1);
+    }
+
+    void folderModelKeepsTheDateAFolderWasCountedWith()
+    {
+        // A view's read of a folder's date lands after the folder was counted and then changed: the count's own date stays, so a re-read sees the change.
+        countedThenChangedAndReadForAView(false);
+    }
+
+    void folderModelKeepsACountsDateOverAViewsReadThatLandedFirst()
+    {
+        // The same read lands ahead of the count made before it: the count brings its own, older date, and a re-read sees the change.
+        countedThenChangedAndReadForAView(true);
+    }
+
     void folderModelForgetsAFolderLeftWhileLoading()
     {
         QTemporaryDir dir;
@@ -7047,6 +7082,66 @@ private:
         QVERIFY(file.open(QIODevice::WriteOnly));
         file.write(contents);
     }
+    // A folder past the first rows is counted, then changed, then read for a view; the two landings come in either order.
+    static void countedThenChangedAndReadForAView(bool readLandsFirst)
+    {
+        QTemporaryDir dir;
+        const int last = FolderModel::firstRows + 9;
+        for (int i = 0; i <= last; ++i)
+            QVERIFY(QDir(dir.path()).mkpath(QString("d%1").arg(i, 4, 10, QChar('0'))));
+        const QString far = dir.filePath(QString("d%1").arg(last, 4, 10, QChar('0')));
+        QThreadPool *pool = QThreadPool::globalInstance();
+        pool->waitForDone();
+        const int threads = pool->maxThreadCount();
+        pool->setMaxThreadCount(1);
+        QSemaphore counted, changed;
+        const auto restore = qScopeGuard([&] {
+            changed.release();
+            pool->waitForDone();
+            pool->setMaxThreadCount(threads);
+        });
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded), told(&model, &FolderModel::dataChanged);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        // One pool thread: the count is on it, this waits behind the count, and the view's read behind this.
+        pool->start([&] {
+            counted.release();
+            changed.acquire();
+        });
+        QVERIFY(!model.index(last).data(FolderModel::ModifiedRole).isValid());
+        QVERIFY(counted.tryAcquire(1, 3000));
+        write(far + "/a.jpg", "x");
+        const timespec later[2] = {{0, UTIME_OMIT}, {QDateTime::currentSecsSinceEpoch() + 60, 0}};
+        QCOMPARE(::utimensat(AT_FDCWD, QFile::encodeName(far).constData(), later, 0), 0);
+        const auto tellings = [&] {
+            int rows = 0;
+            for (const auto &call : told)
+                rows += call.at(0).toModelIndex().row() == last;
+            return rows;
+        };
+        if (readLandsFirst) {
+            // Each landing waits in its own watcher's events: the view's read is started and lands with the count's still waiting.
+            const auto watchers = model.findChildren<QFutureWatcherBase *>().size();
+            QCoreApplication::sendPostedEvents(&model, QEvent::MetaCall);
+            QCOMPARE(model.findChildren<QFutureWatcherBase *>().size(), watchers + 1);
+            changed.release();
+            pool->waitForDone();
+            QCoreApplication::sendPostedEvents(model.findChildren<QFutureWatcherBase *>().constLast());
+            QCOMPARE(tellings(), 1);
+            QCOMPARE(model.index(last).data(FolderModel::ItemCountRole).toInt(), -1);
+        } else {
+            QCoreApplication::processEvents();
+            changed.release();
+        }
+        // The row is told twice: once counted, as it was before the change, and once read for the view, after it.
+        QTRY_COMPARE(tellings(), 2);
+        QCOMPARE(model.index(last).data(FolderModel::ItemCountRole).toInt(), 0);
+        model.reload();
+        QVERIFY(loaded.wait(3000));
+        QTRY_COMPARE(model.index(last).data(FolderModel::ItemCountRole).toInt(), 1);
+    }
+
     // A hyprctl that notes each run and prints the response file.
     static QString standInHyprctl(const QTemporaryDir &dir, const QString &response, const QString &runs)
     {
