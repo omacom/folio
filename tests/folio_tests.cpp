@@ -746,6 +746,61 @@ private slots:
         QCOMPARE(model.get(0).value("path").toString(), b.filePath("report.txt"));
     }
 
+    void fileOpsKnowsTheEditorOmarchyOpens()
+    {
+        // The editor picked under Setup > Default > Editor, read the way
+        // omarchy-launch-editor reads it: Neovim when none was picked, or
+        // when the picked one isn't installed.
+        QTemporaryDir home, bin;
+        const QByteArray oldHome = qgetenv("HOME"), oldPath = qgetenv("PATH");
+        const auto restore = qScopeGuard([&] {
+            qputenv("HOME", oldHome);
+            qputenv("PATH", oldPath);
+        });
+        qputenv("HOME", QFile::encodeName(home.path()));
+        qputenv("PATH", QFile::encodeName(bin.path()));
+        for (const char *name : {"code", "subl"}) {
+            write(bin.filePath(name), "#!/bin/sh\n");
+            QVERIFY(QFile::setPermissions(bin.filePath(name), QFile::ReadOwner | QFile::ExeOwner));
+        }
+        QCOMPARE(FileOps::omarchyEditor(), QString("nvim"));
+        const QString setting = home.filePath(".local/state/omarchy/defaults/editor");
+        QVERIFY(QDir().mkpath(QFileInfo(setting).path()));
+        write(setting, "code\n");
+        QCOMPARE(FileOps::omarchyEditor(), QString("code"));
+        write(setting, "sublime_text\n");
+        QCOMPARE(FileOps::omarchyEditor(), QString("subl"));
+        write(setting, "zeditor\n");
+        QCOMPARE(FileOps::omarchyEditor(), QString("nvim"));
+
+        // The handler is named after the app that runs the picked editor,
+        // by its executable's name wherever it lives; with none, nothing,
+        // and it keeps its own name.
+        const QVariantList apps{QVariantMap{{"executable", "/usr/bin/code"}, {"name", "Visual Studio Code"}},
+                                QVariantMap{{"executable", "nvim"}, {"name", "Neovim"}}};
+        write(setting, "code\n");
+        QCOMPARE(FileOps::editorAppName(apps), QString("Visual Studio Code"));
+        write(setting, "zeditor\n");
+        QCOMPARE(FileOps::editorAppName(apps), QString("Neovim"));
+        write(setting, "subl\n");
+        QCOMPARE(FileOps::editorAppName({apps.first()}), QString());
+    }
+
+    void fileOpsListsTheEditorHandlerOnce()
+    {
+        // Named after Neovim, the handler and Neovim's own entry would be two
+        // of one name: the handler, the default that follows the picked
+        // editor, stands for both. Apps that share a name otherwise stay.
+        const QVariantMap handler{{"id", "omarchy-launch-editor.desktop"}, {"name", "Neovim"}, {"isDefault", true}};
+        const QVariantMap writer{{"id", "libreoffice-writer.desktop"}, {"name", "LibreOffice Writer"}, {"isDefault", false}};
+        const QVariantMap neovim{{"id", "nvim.desktop"}, {"name", "Neovim"}, {"isDefault", false}};
+        QCOMPARE(FileOps::foldHandlerRepeats({handler, writer, neovim}), QVariantList({handler, writer}));
+        QVariantMap other = neovim;
+        other["isDefault"] = true;
+        const QVariantMap twin{{"id", "nvim-qt.desktop"}, {"name", "Neovim"}, {"isDefault", false}};
+        QCOMPARE(FileOps::foldHandlerRepeats({other, writer, twin}), QVariantList({other, writer, twin}));
+    }
+
     void fileOpsDeleteForeverOutsideTheTrash()
     {
         // Shift+Delete deletes for good anywhere: the folder and what's in
