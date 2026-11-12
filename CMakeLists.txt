@@ -1,6 +1,13 @@
 cmake_minimum_required(VERSION 3.21)
 project(folio LANGUAGES CXX)
 
+# Folio is packaged into /usr, and a build that names no prefix (bin/build,
+# the Arch package) has always looked for its plugins there.
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+  set(CMAKE_INSTALL_PREFIX /usr CACHE PATH "Install prefix" FORCE)
+endif()
+include(GNUInstallDirs)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
@@ -9,7 +16,14 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 DBus Concurrent Test)
+# The tests are built unless -DBUILD_TESTING=OFF, which a package can pass
+# to build Folio alone, without Qt Test.
+option(BUILD_TESTING "Build the tests" ON)
+
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 DBus Concurrent)
+if(BUILD_TESTING)
+  find_package(Qt6 REQUIRED COMPONENTS Test)
+endif()
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GIO REQUIRED IMPORTED_TARGET gio-2.0 gio-unix-2.0)
 find_package(ZLIB REQUIRED)
@@ -28,12 +42,30 @@ target_compile_options(folio_core PUBLIC -Wall -Wextra)
 add_executable(folio src/main.cpp src/resources.qrc)
 target_link_libraries(folio PRIVATE folio_core)
 
-# The tests compile the same sources, run offscreen, and read the QML they
-# check straight from src/.
-enable_testing()
-add_executable(folio_tests tests/folio_tests.cpp)
-target_link_libraries(folio_tests PRIVATE folio_core Qt6::Test)
-add_test(NAME folio_tests COMMAND folio_tests)
-set_tests_properties(folio_tests PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)
-# The bundled plugins, which the tests run against stubs.
-target_compile_definitions(folio_tests PRIVATE FOLIO_PLUGINS="${CMAKE_SOURCE_DIR}/plugins")
+# Where an installed Folio finds its bundled plugins: /usr/share/folio/plugins
+# for the usual -DCMAKE_INSTALL_PREFIX=/usr.
+target_compile_definitions(folio_core PRIVATE
+  FOLIO_PACKAGED_PLUGINS="${CMAKE_INSTALL_FULL_DATADIR}/folio/plugins")
+
+if(BUILD_TESTING)
+  # The tests compile the same sources, run offscreen, and read the QML they
+  # check straight from src/.
+  enable_testing()
+  add_executable(folio_tests tests/folio_tests.cpp)
+  target_link_libraries(folio_tests PRIVATE folio_core Qt6::Test)
+  add_test(NAME folio_tests COMMAND folio_tests)
+  set_tests_properties(folio_tests PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)
+  # The bundled plugins, which the tests run against stubs.
+  target_compile_definitions(folio_tests PRIVATE FOLIO_PLUGINS="${CMAKE_SOURCE_DIR}/plugins")
+endif()
+
+# `cmake --install build` (with DESTDIR for a package) puts Folio where a
+# package does, so a packager needs no list of files of their own. Tests stay
+# out of it.
+install(TARGETS folio RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES share/folio.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+install(FILES share/folio.svg DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
+install(FILES LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/folio)
+install(FILES README.md docs/plugins.md DESTINATION ${CMAKE_INSTALL_DOCDIR})
+# The bundled plugins keep their modes, so their commands stay executable.
+install(DIRECTORY plugins DESTINATION ${CMAKE_INSTALL_DATADIR}/folio USE_SOURCE_PERMISSIONS)
