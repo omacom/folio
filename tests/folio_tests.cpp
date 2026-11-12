@@ -1,5 +1,6 @@
 #include <QClipboard>
 #include <QDir>
+#include <QEventLoopLocker>
 #include <QMimeData>
 #include <QPageSize>
 #include <QPainter>
@@ -423,6 +424,18 @@ static QString binWith(const QString &folder, const QHash<QString, QByteArray> &
         file.setPermissions(file.permissions() | QFileDevice::ExeOwner);
     }
     return folder;
+}
+
+// Runs the event loop as Folio's runs once its last window has closed: it
+// ends as soon as nothing holds the application, or fails after ten seconds.
+static int lastWindowClosed()
+{
+    QTimer::singleShot(0, qApp, [] { QEventLoopLocker lastWindow; });
+    QTimer failsafe;
+    failsafe.setSingleShot(true);
+    QObject::connect(&failsafe, &QTimer::timeout, qApp, [] { QCoreApplication::exit(1); });
+    failsafe.start(10000);
+    return QCoreApplication::exec();
 }
 
 // Puts PATH at `path` for as long as the returned guard does.
@@ -1340,7 +1353,7 @@ private slots:
         const QList<QUrl> install{QUrl::fromLocalFile(home.filePath("project/install"))};
         FileOps ops;
         QSignalSpy done(&ops, &FileOps::done);
-        for (const QString &folder : {"project/install", "project", "shortcut"}) {
+        for (const QString folder : {"project/install", "project", "shortcut"}) {
             QVERIFY2(!ops.canDrop(install, home.filePath(folder)), qPrintable(folder));
             ops.dropInto(install, home.filePath(folder));
         }
@@ -1361,12 +1374,12 @@ private slots:
         QTemporaryDir home;
         QDir(home.path()).mkpath("project/install");
         FileOps ops;
-        QQmlPropertyMap theme;
-        theme.insert("accent", QColor(Qt::blue));
-        theme.insert("radius", 0);
+        const std::unique_ptr<QQmlPropertyMap> theme(QQmlPropertyMap::create());
+        theme->insert("accent", QColor(Qt::blue));
+        theme->insert("radius", 0);
         QQmlEngine engine;
         engine.rootContext()->setContextProperty("fileOps", &ops);
-        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("theme", theme.get());
         engine.rootContext()->setContextProperty("home", home.path());
         QQmlComponent component(&engine);
         component.setData("import QtQuick\n"
@@ -1391,7 +1404,7 @@ private slots:
         QMimeData data;
         data.setUrls({QUrl::fromLocalFile(home.filePath("project/install"))});
         const auto dropAt = [&](QPointF at) {
-            QDragEnterEvent enter(at.toPoint(), Qt::MoveAction, &data, Qt::LeftButton, Qt::NoModifier);
+            QDragEnterEvent enter(at, Qt::MoveAction, &data, Qt::LeftButton, Qt::NoModifier);
             QGuiApplication::sendEvent(window, &enter);
             QDropEvent drop(at, Qt::MoveAction, &data, Qt::LeftButton, Qt::NoModifier);
             QGuiApplication::sendEvent(window, &drop);
@@ -1783,6 +1796,55 @@ private slots:
         QCOMPARE(notice.count(), 1);
         QCOMPARE(notice.first().first().toString(), QString("Stopped after 1 of 2 items."));
         QVERIFY(!QFileInfo::exists(again.filePath("pipe")));
+    }
+
+    void fileOpsKeepFolioRunningUntilDone()
+    {
+        // Closing the last window mid-copy leaves Folio running until the
+        // copy is done, rather than quitting under it. The copy reads a pipe,
+        // so it's under way until the test closes the pipe's writer.
+        QTemporaryDir from, to;
+        const QByteArray pipe = QFile::encodeName(from.filePath("pipe"));
+        QVERIFY(mkfifo(pipe.constData(), 0600) == 0);
+        FileOps ops;
+        ops.copy({from.filePath("pipe")});
+        ops.paste(to.path());
+        QVERIFY(!ops.busy().isEmpty());
+        int writer = -1;
+        const auto finish = qScopeGuard([&] {
+            if (writer >= 0)
+                close(writer);
+            QTRY_VERIFY(ops.busy().isEmpty());
+        });
+        QVERIFY(QTest::qWaitFor([&] { return (writer = open(pipe.constData(), O_WRONLY | O_NONBLOCK)) >= 0; }));
+
+        QObject scope;
+        QTimer::singleShot(300, &scope, [&] { close(std::exchange(writer, -1)); });
+        QCOMPARE(lastWindowClosed(), 0);
+        QVERIFY(ops.busy().isEmpty());
+        QVERIFY(QFileInfo::exists(to.filePath("pipe")));
+    }
+
+    void fileOpsKeepFolioRunningUntilAHelperIsDone()
+    {
+        // Compressing runs bsdtar, which a closed last window waits for too,
+        // and one that can't start doesn't keep Folio running.
+        if (QStandardPaths::findExecutable("bsdtar").isEmpty())
+            QSKIP("Compressing needs bsdtar.");
+        QTemporaryDir dir;
+        write(dir.filePath("x.txt"), "x");
+        FileOps ops;
+        ops.compress({dir.filePath("x.txt")});
+        QVERIFY(!ops.busy().isEmpty());
+        QCOMPARE(lastWindowClosed(), 0);
+        QVERIFY(ops.busy().isEmpty());
+        QVERIFY(QFileInfo::exists(dir.filePath("x.txt.zip")));
+
+        QTemporaryDir empty;
+        const auto path = pathAt(empty.path());
+        ops.compress({dir.filePath("x.txt")});
+        QCOMPARE(lastWindowClosed(), 0);
+        QVERIFY(ops.busy().isEmpty());
     }
 
     void fileOpsCancelledMoveAcrossDrivesKeepsOriginals()
@@ -4846,7 +4908,7 @@ private slots:
 
         QMetaObject::invokeMethod(window, "ask");
         QCOMPARE(focused(), QString("Empty"));
-        for (const QString &next : {"Cancel", "Empty", "Cancel"}) {
+        for (const QString next : {"Cancel", "Empty", "Cancel"}) {
             QTest::keyClick(window, Qt::Key_Tab);
             QCOMPARE(focused(), next);
         }
