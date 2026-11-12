@@ -376,7 +376,9 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
     // a plugin's own items.
     m_pluginItem = path.startsWith('/') && !inTrash ? item : QVariantMap();
     showPluginRows(askPlugins());
-    if (kind != "image" && kind != "text" && !inTrash)
+    // A file its extension could not name has its type read from what it holds.
+    const bool unnamed = mime == "application/octet-stream";
+    if (kind != "image" && kind != "text" && !inTrash && !unnamed)
         return;
 
     // Reading the file waits on its disk, which for a slow mount would hold
@@ -393,7 +395,7 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
     // Stepping through files faster than they're read queues readings; the
     // ones overtaken before they start are skipped rather than left to tie
     // up the threads the next folder is listed on.
-    watcher->setFuture(QtConcurrent::run([path, kind, inTrash, latest = m_describing, generation] {
+    watcher->setFuture(QtConcurrent::run([path, kind, mime, unnamed, inTrash, latest = m_describing, generation] {
         QVariantMap read;
         if (*latest != generation)
             return read;
@@ -402,6 +404,11 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
         if (inTrash) {
             read.insert("origin", FileOps::originalPath(path));
             read.insert("deleted", FileOps::deletedAt(path));
+        }
+        // The type read is this file's alone: the pane believes it only for the path it was read from.
+        if (unnamed) {
+            read.insert("path", path);
+            read.insert("mime", FolderModel::typeByContent(path, mime));
         }
         if (kind == "image") {
             QImageReader reader(path);

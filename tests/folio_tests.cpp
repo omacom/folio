@@ -3243,6 +3243,76 @@ private slots:
         QVERIFY(!backend.details().contains("width"));
     }
 
+    void detailsNameAFileByWhatItHoldsWhenItsNameSaysNothing()
+    {
+        // The details pane names a PDF whose name gives no type as a PDF, from a reading made off the UI thread.
+        QTemporaryDir dir;
+        const QString pdf = dir.filePath("report.download"), claimed = dir.filePath("report.zip");
+        write(pdf, "%PDF-1.4\n1 0 obj\n");
+        write(claimed, "%PDF-1.4\n1 0 obj\n");
+        const QMimeDatabase types;
+        const QString unnamed = "application/octet-stream";
+        const QString pdfName = types.mimeTypeForName("application/pdf").comment();
+        QVERIFY(!pdfName.isEmpty() && pdfName != types.mimeTypeForName(unnamed).comment());
+        Backend backend(dir.path());
+        backend.describe({{"path", pdf}, {"kind", "other"}, {"mime", unnamed}});
+        QVERIFY(backend.details().isEmpty());
+        QTRY_COMPARE(backend.details().value("mime").toString(), QString("application/pdf"));
+        QCOMPARE(backend.details().value("path").toString(), pdf);
+        // A name that said a type is believed: the file isn't read for one, alone or with its text.
+        backend.describe({{"path", claimed}, {"kind", "archive"}, {"mime", "application/zip"}});
+        QThreadPool::globalInstance()->waitForDone();
+        QCoreApplication::processEvents();
+        QVERIFY(backend.details().isEmpty());
+        write(dir.filePath("notes.txt"), "hello");
+        backend.describe({{"path", dir.filePath("notes.txt")}, {"kind", "text"}, {"mime", "text/plain"}});
+        QTRY_COMPARE(backend.details().value("text").toString(), QString("hello"));
+        QVERIFY(!backend.details().contains("mime"));
+
+        Theme theme(dir.filePath("theme"));
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        engine.rootContext()->setContextProperty("places", QVariantMap{{"devices", QVariantList()}, {"home", dir.path()}});
+        engine.rootContext()->setContextProperty("backend", &backend);
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "PreviewPane {\n"
+                          "    width: 320; height: 640\n"
+                          "    folderPane: QtObject {\n"
+                          "        property var current: ({})\n"
+                          "        property bool inTrash: false\n"
+                          "        property var paneBackend: ({path: ''})\n"
+                          "        property var paneFileOps: ({appsFor: path => [], defaultAppName: mime => mime === 'application/pdf' ? 'Reader' : ''})\n"
+                          "    }\n"
+                          "    function all(item) { return Array.from(item.children).reduce((found, child) => found.concat(all(child)), [item]) }\n"
+                          "    function said() { return all(this).filter(item => item.text !== undefined && item.visible).map(item => item.text).join('\\n') }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/PreviewPaneTypeTest.qml"));
+        std::unique_ptr<QObject> pane(component.create());
+        QVERIFY2(pane, qPrintable(component.errorString()));
+        const auto said = [&] {
+            QVariant result;
+            QMetaObject::invokeMethod(pane.get(), "said", Q_RETURN_ARG(QVariant, result));
+            return result.toString();
+        };
+        const auto select = [&](const QString &path, const QString &kind, const QString &mime) {
+            pane->property("folderPane").value<QObject *>()->setProperty(
+                "current", QVariantMap{{"path", path}, {"name", QFileInfo(path).fileName()}, {"isDir", false}, {"kind", kind},
+                                       {"mime", mime}, {"size", QFileInfo(path).size()}, {"modified", QFileInfo(path).lastModified()}});
+        };
+        // The type's name and the app its button names both follow the reading.
+        select(pdf, "other", unnamed);
+        QTRY_VERIFY2(said().contains(pdfName), qPrintable(said()));
+        QVERIFY2(said().contains("Open with Reader"), qPrintable(said()));
+        // The next item is never named by the reading made for the last one, also before its own is asked for.
+        select(claimed, "archive", "application/zip");
+        QCOMPARE(backend.details().value("mime").toString(), QString("application/pdf"));
+        QVERIFY2(!said().contains(pdfName) && !said().contains("Reader"), qPrintable(said()));
+        QTRY_VERIFY2(said().contains(types.mimeTypeForName("application/zip").comment()), qPrintable(said()));
+        QVERIFY2(!said().contains(pdfName) && !said().contains("Reader"), qPrintable(said()));
+    }
+
     void backendReadsTrashNotesOffTheUiThread()
     {
         // Finding a trashed item's note looks over every mounted drive, so

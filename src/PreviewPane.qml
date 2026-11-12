@@ -43,6 +43,8 @@ Rectangle {
     // A picture's size or a text's opening lines once they've been read off
     // the UI thread.
     readonly property var info: backend.details
+    // The item's type: its name's, or the one read from what it holds when its name gave none, never one read for another item.
+    readonly property string type: (info.path === item.path && info.mime) || item.mime || ""
     // Described once the folder's loaded has put the cursor back on its
     // item: a re-read leaves another item on the cursor's row for a moment,
     // and describing that would drop what's been read of this one.
@@ -123,7 +125,7 @@ Rectangle {
                 horizontalAlignment: Text.AlignLeft
                 text: {
                     translator.language // The type's name comes from the system, in the language of the moment.
-                    return Format.summary(pane.item, backend.typeName(pane.item.mime || ""))
+                    return Format.summary(pane.item, backend.typeName(pane.type))
                 }
                 color: theme.secondaryForeground
                 font.pixelSize: 12
@@ -251,7 +253,7 @@ Rectangle {
             // when Opens with picks another.
             readonly property string app: {
                 opensWith.picked
-                return pane.hasItem && !pane.item.isDir && pane.folderPane ? pane.folderPane.paneFileOps.defaultAppName(pane.item.mime || "") : ""
+                return pane.hasItem && !pane.item.isDir && pane.folderPane ? pane.folderPane.paneFileOps.defaultAppName(pane.type) : ""
             }
             text: pane.trashed || pane.noting ? qsTr("Restore") : pane.hasItem && pane.item.isDir ? qsTr("Open folder")
                 //: %1 is the name of the app the file opens in, like "Plain".
