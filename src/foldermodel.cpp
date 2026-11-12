@@ -76,12 +76,48 @@ FolderModel::Entry::More &FolderModel::Entry::toSet() {
     return *aside;
 }
 
+QString FolderModel::Entry::path() const {
+    const QString &own = more().path;
+    return own.isNull() ? folder + name : own;
+}
+
+const QString &FolderModel::Entry::path(QString &into) const {
+    if (const QString &own = more().path; !own.isNull())
+        return into = own;
+    into.resize(0);
+    into += folder;
+    return into += name;
+}
+
+bool FolderModel::Entry::isAt(const QString &path) const {
+    if (const QString &own = more().path; !own.isNull())
+        return own == path;
+    return path.size() == folder.size() + name.size() && path.startsWith(folder) && path.endsWith(name);
+}
+
+void FolderModel::Entry::setPath(const QString &path, const QString &like) {
+    if (!more().path.isNull())
+        toSet().path = QString();
+    if (!path.endsWith(name)) {
+        folder.clear();
+        toSet().path = path;
+        return;
+    }
+    const qsizetype length = path.size() - name.size();
+    folder = like.size() == length && path.startsWith(like) ? like : path.first(length);
+}
+
 // One block, as rows of a type share, or two that say the same.
 static bool sameMore(const FolderModel::Entry &a, const FolderModel::Entry &b) {
     if (a.aside.constData() == b.aside.constData())
         return true;
     const FolderModel::Entry::More &x = a.more(), &y = b.more();
-    return x.mime == y.mime && x.extension == y.extension && x.icon == y.icon && x.details == y.details;
+    return x.mime == y.mime && x.extension == y.extension && x.icon == y.icon && x.details == y.details && x.path == y.path;
+}
+
+// The same path, told without putting either together.
+static bool samePath(const FolderModel::Entry &a, const FolderModel::Entry &b) {
+    return a.name == b.name && a.folder == b.folder && a.more().path == b.more().path;
 }
 
 bool FolderModel::sameListing(const QVector<Entry> &a, const QVector<Entry> &b) {
@@ -92,7 +128,7 @@ bool FolderModel::sameListing(const QVector<Entry> &a, const QVector<Entry> &b) 
     for (int i = 0; i < a.size(); ++i)
         // A link read again can be another type. Name, subtitle, icon and
         // details too: a plugin's item keeps its path (its id) when they change.
-        if (a[i].path != b[i].path || a[i].isDir != b[i].isDir || a[i].name != b[i].name || !sameMore(a[i], b[i]))
+        if (a[i].folder != b[i].folder || a[i].isDir != b[i].isDir || a[i].name != b[i].name || !sameMore(a[i], b[i]))
             return false;
     return true;
 }
@@ -167,7 +203,7 @@ QVariant FolderModel::data(const QModelIndex &index, int role) const {
     }
     switch (role) {
     case NameRole: return e.name;
-    case PathRole: return e.path;
+    case PathRole: return e.path();
     case IsDirRole: return e.isDir;
     case SizeRole: return e.size;
     case ModifiedRole: return e.modified;
@@ -175,7 +211,7 @@ QVariant FolderModel::data(const QModelIndex &index, int role) const {
     case MimeRole: return typeOf(e).mime;
     case ExtensionRole: return typeOf(e).extension;
     case ItemCountRole: return e.itemCount;
-    case SelectedRole: return m_selected.contains(e.path);
+    case SelectedRole: return m_selected.contains(e.path());
     case IconRole: return e.more().icon;
     }
     return {};
@@ -203,7 +239,7 @@ static void setSizeAndDate(FolderModel::Entry &entry, const QFileInfo &info) {
 
 // A file gone since it was listed stays unread, with nothing wrong to show, until the folder's re-read drops it.
 static void readSizeAndDate(FolderModel::Entry &entry) {
-    const QFileInfo info(entry.path);
+    const QFileInfo info(entry.path());
     if (info.exists())
         setSizeAndDate(entry, info);
 }
@@ -250,7 +286,7 @@ void FolderModel::readAsked() {
         bool updated = false;
         for (const auto &[row, read] : watcher->result()) {
             m_reading.remove(row);
-            if (row >= m_entries.size() || m_entries.at(row).path != read.path)
+            if (row >= m_entries.size() || !samePath(m_entries.at(row), read))
                 continue;
             // Asked for and not read: the row is owed, so the folder's next re-read tries it again.
             if (read.unread) {
@@ -419,8 +455,9 @@ QVector<FolderModel::Entry> FolderModel::list(const QString &path, bool showHidd
     // Extension-only matching: reading every file's header would make large
     // folders and network mounts crawl.
     QMimeDatabase mimes;
-    // One block per type and extension, shared by every entry that has it.
+    // One block per type and extension, shared by every entry that has it, and one string for the folder.
     QHash<QString, QSharedDataPointer<Entry::More>> shared;
+    QString folder;
     // Sorting by kind compares types, and by date or size those, so they're read here.
     const bool byKind = sort == "kind";
     const bool bySize = sortsByDateOrSize(sort);
@@ -432,11 +469,11 @@ QVector<FolderModel::Entry> FolderModel::list(const QString &path, bool showHidd
         Entry e;
         // The folder's own listing tells a file or folder; a link, a fifo or an entry of no given type is looked up.
         if (whole || item.isSymLink() || !(item.isFile() || item.isDir())) {
-            e = entryFor(item.fileInfo(), mimes);
+            e = entryFor(item.fileInfo(), mimes, folder);
         } else {
             // A type comes from the name alone, so it can wait until it's asked for.
             e.name = item.fileName();
-            e.path = item.absoluteFilePath();
+            e.setPath(item.absoluteFilePath(), folder);
             e.isDir = item.isDir();
             e.unread = true;
             if (byKind)
@@ -444,6 +481,7 @@ QVector<FolderModel::Entry> FolderModel::list(const QString &path, bool showHidd
             if (bySize)
                 setSizeAndDate(e, item.fileInfo());
         }
+        folder = e.folder;
         if (const Entry::More &more = e.more(); !more.mime.isNull()) {
             // A name without a dot has no extension and a name ending in one has an empty one: each is its own key.
             const QString type = more.extension.isNull() ? more.mime : more.mime + '\n' + more.extension;
@@ -481,10 +519,10 @@ FolderModel::Entry FolderModel::typed(const Entry &entry) {
     return e;
 }
 
-FolderModel::Entry FolderModel::entryFor(const QFileInfo &info, const QMimeDatabase &mimes) {
+FolderModel::Entry FolderModel::entryFor(const QFileInfo &info, const QMimeDatabase &mimes, const QString &like) {
     Entry e;
     e.name = info.fileName();
-    e.path = info.absoluteFilePath();
+    e.setPath(info.absoluteFilePath(), like);
     e.isDir = info.isDir();
     setSizeAndDate(e, info);
     // A regular file is typed by its name alone; handing Qt the QFileInfo stats it once more first.
@@ -521,7 +559,10 @@ QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QStri
             const QFileInfo info = it.nextFileInfo();
             if (info.fileName().contains(query, Qt::CaseInsensitive) && entries.size() < limit) {
                 Entry e = entryFor(info, mimes);
-                e.name = base.relativeFilePath(e.path);
+                // Named from the folder searched, which every match then shares as its folder.
+                const QString path = e.path();
+                e.name = base.relativeFilePath(path);
+                e.setPath(path, entries.isEmpty() ? QString() : entries.constLast().folder);
                 entries.push_back(e);
             }
             // Other filesystems (a mounted drive, another machine, /proc
@@ -680,7 +721,7 @@ QVector<FolderModel::Entry> FolderModel::listItems(const QVariantList &items, co
         e.name = map.value("name").toString();
         if (!e.name.contains(query, Qt::CaseInsensitive))
             continue;
-        e.path = map.value("path").toString();
+        e.setPath(map.value("path").toString());
         Entry::More &more = e.toSet();
         more.kind = QStringLiteral("item");
         more.icon = map.value("icon").toString();
@@ -702,7 +743,7 @@ void FolderModel::summarize(Entry &entry, bool showHidden) {
     constexpr qsizetype peekSize = 2; // pictures the preview shows of a folder
     // The first pictures in QDir::Name order (a case-sensitive compare), kept in one pass instead of sorting every name.
     QStringList firsts;
-    for (QDirIterator it(entry.path, entryFilters(showHidden)); it.hasNext();) {
+    for (QDirIterator it(entry.path(), entryFilters(showHidden)); it.hasNext();) {
         it.next();
         ++entry.itemCount;
         const QString name = it.fileName();
@@ -712,7 +753,7 @@ void FolderModel::summarize(Entry &entry, bool showHidden) {
         if (firsts.size() > peekSize)
             firsts.removeLast();
     }
-    const QDir dir(entry.path);
+    const QDir dir(entry.path());
     QStringList peek;
     for (const QString &name : std::as_const(firsts))
         peek << dir.filePath(name);
@@ -740,12 +781,12 @@ void FolderModel::reload() {
     const QString query = m_query;
     const QLocale locale;
     const QVariantList items = m_items;
-    // Rows read or asked for are read again, so a change shows and nothing asked is lost (a search, or by date or size, reads all).
-    QSet<QString> read;
+    // Rows read or asked for are read again, so a change shows and nothing asked is lost (a search, or by date or size, reads all); told by folder and name, which may be of the folder just left.
+    QSet<std::pair<QString, QString>> read;
     if (query.isEmpty() && !sortsByDateOrSize(sort))
         for (int row = 0; row < m_entries.size(); ++row)
             if (!m_entries.at(row).unread || m_reading.contains(row) || m_owed.contains(row))
-                read.insert(m_entries.at(row).path);
+                read.insert({m_entries.at(row).folder, m_entries.at(row).name});
     // The answers on their way are dropped with the generation: this re-read owes their rows now, and a view may ask again.
     m_owed.unite(m_reading);
     m_reading.clear();
@@ -771,9 +812,10 @@ void FolderModel::reload() {
         }
         if (!m_selected.isEmpty()) {
             QSet<QString> still;
+            QString path;
             for (const Entry &e : std::as_const(m_entries))
-                if (m_selected.contains(e.path))
-                    still.insert(e.path);
+                if (m_selected.contains(e.path(path)))
+                    still.insert(path);
             if (still != m_selected) {
                 m_selected = still;
                 emit selectionChanged();
@@ -793,7 +835,7 @@ void FolderModel::reload() {
                      : query.isEmpty() || path == recentPath() ? list(path, showHidden, sort, &error, overtaken, locale, false)
                      : search(path, query, showHidden, sort, overtaken, 1000, locale);
         for (Entry &e : entries) {
-            if (!e.unread || !read.contains(e.path))
+            if (!e.unread || !read.contains({e.folder, e.name}))
                 continue;
             if (overtaken())
                 break;
@@ -821,7 +863,7 @@ void FolderModel::countFolders(quint64 generation) {
             return;
         bool updated = false;
         for (const auto &[row, summary] : watcher->result()) {
-            if (row >= m_entries.size() || m_entries.at(row).path != summary.path)
+            if (row >= m_entries.size() || !samePath(m_entries.at(row), summary))
                 continue;
             Entry &entry = m_entries[row];
             entry.itemCount = summary.itemCount;
@@ -854,7 +896,7 @@ void FolderModel::countFolders(quint64 generation) {
             // The date is read first: a change made while it's counted then shows as a newer date at the next re-read.
             if (folder.second.unread)
                 readSizeAndDate(folder.second);
-            folder.second.itemCount = itemCount(folder.second.path, showHidden);
+            folder.second.itemCount = itemCount(folder.second.path(), showHidden);
         }
         return folders;
     }));
@@ -869,7 +911,7 @@ QVariantMap FolderModel::get(int row) const {
         m_snapshotWaiting = true;
     }
     QVariantMap map = toMap(e);
-    map.insert("selected", m_selected.contains(e.path));
+    map.insert("selected", m_selected.contains(e.path()));
     return map;
 }
 
@@ -878,7 +920,7 @@ QVariantMap FolderModel::toMap(const Entry &listed) {
     const Entry::More &more = entry.more();
     // Not read yet, the size and date are absent rather than 0 B and 1970.
     return {
-        {"name", entry.name}, {"path", entry.path}, {"isDir", entry.isDir},
+        {"name", entry.name}, {"path", entry.path()}, {"isDir", entry.isDir},
         {"size", entry.unread ? QVariant() : entry.size}, {"modified", entry.unread ? QVariant() : entry.modified},
         {"kind", more.kind}, {"mime", more.mime},
         {"extension", more.extension}, {"itemCount", entry.itemCount}, {"icon", more.icon},
@@ -896,14 +938,14 @@ void FolderModel::setSelected(const QSet<QString> &paths) {
 }
 
 void FolderModel::selectOnly(int row) {
-    setSelected(row >= 0 && row < m_entries.size() ? QSet<QString>{m_entries.at(row).path} : QSet<QString>{});
+    setSelected(row >= 0 && row < m_entries.size() ? QSet<QString>{m_entries.at(row).path()} : QSet<QString>{});
 }
 
 void FolderModel::toggleSelected(int row) {
     if (row < 0 || row >= m_entries.size())
         return;
     QSet<QString> paths = m_selected;
-    const QString path = m_entries.at(row).path;
+    const QString path = m_entries.at(row).path();
     if (!paths.remove(path))
         paths.insert(path);
     setSelected(paths);
@@ -916,7 +958,7 @@ void FolderModel::selectRange(int from, int to, bool add) {
     to = qBound(0, to, int(m_entries.size()) - 1);
     QSet<QString> paths = add ? m_selected : QSet<QString>{};
     for (int row = qMin(from, to); row <= qMax(from, to); ++row)
-        paths.insert(m_entries.at(row).path);
+        paths.insert(m_entries.at(row).path());
     setSelected(paths);
 }
 
@@ -924,14 +966,14 @@ void FolderModel::selectRows(const QList<int> &rows) {
     QSet<QString> paths;
     for (int row : rows)
         if (row >= 0 && row < m_entries.size())
-            paths.insert(m_entries.at(row).path);
+            paths.insert(m_entries.at(row).path());
     setSelected(paths);
 }
 
 void FolderModel::selectAll() {
     QSet<QString> paths;
     for (const Entry &e : std::as_const(m_entries))
-        paths.insert(e.path);
+        paths.insert(e.path());
     setSelected(paths);
 }
 
@@ -940,15 +982,18 @@ void FolderModel::clearSelection() {
 }
 
 bool FolderModel::isSelected(int row) const {
-    return row >= 0 && row < m_entries.size() && m_selected.contains(m_entries[row].path);
+    return row >= 0 && row < m_entries.size() && m_selected.contains(m_entries[row].path());
 }
 
 QStringList FolderModel::selectedPaths() const {
     // In the folder's order, not the order they were picked in.
     QStringList paths;
+    if (m_selected.isEmpty())
+        return paths;
+    QString path;
     for (const Entry &e : m_entries)
-        if (m_selected.contains(e.path))
-            paths << e.path;
+        if (m_selected.contains(e.path(path)))
+            paths << path;
     return paths;
 }
 
@@ -961,7 +1006,7 @@ int FolderModel::indexOf(const QString &name) const {
 
 int FolderModel::indexOfPath(const QString &path) const {
     for (int row = 0; row < m_entries.size(); ++row)
-        if (m_entries[row].path == path)
+        if (m_entries[row].isAt(path))
             return row;
     return -1;
 }

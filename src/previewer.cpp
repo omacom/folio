@@ -117,7 +117,7 @@ void Previewer::start(const QString &path, bool showHidden, const QString &sort)
 void Previewer::show(const QString &path) {
     const QString absolute = QFileInfo(path).absoluteFilePath();
     for (int i = 0; i < m_entries.size(); ++i) {
-        if (m_entries[i].path == absolute) {
+        if (m_entries[i].isAt(absolute)) {
             if (i != m_index)
                 setIndex(i, false);
             return;
@@ -134,7 +134,7 @@ void Previewer::relist() {
     if (m_index < 0 || m_index >= m_entries.size())
         return;
     const quint64 generation = ++m_generation;
-    const QString folder = QFileInfo(m_entries.at(m_index).path).absolutePath();
+    const QString folder = QFileInfo(m_entries.at(m_index).path()).absolutePath();
     const bool showHidden = m_showHidden;
     const QString sort = m_sort;
     const QLocale locale;
@@ -144,9 +144,9 @@ void Previewer::relist() {
         if (generation != m_generation)
             return;
         const auto entries = watcher->result();
-        const QString current = m_entries.at(m_index).path;
+        const QString current = m_entries.at(m_index).path();
         for (int i = 0; i < entries.size(); ++i) {
-            if (entries[i].path == current) {
+            if (entries[i].isAt(current)) {
                 // Keep the entry already shown: it has the folder summary.
                 const FolderModel::Entry shown = m_entries.at(m_index);
                 m_entries = entries;
@@ -176,7 +176,7 @@ QVariantMap Previewer::item() const {
 QString Previewer::url() const {
     if (m_index < 0 || m_index >= m_entries.size())
         return {};
-    return QUrl::fromLocalFile(m_entries.at(m_index).path).toString();
+    return QUrl::fromLocalFile(m_entries.at(m_index).path()).toString();
 }
 
 QString Previewer::type() const {
@@ -199,7 +199,7 @@ void Previewer::open() {
     if (m_index >= 0)
         // The same lookup as opening from the folder: the type's default
         // app, or its parent type's.
-        if (const QString problem = FileOps::openInDefaultApp(m_entries.at(m_index).path); !problem.isEmpty())
+        if (const QString problem = FileOps::openInDefaultApp(m_entries.at(m_index).path()); !problem.isEmpty())
             qWarning("%s", qPrintable(problem));
 }
 
@@ -237,7 +237,7 @@ void Previewer::setIndex(int index, bool report) {
                 return qMakePair(entry, QString());
             if (count)
                 FolderModel::summarize(entry, showHidden);
-            const QString read = text ? readText(entry.path) : QString();
+            const QString read = text ? readText(entry.path()) : QString();
             return qMakePair(entry, markdown ? markdownOpening(read) : read);
         }));
     }
@@ -245,7 +245,7 @@ void Previewer::setIndex(int index, bool report) {
     emit listed();
 
     if (report && m_reporting) {
-        std::fprintf(stdout, "%s\n", e.path.toUtf8().constData());
+        std::fprintf(stdout, "%s\n", e.path().toUtf8().constData());
         std::fflush(stdout);
     }
 }

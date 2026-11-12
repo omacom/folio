@@ -627,6 +627,55 @@ private slots:
             QCOMPARE(dotted.at(i).more().extension.isNull(), FolderModel::typed(undotted.at(i)).more().extension.isNull());
     }
 
+    void folderKeepsARowsFolderOnce()
+    {
+        QTemporaryDir dir;
+        for (const char *name : {"a.txt", "b.txt", "sub/deep/p.txt"}) {
+            QDir(dir.path()).mkpath(QFileInfo(name).path());
+            write(dir.filePath(name), "x");
+        }
+        // Listed either way, the rows of a folder share one string for it, and each row's path is that and its name.
+        QString error;
+        for (const bool whole : {false, true}) {
+            const auto entries = FolderModel::list(dir.path(), false, "name", &error, {}, QLocale(), whole);
+            QCOMPARE(entries.size(), 3);
+            QString path;
+            for (const auto &e : entries) {
+                QVERIFY2(e.folder.constData() == entries.at(0).folder.constData(), qPrintable(e.name));
+                QCOMPARE(e.path(), dir.filePath(e.name));
+                QCOMPARE(e.path(path), dir.filePath(e.name));
+                QVERIFY(e.isAt(dir.filePath(e.name)));
+                QVERIFY(!e.isAt(dir.filePath(e.name) + "x") && !e.isAt(dir.path()) && !e.isAt("x" + dir.filePath(e.name).mid(1)));
+                QVERIFY(!e.isAt(dir.filePath("sub/" + e.name)));
+            }
+        }
+        // A search's matches are named from the folder searched and share it; their paths are the files' own.
+        const auto found = FolderModel::search(dir.path(), "txt", false, "name");
+        QCOMPARE(found.size(), 3);
+        for (const auto &e : found) {
+            QVERIFY2(e.folder.constData() == found.at(0).folder.constData(), qPrintable(e.name));
+            QCOMPARE(e.path(), dir.filePath(e.name));
+        }
+        QVERIFY(std::any_of(found.cbegin(), found.cend(), [](const auto &e) { return e.name == "sub/deep/p.txt"; }));
+        // The root is its own folder, and a plugin item's id, which says nothing of its name, is kept whole.
+        QCOMPARE(FolderModel::entryFor(QFileInfo("/"), QMimeDatabase()).path(), QString("/"));
+        const auto items = FolderModel::listItems({QVariantMap{{"name", "Build box"}, {"path", "peer:build"}},
+                                                   QVariantMap{{"name", "Dropbox"}, {"path", "~/Dropbox"}}});
+        QCOMPARE(items.size(), 2);
+        QCOMPARE(items.at(0).path(), QString("peer:build"));
+        QVERIFY(items.at(0).isAt("peer:build") && !items.at(0).isAt("Build box"));
+        QCOMPARE(items.at(1).path(), QString("~/Dropbox"));
+        QVERIFY(items.at(1).isAt("~/Dropbox"));
+        // A row moved keeps no trace of where it was, whichever way either path is kept.
+        FolderModel::Entry moved = items.at(0);
+        moved.setPath("/tmp/Build box");
+        QCOMPARE(moved.path(), QString("/tmp/Build box"));
+        QCOMPARE(moved.more().path, QString());
+        moved.setPath("peer:other");
+        QCOMPARE(moved.path(), QString("peer:other"));
+        QCOMPARE(moved.folder, QString());
+    }
+
     void folderTypesOnlyWhatsAskedFor()
     {
         QTemporaryDir dir;
@@ -645,7 +694,7 @@ private slots:
             const auto typedCount = std::count_if(untyped.cbegin(), untyped.cend(), [](const auto &e) { return !e.more().mime.isNull(); });
             QCOMPARE(typedCount, sort == "kind" ? untyped.size() : lookedUp);
             for (int i = 0; i < whole.size(); ++i) {
-                QCOMPARE(untyped.at(i).path, whole.at(i).path);
+                QCOMPARE(untyped.at(i).path(), whole.at(i).path());
                 QCOMPARE(untyped.at(i).isDir, whole.at(i).isDir);
                 if (!untyped.at(i).unread) {
                     QCOMPARE(untyped.at(i).size, whole.at(i).size);
@@ -893,6 +942,30 @@ private slots:
         QCoreApplication::processEvents();
     }
 
+    void folderReadsNothingAgainForAFolderLeft()
+    {
+        // What was read in the folder left says nothing of a row of the same name in the folder come to: that row waits for a view to ask.
+        QTemporaryDir a, b;
+        constexpr int same = 10;
+        for (int i = 0; i < same; ++i) {
+            write(a.filePath(QString("m%1.txt").arg(i)), "x");
+            write(b.filePath(QString("m%1.txt").arg(i)), "x");
+        }
+        for (int i = 0; i < FolderModel::firstRows; ++i)
+            write(b.filePath(QString("a%1.txt").arg(i, 4, 10, QChar('0'))), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(a.path());
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), same);
+        QVERIFY(model.index(0).data(FolderModel::SizeRole).isValid());
+        model.setPath(b.path());
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), FolderModel::firstRows + same);
+        for (int row = FolderModel::firstRows; row < model.count(); ++row)
+            QVERIFY2(!model.index(row).data(FolderModel::SizeRole).isValid(), qPrintable(model.index(row).data(FolderModel::NameRole).toString()));
+    }
+
     void folderTellsASnapshotWaitingBehindABatchThatReadNothing()
     {
         // With the folder's parent renamed away a row reads nothing, and the folder itself, which is watched, never changes.
@@ -1127,7 +1200,7 @@ private slots:
             for (int row = 0; row < model.count(); ++row) {
                 const QModelIndex at = model.index(row);
                 const auto &e = whole.at(row);
-                QCOMPARE(at.data(FolderModel::PathRole).toString(), e.path);
+                QCOMPARE(at.data(FolderModel::PathRole).toString(), e.path());
                 QCOMPARE(at.data(FolderModel::NameRole).toString(), e.name);
                 QCOMPARE(at.data(FolderModel::IsDirRole).toBool(), e.isDir);
                 QCOMPARE(at.data(FolderModel::SizeRole).toLongLong(), e.size);
@@ -1251,7 +1324,7 @@ private slots:
         write(dir.filePath("notes.txt"), "x");
         write(dir.filePath(".hidden"), "x");
         FolderModel::Entry entry;
-        entry.path = dir.path();
+        entry.setPath(dir.path());
         FolderModel::summarize(entry, false);
         QCOMPARE(entry.itemCount, 4);
         QCOMPARE(entry.more().peek.size(), 2);
@@ -1274,7 +1347,7 @@ private slots:
 
         // Name order is a case-sensitive compare: capitals first, photo10 before photo9, accents after z.
         FolderModel::Entry entry;
-        entry.path = dir.path();
+        entry.setPath(dir.path());
         FolderModel::summarize(entry, false);
         QCOMPARE(entry.itemCount, 26);
         QCOMPARE(entry.more().peek, QStringList({dir.filePath("Photo9.JPG"), dir.filePath("photo10.jpg")}));
@@ -1289,7 +1362,7 @@ private slots:
         QTemporaryDir big;
         for (int i = 0; i < files; ++i)
             write(big.filePath(QString("f%1.txt").arg(i)), "x");
-        entry.path = big.path();
+        entry.setPath(big.path());
         malloc_trim(0);
         constexpr char resetPeak[] = "5"; // what /proc/self/clear_refs takes to set VmHWM back to the current VmRSS
         QFile clear("/proc/self/clear_refs");
@@ -7534,7 +7607,7 @@ private:
         for (int i = 0; i < count; ++i) {
             FolderModel::Entry e;
             e.name = i < 400 ? names.at(i % names.size()) : QString("file %1 %2").arg(i % 97).arg(names.at(i % names.size()));
-            e.path = QString("/sortable/%1").arg(i);
+            e.setPath(QString("/sortable/%1").arg(i));
             e = FolderModel::typed(e);
             if (i % 13 == 0) {
                 e.isDir = true;
@@ -7589,7 +7662,7 @@ private:
     {
         QStringList out;
         for (const auto &e : entries)
-            out << e.path;
+            out << e.path();
         return out;
     }
 

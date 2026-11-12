@@ -52,7 +52,8 @@ public:
 
     struct Entry {
         QString name;
-        QString path;
+        // What a row's path starts with, its name being the rest: its folder and a slash, or for a search's match the folder searched. A folder's rows share one string, as a search's matches do.
+        QString folder;
         bool isDir = false;
         // Listed by name, with the size and date left for when a view asks for them.
         bool unread = false;
@@ -71,11 +72,20 @@ public:
             QVariantList details;
             // The first pictures in a folder, for the preview window.
             QStringList peek;
+            // The path of a row that isn't its folder and then its name: a plugin item's id.
+            QString path;
         };
         // Null for a row with none of it; rows of one type in a listing share one, and a write gives a row its own.
         QSharedDataPointer<More> aside;
         const More &more() const;
         More &toSet();
+        QString path() const;
+        // The same, written into `into`, whose room is used again from row to row: a pass over a large folder allocates nothing.
+        const QString &path(QString &into) const;
+        // Whether the row is at `path`, told without putting its own together.
+        bool isAt(const QString &path) const;
+        // Set after the name. `like` is a folder to share when the row is in it: in a listing, the row before's.
+        void setPath(const QString &path, const QString &like = {});
     };
 
     explicit FolderModel(QObject *parent = nullptr);
@@ -131,7 +141,7 @@ public:
     static QVector<Entry> list(const QString &path, bool showHidden, const QString &sort, QString *error,
                                const std::function<bool()> &stop = {}, const QLocale &locale = QLocale(),
                                bool whole = true);
-    static Entry entryFor(const QFileInfo &info, const QMimeDatabase &mimes);
+    static Entry entryFor(const QFileInfo &info, const QMimeDatabase &mimes, const QString &like = {});
     // The entry with its kind, MIME type and extension, read from its name when it was listed untyped.
     static Entry typed(const Entry &entry);
     // An entry as QML reads it, by the names of its fields.
