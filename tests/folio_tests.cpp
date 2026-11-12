@@ -3293,27 +3293,55 @@ private slots:
         QCOMPARE(backend.title(), QString("Trash"));
     }
 
-    void placesListEveryFolderInHome()
+    void placesListHomeAndItsStandardFolders()
     {
+        // As Nautilus has them: Home, then the standard folders that exist,
+        // never every folder in home.
         QTemporaryDir home;
-        for (const char *dir : {"Work", "Documents", "omarchy", ".config", "project10", "project9"})
+        for (const char *dir : {"Work", "Downloads", "Documents", "omarchy", ".config", "Music"})
             QDir(home.path()).mkpath(dir);
-        write(home.filePath("notes.txt"), "not a folder");
         auto names = [](const Places &p) {
             QStringList list;
             for (const auto &v : p.places()) list << v.toMap().value("name").toString();
             return list;
         };
-        QCOMPARE(names(Places(home.path())),
-                 QStringList({"Documents", "Omarchy", "project9", "project10", "Work"}));
+        const Places places(home.path());
+        QCOMPARE(names(places), QStringList({"Home", "Documents", "Downloads", "Music"}));
+        QCOMPARE(places.places().at(0).toMap().value("icon").toString(), QString("home"));
+        QCOMPARE(places.places().at(0).toMap().value("path").toString(), QDir::cleanPath(home.path()));
+        QCOMPARE(places.places().at(2).toMap().value("icon").toString(), QString("downloads"));
+    }
 
-        // The XDG folders have glyphs of their own; Dropbox's mark comes
-        // from its plugin.
-        QDir(home.path()).mkpath("Dropbox");
-        const Places withDropbox(home.path());
-        QCOMPARE(names(withDropbox).at(1), QString("Dropbox"));
-        QCOMPARE(withDropbox.places().at(1).toMap().value("icon").toString(), QString("folder"));
-        QCOMPARE(withDropbox.places().at(0).toMap().value("icon").toString(), QString("documents"));
+    void placesReorderPins()
+    {
+        QTemporaryDir home;
+        for (const char *dir : {"a", "b", "c"})
+            QDir(home.path()).mkpath(dir);
+        const QString bookmarks = home.filePath(".config/gtk-3.0/bookmarks");
+        QDir().mkpath(QFileInfo(bookmarks).absolutePath());
+        auto line = [&](const char *dir) { return QUrl::fromLocalFile(home.filePath(dir)).toEncoded(); };
+        write(bookmarks, line("a") + "\nsftp://studio/srv Studio\n" + line("b") + " Bee\n" + line("c") + "\n");
+        Places places(home.path());
+        places.movePin(home.filePath("c"), 0);
+        QStringList order;
+        for (const auto &p : places.pinned()) order << QFileInfo(p.toMap().value("path").toString()).fileName();
+        QCOMPARE(order, QStringList({"c", "a", "b"}));
+        // Labels and the remote bookmark stay with their lines and place.
+        QFile file(bookmarks);
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QCOMPARE(file.readAll(), line("c") + "\nsftp://studio/srv Studio\n" + line("a") + "\n" + line("b") + " Bee\n");
+        file.close();
+
+        // A folder bookmarked twice is pinned once; moving it drops the
+        // later copy, which would otherwise put it back where it was.
+        write(bookmarks, line("a") + "\n" + line("a") + "\n" + line("b") + "\n" + line("c") + "\n");
+        places.refresh();
+        places.movePin(home.filePath("a"), 2);
+        order.clear();
+        for (const auto &p : places.pinned()) order << QFileInfo(p.toMap().value("path").toString()).fileName();
+        QCOMPARE(order, QStringList({"b", "c", "a"}));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QCOMPARE(file.readAll(), line("b") + "\n" + line("c") + "\n" + line("a") + "\n");
     }
 
     void placesPinFoldersAsGtkBookmarks()
@@ -3336,7 +3364,7 @@ private slots:
         QCOMPARE(places.pin(home.filePath("Work/folio")), QString());
         QVERIFY(places.isPinned(home.filePath("Work/folio")));
         QCOMPARE(places.pinned().size(), 2);
-        QVERIFY(!places.pin(home.filePath("Downloads")).isEmpty()); // already under Home
+        QVERIFY(!places.pin(home.filePath("Downloads")).isEmpty()); // already in Places
         // Hidden folders in home aren't listed under Home, so they can be
         // pinned.
         QCOMPARE(places.pin(home.filePath(".config")), QString());

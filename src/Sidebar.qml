@@ -3,7 +3,8 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import "Format.js" as Format
 
-// Home's folders, pinned folders, views, drives and plugins' sections. The one holding the current folder stays lit while you
+// Places (Home, its standard folders, Recents and Trash), pinned folders,
+// drives and plugins' sections, the way Nautilus lays them out. The one holding the current folder stays lit while you
 // dig into it, so you always know which root you're under.
 Rectangle {
     id: sidebar
@@ -32,10 +33,10 @@ Rectangle {
     // Each plugin section's rows, then the row for its view.
     function sectionRows(section) { return section.view ? section.rows.concat([section.view]) : section.rows }
     readonly property var pluginRows: plugins.sections.reduce((all, section) => all.concat(sectionRows(section)), [])
-    readonly property var rows: [].concat(places.places, places.pinned, places.views, places.devices, pluginRows)
-    readonly property int pinnedAt: places.places.length
-    readonly property int viewsAt: pinnedAt + places.pinned.length
-    readonly property int devicesAt: viewsAt + places.views.length
+    readonly property var rows: [].concat(places.places, places.views, places.pinned, places.devices, pluginRows)
+    readonly property int viewsAt: places.places.length
+    readonly property int pinnedAt: viewsAt + places.views.length
+    readonly property int devicesAt: pinnedAt + places.pinned.length
     readonly property int pluginsAt: devicesAt + places.devices.length
     // Where a plugin section's rows start in `rows`.
     function sectionAt(index) {
@@ -89,7 +90,7 @@ Rectangle {
     // A pinned folder is unpinned, a plugin's item taken off the sidebar.
     Keys.onDeletePressed: {
         const row = rows[cursor]
-        if (cursor >= pinnedAt && cursor < viewsAt)
+        if (cursor >= pinnedAt && cursor < devicesAt)
             places.unpin(row.path)
         else if (row && row.forgettable)
             plugins.forget(row.plugin, row.id)
@@ -97,23 +98,71 @@ Rectangle {
     // Rows taken away under the keyboard leave it on the last one.
     onRowsChanged: cursor = Math.max(0, Math.min(cursor, rows.length - 1))
 
-    // Alt+⏎ (or the Menu key) on a drive opens its menu beside it; the
-    // files' menu stands aside for it.
+    // Alt+⏎ (or the Menu key) on a drive, place or pin opens its menu
+    // beside it; the files' menu stands aside for it.
     readonly property var keyedDrive: activeFocus && cursor >= devicesAt && cursor < pluginsAt
                                       ? driveRows.itemAt(cursor - devicesAt) : null
+    readonly property var keyedPlace: !activeFocus ? null
+                                    : cursor < viewsAt ? placeRows.itemAt(cursor)
+                                    : cursor >= pinnedAt && cursor < devicesAt ? pinRows.itemAt(cursor - pinnedAt)
+                                    : null
     function menuKey(event) {
         return ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.AltModifier))
             || event.key === Qt.Key_Menu || (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))
     }
-    Keys.onShortcutOverride: (event) => event.accepted = menuKey(event) && keyedDrive !== null
+    Keys.onShortcutOverride: (event) => event.accepted = menuKey(event) && (keyedDrive !== null || keyedPlace !== null)
     // Return has its own handler, which Keys calls before this one.
     Keys.onPressed: (event) => event.accepted = openDriveMenu(event)
     function openDriveMenu(event) {
-        if (!menuKey(event) || !keyedDrive)
+        if (!menuKey(event))
             return false
-        driveMenu.show(keyedDrive.modelData, keyedDrive)
+        if (keyedDrive)
+            driveMenu.show(keyedDrive.modelData, keyedDrive)
+        else if (keyedPlace)
+            placeMenu.show(keyedPlace.modelData, keyedPlace)
+        else
+            return false
         return true
     }
+
+    // Right-click on a folder in Places or Pinned.
+    FolioMenu {
+        id: placeMenu
+        property string path
+        property bool pinned: false
+        // Opens at the pointer, or (from the keyboard) beside the row.
+        function show(row, near) {
+            path = row.path
+            pinned = places.isPinned(row.path)
+            if (near)
+                popup(near, Math.min(near.width / 2, 120), near.height / 2)
+            else
+                popup()
+        }
+        FolioMenuItem {
+            text: qsTr("Open")
+            onTriggered: sidebar.target.navigate(placeMenu.path)
+        }
+        FolioMenuItem {
+            text: qsTr("Open Terminal Here")
+            onTriggered: fileOps.openTerminal(placeMenu.path)
+        }
+        FolioMenuItem {
+            text: qsTr("Copy Path")
+            onTriggered: fileOps.yank([placeMenu.path])
+        }
+        MenuLine { shown: placeMenu.pinned }
+        FolioMenuItem {
+            shown: placeMenu.pinned
+            text: qsTr("Unpin")
+            onTriggered: places.unpin(placeMenu.path)
+        }
+    }
+
+    // A pin being dragged to a new place among the pins: where it was, and
+    // the pin it's over.
+    property int pinFrom: -1
+    property int pinTo: -1
 
     DriveMenu {
         id: driveMenu
@@ -125,7 +174,7 @@ Rectangle {
     readonly property string activePath: {
         let best = ""
         const here = sidebar.target.path
-        for (const list of [places.places, places.pinned, places.views, places.devices,
+        for (const list of [places.places, places.views, places.pinned, places.devices,
                             plugins.sections.filter(section => section.view).map(section => section.view)]) {
             for (const p of list) {
                 if (p.path !== "/" && (here === p.path || here.startsWith(p.path + "/")) && p.path.length > best.length)
@@ -274,17 +323,9 @@ Rectangle {
             width: sidebar.width - 24
             spacing: 1
 
-            // The section's label is home itself: click it to go there.
-            SectionLabel {
-                Layout.topMargin: 0
-                text: qsTr("Home")
-                color: sidebar.target.path === places.home ? theme.accent
-                     : homeHover.hovered ? theme.foreground : theme.secondaryForeground
-                Accessible.role: Accessible.Button
-                HoverHandler { id: homeHover; cursorShape: Qt.PointingHandCursor }
-                TapHandler { onTapped: sidebar.target.navigate(places.home) }
-            }
+            // Places: Home and its standard folders, then Recents and Trash.
             Repeater {
+                id: placeRows
                 model: places.places
                 PlaceRow {
                     required property var modelData
@@ -293,10 +334,29 @@ Rectangle {
                     onDropHoverChanged: sidebar.dropHovers += dropHover ? 1 : -1
                     keyed: sidebar.activeFocus && sidebar.cursor === 0 + index
                     onKeyedChanged: if (keyed) sidebar.reveal(this)
-                    text: modelData.name
+                    text: modelData.icon === "home" ? qsTr("Home") : modelData.name
                     glyph: modelData.icon
                     active: sidebar.activePath === modelData.path
                     onClicked: sidebar.target.navigate(modelData.path)
+                    TapHandler {
+                        acceptedButtons: Qt.RightButton
+                        onTapped: placeMenu.show(parent.modelData, null)
+                    }
+                }
+            }
+            Repeater {
+                model: places.views
+                PlaceRow {
+                    required property var modelData
+                    required property int index
+                    dropTrashes: modelData.icon === "trash"
+                    onDropHoverChanged: sidebar.dropHovers += dropHover ? 1 : -1
+                    text: modelData.icon === "trash" ? qsTr("Trash") : qsTr("Recents")
+                    glyph: modelData.icon
+                    active: sidebar.activePath === modelData.path
+                    onClicked: sidebar.target.navigate(modelData.path)
+                    keyed: sidebar.activeFocus && sidebar.cursor === sidebar.viewsAt + index
+                    onKeyedChanged: if (keyed) sidebar.reveal(this)
                 }
             }
 
@@ -305,6 +365,7 @@ Rectangle {
             // empty) as the place to drop it.
             SectionLabel { text: qsTr("Pinned"); visible: places.pinned.length > 0 || sidebar.dragging }
             Repeater {
+                id: pinRows
                 model: places.pinned
                 PlaceRow {
                     id: pinRow
@@ -318,6 +379,46 @@ Rectangle {
                     glyph: modelData.icon
                     active: sidebar.activePath === modelData.path
                     onClicked: sidebar.target.navigate(modelData.path)
+                    TapHandler {
+                        acceptedButtons: Qt.RightButton
+                        onTapped: placeMenu.show(pinRow.modelData, null)
+                    }
+                    // Dragged up or down, the pin moves among the pins.
+                    readonly property int pinIndex: index
+                    opacity: sidebar.pinFrom === index ? 0.5 : 1
+                    DragHandler {
+                        id: pinDrag
+                        target: null
+                        xAxis.enabled: false
+                        onActiveChanged: {
+                            if (active) {
+                                sidebar.pinFrom = pinRow.index
+                                sidebar.pinTo = pinRow.index
+                            } else {
+                                if (sidebar.pinFrom >= 0 && sidebar.pinTo >= 0 && sidebar.pinTo !== sidebar.pinFrom)
+                                    places.movePin(pinRow.modelData.path, sidebar.pinTo)
+                                sidebar.pinFrom = -1
+                                sidebar.pinTo = -1
+                            }
+                        }
+                        onCentroidChanged: {
+                            if (!active)
+                                return
+                            const at = pinRow.mapToItem(column, centroid.position.x, centroid.position.y)
+                            const over = column.childAt(column.width / 2, at.y)
+                            if (over && over.pinIndex !== undefined)
+                                sidebar.pinTo = over.pinIndex
+                        }
+                    }
+                    // Where the dragged pin will land: a line above or below.
+                    Rectangle {
+                        visible: sidebar.pinFrom >= 0 && sidebar.pinTo === pinRow.index && sidebar.pinFrom !== pinRow.index
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        y: sidebar.pinFrom > pinRow.index ? 0 : parent.height - height
+                        height: 2
+                        color: theme.accent
+                    }
                     // The name ends short of the unpin button while it shows:
                     // hovered, or on the keyboard's row, where Delete does
                     // the same.
@@ -361,24 +462,6 @@ Rectangle {
                         }
                         drop.accept(Qt.LinkAction)
                     }
-                }
-            }
-
-            // Views: lists that aren't a folder of their own.
-            SectionLabel { text: qsTr("Views") }
-            Repeater {
-                model: places.views
-                PlaceRow {
-                    required property var modelData
-                    required property int index
-                    dropTrashes: modelData.icon === "trash"
-                    onDropHoverChanged: sidebar.dropHovers += dropHover ? 1 : -1
-                    text: modelData.icon === "trash" ? qsTr("Trash") : qsTr("Recents")
-                    glyph: modelData.icon
-                    active: sidebar.activePath === modelData.path
-                    onClicked: sidebar.target.navigate(modelData.path)
-                    keyed: sidebar.activeFocus && sidebar.cursor === sidebar.viewsAt + index
-                    onKeyedChanged: if (keyed) sidebar.reveal(this)
                 }
             }
 

@@ -52,6 +52,8 @@ Item {
     // for this name is built. Any other name, "file" among them, is a page.
     readonly property string path: {
         switch (name) {
+        case "home": return "M3 11l9-7 9 7M5 9.5V20h5v-6h4v6h5V9.5"
+        case "desktop": return box(3, 4, 18, 12, r) + "M8 20h8M12 16v4"
         case "documents": return page() + "M9 12h6M9 16h6"
         case "downloads": return "M12 4v11M7 10l5 5 5-5M4 20h16"
         case "pictures": return box(3, 5, 18, 14, r) + "M3 16l5-5 4 4 3-3 6 6" + circle(16, 9, 1.5)
