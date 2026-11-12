@@ -482,8 +482,10 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
     });
     // Stepping through files faster than they're read queues readings; the
     // ones overtaken before they start are skipped rather than left to tie
-    // up the global pool's threads.
-    watcher->setFuture(QtConcurrent::run([path, kind, inTrash, latest = m_describing, generation] {
+    // up the global pool's threads. A file its extension could not name has
+    // its type read from what it holds.
+    const bool unnamed = mime == "application/octet-stream";
+    watcher->setFuture(QtConcurrent::run([path, kind, mime, unnamed, inTrash, latest = m_describing, generation] {
         QVariantMap read;
         if (*latest != generation)
             return read;
@@ -494,6 +496,11 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
             // When the filesystem keeps it (ext4, btrfs, xfs do; some network
             // shares don't, and then there's no Created).
             read.insert("created", born);
+        }
+        // The type read is this file's alone: the pane believes it only for the path it was read from.
+        if (unnamed) {
+            read.insert("path", path);
+            read.insert("mime", FolderModel::typeByContent(path, mime));
         }
         if (kind == "image") {
             QImageReader reader(path);
