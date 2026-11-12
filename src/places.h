@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QFileSystemWatcher>
 #include <QObject>
 #include <QProcess>
 #include <QTimer>
@@ -17,6 +18,10 @@ class Places : public QObject {
     Q_PROPERTY(QVariantList devices READ devices NOTIFY changed)
     Q_PROPERTY(QVariantList peers READ peers NOTIFY changed)
     Q_PROPERTY(QString dropboxStatus READ dropboxStatus NOTIFY changed)
+    // Whether anything is in the trash (the home one or a drive's), for the
+    // sidebar's full or empty trash. Its own signal, so the sidebar's lists
+    // aren't rebuilt every time something is trashed.
+    Q_PROPERTY(bool trashFull READ trashFull NOTIFY trashChanged)
 
 public:
     // `home` is overridable for tests; the real home also consults the XDG
@@ -30,6 +35,7 @@ public:
     QVariantList devices() const { return m_devices; }
     QVariantList peers() const { return m_peers; }
     QString dropboxStatus() const { return m_dropboxStatus; }
+    bool trashFull() const { return m_trashFull; }
 
     Q_INVOKABLE void refresh();
 
@@ -39,6 +45,11 @@ public:
     Q_INVOKABLE QString pin(const QString &path);
     Q_INVOKABLE void unpin(const QString &path);
     Q_INVOKABLE bool isPinned(const QString &path) const;
+
+    // Whether any of these trashes (as FileOps::trashDirs() lists them)
+    // holds anything. Stops at the first item, so a trash of thousands
+    // costs no more than one of one.
+    static bool anyTrashed(const QStringList &trashDirs);
 
     static QVariantList parseTailscale(const QByteArray &json);
     static QString parseDropboxStatus(const QByteArray &output);
@@ -55,6 +66,7 @@ public:
 
 signals:
     void changed();
+    void trashChanged();
 
 private:
     void refreshPlaces();
@@ -66,6 +78,9 @@ private:
     void pollTailscale();
     void pollDropbox();
     QString userDirectory(int location, const QString &fallback) const;
+    // Looks again at whether the trash is full, and watches the folders
+    // that say so.
+    void refreshTrash();
 
     QString m_home;
     bool m_realHome;
@@ -73,4 +88,10 @@ private:
     QString m_dropboxStatus;
     QProcess m_tailscale, m_dropbox;
     QTimer m_poll;
+    // The trash changes from every window and from other apps (gio trash,
+    // another file manager, rm), so it's watched rather than told. Trashing
+    // a hundred files changes it a hundred times; they're looked at once.
+    QFileSystemWatcher m_trashWatcher;
+    QTimer m_trashSettle;
+    bool m_trashFull = false;
 };

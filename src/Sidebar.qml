@@ -137,9 +137,30 @@ Rectangle {
                 drop.accept(Qt.MoveAction)
             }
         }
+        readonly property color glyphColor: row.active ? theme.brightForeground : theme.foreground
+        // What the icon sits on: the sidebar, with the row's highlight over it.
+        readonly property color backdrop: row.active || row.dropHover ? Qt.tint(theme.background, Qt.alpha(theme.accent, 0.16))
+                                        : row.hovered && row.enabled ? Qt.tint(theme.background, Qt.alpha(theme.foreground, 0.06))
+                                        : theme.background
+        Component {
+            id: lineGlyph
+            Glyph { name: row.glyph; color: row.glyphColor }
+        }
+        Component {
+            id: binGlyph
+            TrashGlyph {
+                hasItems: places.trashFull
+                color: row.glyphColor
+                gap: row.backdrop
+            }
+        }
+
         contentItem: RowLayout {
             spacing: 14
-            Glyph { name: row.glyph; color: row.active ? theme.brightForeground : theme.foreground }
+            // The trash's bin takes in what's deleted, the rest are still.
+            Loader {
+                sourceComponent: row.dropTrashes ? binGlyph : lineGlyph
+            }
             Text {
                 Layout.fillWidth: true
                 text: row.text
@@ -270,6 +291,9 @@ Rectangle {
                     onDropHoverChanged: sidebar.dropHovers += dropHover ? 1 : -1
                     text: modelData.name
                     glyph: modelData.icon
+                    // The icon shows a bag when something's in the trash, as
+                    // other desktops' trash does; this says so too.
+                    Accessible.name: dropTrashes ? (places.trashFull ? qsTr("Trash (has items)") : qsTr("Trash (empty)")) : text
                     active: sidebar.activePath === modelData.path
                     onClicked: sidebar.target.navigate(modelData.path)
                     keyed: sidebar.activeFocus && sidebar.cursor === sidebar.viewsAt + index
