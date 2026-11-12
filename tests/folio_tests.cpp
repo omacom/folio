@@ -3392,6 +3392,106 @@ private slots:
         QCOMPARE(asked("boxHeight").toInt(), asked("textNeeds").toInt());
     }
 
+    void detailsKeepALongAppNameInsideThePane()
+    {
+        // The app a file opens with is named on a button beside its label: a long name is cut to the room the pane has, and a short one looks as it did, mirrored too.
+        QTemporaryDir home;
+        write(home.filePath("long.txt"), "one line");
+        write(home.filePath("short.txt"), "one line");
+        Backend backend(home.path());
+        backend.navigate(home.path());
+        QTRY_COMPARE(backend.folder()->rowCount(), 2);
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        Places places(home.path());
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("places", &places);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        QQmlComponent component(&engine);
+        // Stands in for the apps of the system: one with a long name for long.txt, a short one for any other file, and a second so that there is a choice.
+        component.setData("import QtQuick\nimport QtQuick.Controls\n"
+                          "Window { width: 400; height: 700; visible: true\n"
+                          "    property bool mirrored\n"
+                          "    QtObject { id: apps\n"
+                          "        function nameFor(path) { return path.endsWith('long.txt') ? 'A Viewer Of Documents With A Long Name' : 'Plain' }\n"
+                          "        function appsFor(path) { return [{ id: 'a', name: nameFor(path), isDefault: true }, { id: 'b', name: 'Other', isDefault: false }] }\n"
+                          "        function defaultAppName(mime) { return 'Plain' } }\n"
+                          "    QtObject { id: files; property var current: ({}); readonly property bool inTrash: false\n"
+                          "        readonly property var paneBackend: backend; readonly property var paneFileOps: apps }\n"
+                          "    PreviewPane { id: pane; anchors.fill: parent; folderPane: files; LayoutMirroring.enabled: mirrored; LayoutMirroring.childrenInherit: true }\n"
+                          "    function show(name) { files.current = backend.folder.get(backend.folder.indexOfPath(backend.path + '/' + name)) }\n"
+                          "    function find(item, wanted) {\n"
+                          "        if (wanted(item)) return item\n"
+                          "        for (const child of item.children) { const found = find(child, wanted); if (found) return found }\n"
+                          "        return null }\n"
+                          "    function button() { return find(pane, item => item instanceof AbstractButton && item.visible && item.text.endsWith('▾')) }\n"
+                          "    function named() { const found = button(); return found ? found.text : '' }\n"
+                          "    function room() { const found = button(), grid = found.parent\n"
+                          "        const label = find(grid, item => item instanceof Text && item.text === 'Opens with')\n"
+                          "        grid.ensurePolished()\n"
+                          "        const x = mirrored ? grid.width - found.x - found.width : found.x\n"
+                          "        const from = (mirrored ? grid.width - label.x : label.x + label.width) + grid.columnSpacing\n"
+                          "        return [x, found.width, found.implicitWidth, from, grid.width, found.contentItem.truncated ? 1 : 0,\n"
+                          "            found.contentItem.elide === Text.ElideMiddle ? 1 : 0, found.contentItem.x, found.contentItem.implicitWidth] }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/DetailsAppTest.qml"));
+        for (const bool mirrored : {false, true}) {
+            std::unique_ptr<QObject> root(component.createWithInitialProperties({{"mirrored", mirrored}}));
+            QVERIFY2(root, qPrintable(component.errorString()));
+            auto *window = qobject_cast<QQuickWindow *>(root.get());
+            QVERIFY(QTest::qWaitForWindowExposed(window));
+            const auto asked = [window](const char *method) {
+                QVariant result;
+                QMetaObject::invokeMethod(window, method, Q_RETURN_ARG(QVariant, result));
+                return result;
+            };
+            // From the side the pane's facts start at: where the button starts, its width, the width it asks for, where the room beside the label starts, where the facts end, whether its text is cut and keeps both ends, how far in the text starts, and its own width.
+            struct Room { qreal x, width, wanted, from, to; bool cut, ends; qreal margin, text; };
+            const auto room = [&asked] {
+                const QVariantList read = asked("room").toList();
+                return Room{read.at(0).toReal(), read.at(1).toReal(), read.at(2).toReal(), read.at(3).toReal(), read.at(4).toReal(), read.at(5).toInt() == 1, read.at(6).toInt() == 1,
+                            read.at(7).toReal(), read.at(8).toReal()};
+            };
+            // What a cut text keeps of the button on each side.
+            const qreal kept = 8;
+
+            // A short name: the button is as wide as its text asks for, against the far edge, as it always was.
+            QMetaObject::invokeMethod(window, "show", Q_ARG(QVariant, "short.txt"));
+            QTRY_COMPARE(asked("named").toString(), QString::fromUtf8("Plain  ▾"));
+            const Room fits = room();
+            QCOMPARE(fits.width, fits.wanted);
+            QCOMPARE(fits.x + fits.width, fits.to);
+            QVERIFY(!fits.cut);
+            QCOMPARE(fits.margin, 0.0);
+
+            // A long name asks for more than the pane has beside the label: the button takes that room and no more, and its text is cut to it.
+            QMetaObject::invokeMethod(window, "show", Q_ARG(QVariant, "long.txt"));
+            QTRY_COMPARE(asked("named").toString(), QString::fromUtf8("A Viewer Of Documents With A Long Name  ▾"));
+            const Room tight = room();
+            QVERIFY(tight.wanted > tight.to - tight.from);
+            QCOMPARE(tight.x, tight.from);
+            QCOMPARE(tight.x + tight.width, tight.to);
+            QVERIFY(tight.cut);
+            // The arrow that says the button opens a menu is the last of its text, so the cut is in the middle, and the cut text doesn't touch the button's sides.
+            QVERIFY(tight.ends);
+            QCOMPARE(tight.margin, kept);
+
+            // A pane with room for the text but not for all the button around it: the whole name is shown, with what's left around it.
+            window->setWidth(window->width() + qCeil(tight.text + kept - (tight.to - tight.from)));
+            QTRY_VERIFY(room().to - room().from >= tight.text);
+            const Room snug = room();
+            const qreal snugRoom = snug.to - snug.from;
+            QVERIFY(snugRoom < tight.text + 2 * kept && snug.wanted > snugRoom);
+            QCOMPARE(snug.x, snug.from);
+            QCOMPARE(snug.x + snug.width, snug.to);
+            QVERIFY(!snug.cut);
+            QCOMPARE(snug.margin, 0.0);
+        }
+    }
+
     void backendReadsDetailsOffTheUiThread()
     {
         // A picture's size and a text's opening lines are read in the

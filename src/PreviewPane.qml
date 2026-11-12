@@ -216,6 +216,9 @@ Rectangle {
                 readonly property var current: apps.find(app => app.isDefault)
                 visible: apps.length > 1
                 Layout.alignment: Qt.AlignRight
+                // As wide as its text while that fits beside the label, and no wider than the room there when it doesn't.
+                Layout.fillWidth: true
+                Layout.maximumWidth: implicitWidth
                 implicitHeight: 28
                 text: (current ? current.name : qsTr("Choose")) + "  ▾"
                 onClicked: appsMenu.popup(opensWith, 0, opensWith.height + 4)
