@@ -24,6 +24,7 @@ const QHash<QString, QColor> &fallbackColors() {
         {"foreground", QColor("#c8c8d0")},
         {"bright_foreground", QColor("#ececf1")},
         {"red", QColor("#f7768e")},
+        {"green", QColor("#9ece6a")},
         {"yellow", QColor("#e0af68")},
         {"blue", QColor("#7aa2f7")},
         {"magenta", QColor("#bb9af7")},
@@ -37,6 +38,18 @@ double luminance(const QColor &c) {
     auto linear = [](double v) { return v <= .04045 ? v / 12.92 : std::pow((v + .055) / 1.055, 2.4); };
     return .2126 * linear(c.redF()) + .7152 * linear(c.greenF()) + .0722 * linear(c.blueF());
 }
+
+// How well one color reads on another, from 1 for none to 21 for black on white (WCAG).
+double contrast(const QColor &a, const QColor &b) {
+    const double one = luminance(a), other = luminance(b);
+    return (qMax(one, other) + .05) / (qMin(one, other) + .05);
+}
+
+// What code needs to be read at its small size (WCAG's 4.5:1 for text), and the halvings that find it to a 4096th of the way.
+constexpr double codeContrast = 4.5;
+constexpr int codeInkHalvings = 12;
+// The luminance of a ground above which black reads on it better than white, as accentForeground() has it.
+constexpr double lightGround = .179;
 
 QColor mix(const QColor &a, const QColor &b, double t) {
     return QColor::fromRgbF(a.redF() * (1 - t) + b.redF() * t, a.greenF() * (1 - t) + b.greenF() * t,
@@ -150,6 +163,27 @@ QColor Theme::lighterBackground() const {
     if (gap > 0.004)
         return lighter;
     return mix(bg, foreground(), 0.08);
+}
+
+// Some themes' colors are too faint for code on their own background, a yellow on a light one: such a color is moved toward black or white, whichever the background isn't, as far as it takes to read and no further.
+QVariantList Theme::codeInks() const {
+    QVariantList inks;
+    for (const QColor &own : {red(), green(), yellow(), blue(), magenta(), cyan()}) {
+        // The preview draws code on the dark background and the details on the background: the one this color shows less on decides.
+        const QColor ground = contrast(own, background()) < contrast(own, darkBackground()) ? background() : darkBackground();
+        if (contrast(own, ground) >= codeContrast) {
+            inks << own;
+            continue;
+        }
+        const QColor toward = luminance(ground) > lightGround ? QColor("black") : QColor("white");
+        double low = 0, high = 1;
+        for (int halving = 0; halving < codeInkHalvings; ++halving) {
+            const double middle = (low + high) / 2;
+            (contrast(mix(own, toward, middle), ground) < codeContrast ? low : high) = middle;
+        }
+        inks << mix(own, toward, high);
+    }
+    return inks;
 }
 
 // Black or white, whichever reads on the accent (WCAG relative luminance).

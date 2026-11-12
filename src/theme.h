@@ -26,6 +26,7 @@ class Theme : public QObject {
     Q_PROPERTY(QColor magenta READ magenta NOTIFY changed)
     Q_PROPERTY(QColor cyan READ cyan NOTIFY changed)
     Q_PROPERTY(QColor orange READ orange NOTIFY changed)
+    Q_PROPERTY(QVariantList codeInks READ codeInks NOTIFY changed)
     Q_PROPERTY(bool light READ light NOTIFY changed)
     Q_PROPERTY(int radius READ radius NOTIFY changed)
 
@@ -42,10 +43,13 @@ public:
     QColor brightForeground() const { return color("bright_foreground"); }
     QColor secondaryForeground() const;
     QColor red() const { return color("red"); }
+    QColor green() const { return color("green"); }
     QColor yellow() const { return color("yellow"); }
     QColor blue() const { return color("blue"); }
     QColor magenta() const { return color("magenta"); }
     QColor cyan() const { return color("cyan"); }
+    // The six colors code is drawn in, as bat numbers them: red, green, yellow, blue, magenta and cyan, each as near the theme's own as reads on its backgrounds.
+    QVariantList codeInks() const;
     QColor orange() const { return color("orange"); }
     bool light() const { return m_light; }
     int radius() const { return m_radius; }

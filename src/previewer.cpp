@@ -11,7 +11,43 @@
 #include <cstdio>
 #include <unistd.h>
 
+namespace {
+
+// What reading an item in the background brings back.
+struct Reading {
+    FolderModel::Entry entry;
+    QString text;
+    CodeColors::Lines colors;
+    // Whether bat is to color the whole text once it is shown.
+    bool rest = false;
+};
+
+// How long bat gets for the first lines, which the text waits for, and for a whole text, which it does not.
+constexpr int firstColorsMs = 500, allColorsMs = 5000;
+
+// The opening of a text that is colored before it is shown: whole lines, no more of them than firstColored nor more bytes together, as bat is sent them, than firstColoredSize, so none when the first is.
+QString openingOf(const QString &text) {
+    qsizetype kept = 0, from = 0, bytes = 0;
+    for (int line = 0; line < Previewer::firstColored && from <= text.size(); ++line) {
+        const qsizetype end = text.indexOf(u'\n', from), stop = end < 0 ? text.size() : end;
+        // A line after the first is sent with the line end ahead of it.
+        bytes += QStringView(text).mid(from, stop - from).toUtf8().size() + (line ? 1 : 0);
+        if (bytes > Previewer::firstColoredSize)
+            break;
+        kept = stop;
+        from = stop + 1;
+    }
+    return text.left(kept);
+}
+
+} // namespace
+
 Previewer::Previewer(QObject *parent) : QObject(parent) {}
+
+// A bat still on a whole text is stopped with the window, where quitting would wait for it.
+Previewer::~Previewer() {
+    ++*m_reading;
+}
 
 QString Previewer::viewerFor(const QString &mime, bool isDir) {
     if (isDir)
@@ -208,6 +244,7 @@ void Previewer::setIndex(int index, bool report) {
     const FolderModel::Entry e = m_entries.at(index);
     m_viewer = viewerFor(e.mime, e.isDir);
     m_text.clear();
+    m_colors.clear();
 
     // A folder's count and first pictures, and a text's opening part, are
     // read off the UI thread: a big folder, or any file on a slow mount,
@@ -216,38 +253,70 @@ void Previewer::setIndex(int index, bool report) {
     const bool count = e.isDir && e.itemCount < 0;
     const bool text = m_viewer == "text" || m_viewer == "markdown";
     if (count || text) {
-        auto *watcher = new QFutureWatcher<QPair<FolderModel::Entry, QString>>(this);
+        auto *watcher = new QFutureWatcher<Reading>(this);
         connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, text] {
             watcher->deleteLater();
             if (generation != *m_reading)
                 return; // Stepped on to another item while this was read.
-            const auto [entry, read] = watcher->result();
-            m_entries[m_index] = entry;
-            m_text = read;
+            const Reading reading = watcher->result();
+            m_entries[m_index] = reading.entry;
+            m_text = reading.text;
+            m_colors = reading.colors;
             // A ".txt" that turns out to be binary is shown as a plain file.
-            if (text && m_text.isEmpty() && entry.size > 0)
+            if (text && m_text.isEmpty() && reading.entry.size > 0)
                 m_viewer = "other";
+            emit colored();
             emit changed();
+            // The lines past the first ones are colored once bat has read the whole text, which a long one would wait too long for.
+            if (reading.rest)
+                colorTheRest(generation);
         });
         const bool showHidden = m_showHidden;
         const bool markdown = m_viewer == "markdown";
-        watcher->setFuture(QtConcurrent::run([entry = e, showHidden, count, text, markdown,
+        // A plain text has nothing to color, and Markdown is laid out as what it says.
+        const bool code = m_viewer == "text" && CodeColors::isCode(e.mime);
+        watcher->setFuture(QtConcurrent::run([entry = e, showHidden, count, text, markdown, code,
                                               latest = m_reading, generation]() mutable {
             if (*latest != generation)
-                return qMakePair(entry, QString());
+                return Reading{entry, {}, {}, false};
             if (count)
                 FolderModel::summarize(entry, showHidden);
             const QString read = text ? readText(entry.path) : QString();
-            return qMakePair(entry, markdown ? markdownOpening(read) : read);
+            if (!code || read.isEmpty())
+                return Reading{entry, markdown ? markdownOpening(read) : read, {}, false};
+            // An opening that holds no line isn't waited for, and a bat that failed on an opening isn't asked for the rest.
+            const QString opening = openingOf(read);
+            const CodeColors::Lines colors = opening.isEmpty() ? CodeColors::Lines() : CodeColors::of(opening, entry.name, firstColorsMs);
+            return Reading{entry, read, colors, (opening.isEmpty() || !colors.isEmpty()) && read.size() > opening.size() + 1};
         }));
     }
     emit changed();
+    // Said after the text has gone: colors cleared over a long text still shown would lay it out once more.
+    emit colored();
     emit listed();
 
     if (report && m_reporting) {
         std::fprintf(stdout, "%s\n", e.path.toUtf8().constData());
         std::fflush(stdout);
     }
+}
+
+void Previewer::colorTheRest(quint64 generation) {
+    auto *watcher = new QFutureWatcher<CodeColors::Lines>(this);
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation] {
+        watcher->deleteLater();
+        const CodeColors::Lines all = watcher->result();
+        // Stepped on to another item, or bat gave up on the whole text: the first lines keep their colors.
+        if (generation != *m_reading || all.isEmpty())
+            return;
+        m_colors = all;
+        emit colored();
+    });
+    watcher->setFuture(QtConcurrent::run([text = m_text, name = m_entries.at(m_index).name, latest = m_reading, generation] {
+        // Stopped once another item is shown: a long text's colors can take a while, and nobody would see them.
+        const auto wanted = [&latest, generation] { return *latest == generation; };
+        return wanted() ? CodeColors::of(text, name, allColorsMs, wanted) : CodeColors::Lines();
+    }));
 }
 
 void Previewer::connectToFolio() {

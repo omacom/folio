@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
+import Folio
 import "Format.js" as Format
 
 // The large look at one file (Space in Folio, or `folio preview FILE`):
@@ -304,6 +305,12 @@ ApplicationWindow {
                 selectionColor: theme.accent
                 selectedTextColor: theme.accentForeground
                 font.pixelSize: 13
+            }
+            // A source file in the theme's colors, which follow a change of theme.
+            CodeColors {
+                textDocument: body.textDocument
+                lines: previewer.colors
+                inks: theme.codeInks
             }
 
             ScrollBar.vertical: FolioScrollBar { }
