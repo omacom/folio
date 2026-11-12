@@ -5509,6 +5509,50 @@ private slots:
         QTRY_COMPARE(previewer.viewer(), QString("other"));
     }
 
+    void previewClosesWhenItsFileIsOpened()
+    {
+        // Enter and the Open button hand the file to its app, and the preview closes: it stays only when nothing opened.
+        QTemporaryDir home;
+        write(home.filePath("notes.txt"), "hello\n");
+        QStringList asked;
+        QString problem;
+        Previewer previewer([&](const QString &path) { asked << path; return problem; });
+        QSignalSpy opened(&previewer, &Previewer::opened);
+
+        // With nothing shown yet there is nothing to open.
+        previewer.open();
+        QCOMPARE(asked, QStringList());
+        QCOMPARE(opened.count(), 0);
+
+        previewer.start(home.filePath("notes.txt"), false, "name");
+        QTRY_COMPARE(previewer.viewer(), QString("text"));
+        Theme theme(home.filePath("theme"));
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        QQmlEngine engine;
+        QSignalSpy quit(&engine, &QQmlEngine::quit);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        engine.rootContext()->setContextProperty("previewer", &previewer);
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine, QUrl::fromLocalFile(sourceFolder() + "/PreviewWindow.qml"));
+        std::unique_ptr<QObject> window(component.create());
+        QVERIFY2(window, qPrintable(component.errorString()));
+
+        // An app that could not be started leaves the preview where it was.
+        problem = "No app is set up to open notes.txt.";
+        QTest::ignoreMessage(QtWarningMsg, "No app is set up to open notes.txt.");
+        previewer.open();
+        QCOMPARE(asked, QStringList{home.filePath("notes.txt")});
+        QCOMPARE(opened.count(), 0);
+        QCOMPARE(quit.count(), 0);
+
+        problem.clear();
+        previewer.open();
+        QCOMPARE(asked.size(), 2);
+        QCOMPARE(opened.count(), 1);
+        QCOMPARE(quit.count(), 1);
+    }
+
     void previewerShowsOnlyWhatLaysOutQuickly()
     {
         // The preview lays out all it's given on its UI thread, about a
