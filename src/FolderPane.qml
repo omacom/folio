@@ -39,6 +39,16 @@ FocusScope {
     function cycleView() {
         viewMode = viewMode === "grid" ? "list" : viewMode === "list" ? "columns" : "grid"
     }
+    // W and Shift+W: the next way of working out the pane widths, named in
+    // the banner, since nothing else on screen names it.
+    function stepWidths(by) {
+        if (!host || !host.widths)
+            return
+        const mode = host.widths.stepMode(by)
+        backend.showNotice(mode === "automatic" ? qsTr("Pane widths: Automatic")
+                         : mode === "proportional" ? qsTr("Pane widths: Proportional")
+                         : qsTr("Pane widths: Fixed"))
+    }
 
     // The cursor's item, carried across a switch of view and a re-read of
     // the folder. By path: Recents can list two files of the same name.
@@ -198,6 +208,9 @@ FocusScope {
     // S steps through the sort orders, Shift+S back.
     Shortcut { sequence: "S"; enabled: pane.keys; onActivated: pathBar.stepSort(1) }
     Shortcut { sequence: "Shift+S"; enabled: pane.keys; onActivated: pathBar.stepSort(-1) }
+    // W steps through the ways of working out the pane widths, Shift+W back.
+    Shortcut { sequence: "W"; enabled: pane.keys; onActivated: pane.stepWidths(1) }
+    Shortcut { sequence: "Shift+W"; enabled: pane.keys; onActivated: pane.stepWidths(-1) }
     Shortcut { sequences: ["F5", "Refresh"]; enabled: pane.active; onActivated: { backend.folder.reload(); places.refresh(); plugins.refresh() } }
 
     // A drive being ejected can't be in use: a pane showing a folder on it

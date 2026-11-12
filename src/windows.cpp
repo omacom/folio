@@ -7,9 +7,9 @@
 #include "backend.h"
 #include "fileops.h"
 
-Windows::Windows(QQmlEngine *engine, Plugins *plugins, QObject *parent)
-    : QObject(parent), m_engine(engine), m_plugins(plugins), m_component(engine, QUrl("qrc:/Main.qml")),
-      m_pane(engine, QUrl("qrc:/FolderPane.qml")) {
+Windows::Windows(QQmlEngine *engine, Plugins *plugins, QObject *parent, const QUrl &interface)
+    : QObject(parent), m_engine(engine), m_plugins(plugins), m_component(engine, interface.resolved(QUrl("Main.qml"))),
+      m_pane(engine, interface.resolved(QUrl("FolderPane.qml"))) {
     // Main.qml calls windows.openSplit() and windows.closeSplit().
     engine->rootContext()->setContextProperty("windows", this);
 }

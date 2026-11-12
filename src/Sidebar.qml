@@ -24,6 +24,9 @@ Rectangle {
     property int cursor: 0
     // The pane the sidebar acts on: the one used last.
     property var target: backend
+    // The widest row, with the sidebar's own margins: what the automatic
+    // pane widths fit it to.
+    readonly property int contentWidth: Math.ceil(column.implicitWidth) + 24
 
     // Something is being dragged over the sidebar (anywhere on it, rows
     // included), so the pin box shows.
@@ -174,6 +177,10 @@ Rectangle {
         readonly property var mark: dropPath.length > 0 ? plugins.marks[dropPath] : undefined
 
         Layout.fillWidth: true
+        // What the row needs, as the automatic pane widths fit the sidebar
+        // to it: always with room for the button some rows show at their
+        // end, so hovering one never makes the sidebar jump.
+        implicitWidth: implicitContentWidth + 14 + 28 + 6
         implicitHeight: detail.length > 0 ? 44 : 34
         leftPadding: mirrored ? endPadding : 14
         rightPadding: mirrored ? 14 : endPadding

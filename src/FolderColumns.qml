@@ -10,7 +10,24 @@ Item {
     id: view
 
     property alias currentIndex: here.currentIndex
-    readonly property int columnWidth: 260
+    // Every column has the one width the window's pane widths give (the
+    // fixed one in a window without them). Fitted to what they show, it's
+    // the widest row across the columns in view; a dragged width needs no
+    // rows measured.
+    readonly property var widths: (ApplicationWindow.window && ApplicationWindow.window.widths) || null
+    readonly property bool fitting: !!widths && widths.mode === "automatic" && widths.draggedColumn === 0
+    readonly property int contentFit: {
+        if (!fitting)
+            return 0
+        let widest = Math.max(here.fit, inside.visible ? inside.fit : 0)
+        for (let i = 0; i < ancestors.count; ++i) {
+            const column = ancestors.itemAt(i)
+            if (column)
+                widest = Math.max(widest, column.fit)
+        }
+        return widest
+    }
+    readonly property int columnWidth: widths ? (widths.revision, widths.column(contentFit)) : 260
 
     function select(row, keep) { selecting.select(row, keep) }
     signal cursorLetGo()
@@ -59,7 +76,50 @@ Item {
             backend.navigate(view.selected.path)
     }
 
-    component Separator: Rectangle { width: 1; height: parent ? parent.height : 0; color: Qt.alpha(theme.foreground, 0.1) }
+    // After each column, with the grip that sizes them all, on both
+    // sides of the line as the window's dividers are. The column after it
+    // comes later and would be drawn over the grip, taking its presses, so
+    // the line is raised above it (and each column on the way here above
+    // the next, for the same reason).
+    component Separator: Rectangle {
+        property alias widths: grip.widths
+        property alias paneWidth: grip.paneWidth
+        z: 1
+        width: 1
+        height: parent ? parent.height : 0
+        color: Qt.alpha(theme.foreground, 0.1)
+        PaneDivider {
+            id: grip
+            objectName: "columnDivider"
+            anchors.horizontalCenter: parent.horizontalCenter
+            height: parent.height
+            pane: "column"
+        }
+    }
+
+    // Two rows no one sees, a file's and a folder's, laid out as the
+    // columns' own: the automatic widths take the font of their names and
+    // the room beside them from these, so the widest name fits the row
+    // that's really drawn.
+    FileRow {
+        id: fileSample
+        opacity: 0
+        enabled: false
+        chevron: true
+        index: -1; name: ""; path: ""; isDir: false; kind: ""; mime: ""; extension: ""; size: 0
+        modified: new Date(0); itemCount: 0; icon: ""; selected: false
+    }
+    FileRow {
+        id: folderSample
+        opacity: 0
+        enabled: false
+        chevron: true
+        index: -1; name: ""; path: ""; isDir: true; kind: "folder"; mime: ""; extension: ""; size: 0
+        modified: new Date(0); itemCount: 0; icon: ""; selected: false
+    }
+    function fitRows(model) {
+        return widths.fitRows(model, fileSample.nameFont, Math.ceil(fileSample.besideName), Math.ceil(folderSample.besideName))
+    }
     // Files dropped in a column land in the folder it shows. It lies over
     // the whole column, under its items, rather than in the list's content,
     // which ends at its last item.
@@ -86,15 +146,22 @@ Item {
 
             // The folders on the way here, each showing which way the trail goes.
             Repeater {
+                id: ancestors
                 model: trail
                 Row {
                     id: ancestor
+                    required property int index
                     required property string path
                     required property string next
+                    // Its widest row, while the columns are fitted to them.
+                    readonly property int fit: view.fitting ? (folder.count, folder.loading, view.fitRows(folder)) : 0
+                    // Above the next one, for its divider's grip (see Separator).
+                    z: ancestors.count - index + 1
                     height: row.height
 
                     ListView {
                         id: column
+                        objectName: "column"
                         width: view.columnWidth
                         height: parent.height
                         clip: true
@@ -134,13 +201,15 @@ Item {
                             onActivated: backend.open(path)
                         }
                     }
-                    Separator { }
+                    Separator { widths: view.widths; paneWidth: view.columnWidth }
                 }
             }
 
             // The folder being shown: its selection is the window's.
             ListView {
                 id: here
+                objectName: "column"
+                readonly property int fit: view.fitting ? (backend.folder.count, backend.folder.loading, view.fitRows(backend.folder)) : 0
                 width: view.columnWidth
                 height: row.height
                 clip: true
@@ -186,11 +255,13 @@ Item {
                     color: theme.secondaryForeground
                 }
             }
-            Separator { }
+            Separator { widths: view.widths; paneWidth: view.columnWidth }
 
             // A look inside the selected folder; clicking in it goes there.
             ListView {
                 id: inside
+                objectName: "column"
+                readonly property int fit: view.fitting ? (insideFolder.count, insideFolder.loading, view.fitRows(insideFolder)) : 0
                 width: view.columnWidth
                 height: row.height
                 visible: view.selected.isDir === true

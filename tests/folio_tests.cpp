@@ -1,5 +1,6 @@
 #include <QClipboard>
 #include <QDir>
+#include <QFontMetricsF>
 #include <QEventLoopLocker>
 #include <QMimeData>
 #include <QPageSize>
@@ -25,6 +26,7 @@
 #include <QSettings>
 #include <QSignalSpy>
 #include <QStandardPaths>
+#include <QStyleHints>
 #include <QTemporaryDir>
 #include <QUrl>
 #include <QtConcurrent>
@@ -40,12 +42,14 @@
 #include "fileops.h"
 #include "foldermodel.h"
 #include "mounter.h"
+#include "panewidths.h"
 #include "places.h"
 #include "plugins.h"
 #include "previewer.h"
 #include "theme.h"
 #include "thumbnails.h"
 #include "translator.h"
+#include "windows.h"
 
 // Puts XDG_DATA_HOME, where the trash and recent files live, in `path` for
 // as long as the returned guard does.
@@ -757,6 +761,589 @@ private slots:
         model.setPath(b.path());
         QVERIFY(loaded.wait(3000));
         QCOMPARE(model.get(0).value("path").toString(), b.filePath("report.txt"));
+    }
+
+    void paneWidthsStartFixed()
+    {
+        // Until another way is picked, the panes are as wide as they've
+        // always been, and a split's halves are even.
+        PaneWidths widths;
+        QCOMPARE(widths.mode(), QString("fixed"));
+        QCOMPARE(widths.sidebar(), 190);
+        QCOMPARE(widths.details(), 300);
+        QCOMPARE(widths.column(), 260);
+        QCOMPARE(widths.splitLeft(1000), 500);
+        QCOMPARE(1000 - widths.splitLeft(1000), 500);
+    }
+
+    void paneWidthsFollowTheWindow()
+    {
+        // Proportional: each pane keeps its share of a 1280 px window,
+        // within its limits.
+        PaneWidths widths;
+        widths.setMode("proportional");
+        widths.setWindowWidth(2560);
+        QCOMPARE(widths.sidebar(), 380);
+        QCOMPARE(widths.details(), 600);
+        QCOMPARE(widths.column(), 480); // 520, at most 480
+        widths.setWindowWidth(960);
+        QCOMPARE(widths.sidebar(), 143); // 142.5, rounded
+        QCOMPARE(widths.details(), 225);
+        QCOMPARE(widths.column(), 195);
+        widths.setWindowWidth(640);
+        QCOMPARE(widths.sidebar(), 140); // 95, at least 140
+        QCOMPARE(widths.details(), 220); // 150, at least 220
+        QCOMPARE(widths.column(), 180); // 130, at least 180
+        QCOMPARE(widths.splitLeft(1000), 500);
+        QCOMPARE(1000 - widths.splitLeft(1000), 500);
+    }
+
+    void paneWidthsFitTheirContent()
+    {
+        // Automatic: the columns and the sidebar are as wide as their widest
+        // row, within their limits; the details stay as they are.
+        PaneWidths widths;
+        widths.setMode("automatic");
+
+        // A plugin's items stand in for files: no file's name can be 300
+        // characters long (255 bytes at most), an item's can.
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setItems({QVariantMap{{"name", "a"}, {"path", "plugin:fit/a"}},
+                        QVariantMap{{"name", "b"}, {"path", "plugin:fit/b"}}});
+        model.setPath("plugin:fit");
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(rowNames(model), QStringList({"a", "b"}));
+        QCOMPARE(widths.column(widths.fitRows(&model)), 180);
+
+        const QString wide(300, 'W');
+        model.setItems({QVariantMap{{"name", "a"}, {"path", "plugin:fit/a"}},
+                        QVariantMap{{"name", wide}, {"path", "plugin:fit/w"}}});
+        QTRY_COMPARE(rowNames(model).value(1), wide);
+        QCOMPARE(widths.column(widths.fitRows(&model)), 480);
+
+        // A name whose row is between the limits: FileRow in a column has
+        // 14 px margins on both sides, the 20 px icon and 12 px after it,
+        // then the name, drawn in the application's font (an item, not a
+        // folder, so no arrow after it).
+        const QString medium = "notes from the meeting.txt";
+        const int expected = 14 + 20 + 12 + qCeil(QFontMetricsF(QGuiApplication::font()).horizontalAdvance(medium)) + 14;
+        QVERIFY2(expected > 180 && expected < 480, qPrintable(QString::number(expected)));
+        model.setItems({QVariantMap{{"name", "a"}, {"path", "plugin:fit/a"}},
+                        QVariantMap{{"name", medium}, {"path", "plugin:fit/m"}}});
+        QTRY_COMPARE(rowNames(model).value(1), medium);
+        QCOMPARE(widths.column(widths.fitRows(&model)), expected);
+
+        QCOMPARE(widths.details(), 300);
+
+        // The sidebar, measured by its own rows: a pinned folder labelled
+        // with 300 W's makes it as wide as it goes.
+        QTemporaryDir home, elsewhere;
+        const QString bookmarks = home.filePath(".config/gtk-3.0/bookmarks");
+        QDir().mkpath(QFileInfo(bookmarks).absolutePath());
+        write(bookmarks, QUrl::fromLocalFile(elsewhere.path()).toEncoded() + " " + wide.toUtf8() + "\n");
+        Places places(home.path());
+        QCOMPARE(places.pinned().size(), 1);
+        QDir(home.path()).mkpath("plugins");
+        Plugins plugins("en", {home.filePath("plugins")}, home.filePath("folio.conf"));
+        Backend backend(home.path());
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("places", &places);
+        engine.rootContext()->setContextProperty("plugins", &plugins);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window {\n"
+                          "    width: 800; height: 600; visible: true\n"
+                          "    Sidebar { id: sidebar; width: 190; height: parent.height }\n"
+                          "    readonly property int contentWidth: sidebar.contentWidth\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/SidebarTest.qml"));
+        std::unique_ptr<QObject> created(component.create());
+        QVERIFY2(created, qPrintable(component.errorString()));
+        QTRY_VERIFY(created->property("contentWidth").toInt() > 400);
+        QCOMPARE(widths.sidebar(created->property("contentWidth").toInt()), 400);
+    }
+
+    void paneWidthsKeepWhatYouDrag()
+    {
+        // The dividers are dragged with the widths fixed: each pane keeps
+        // what it was given within its limits, a double-click puts one
+        // back, and a new window finds them as they were left.
+        QTemporaryDir root, config;
+        folderFixture(root);
+        const QString conf = config.filePath("folio.conf");
+        ListWindow view(root.path());
+        QVERIFY(view.shown());
+        auto window = paneWindow(view.engine, conf);
+        QVERIFY(window);
+        PaneWidths *widths = paneWidthsOf(window.get());
+        QVERIFY(widths);
+        QCOMPARE(widths->mode(), QString("fixed"));
+
+        QQuickItem *sidebarDivider = shownItem(window.get(), "sidebarDivider");
+        QVERIFY(sidebarDivider);
+        dragBy(window.get(), sidebarDivider, 50);
+        QCOMPARE(widths->sidebar(), 240);
+        dragBy(window.get(), sidebarDivider, 500);
+        QCOMPARE(widths->sidebar(), 400);
+        QTest::mouseDClick(window.get(), Qt::LeftButton, {}, gripAt(sidebarDivider));
+        QCOMPARE(widths->sidebar(), 190);
+
+        // The details are on the right: toward the middle is leftward.
+        QQuickItem *detailsDivider = shownItem(window.get(), "detailsDivider");
+        QVERIFY(detailsDivider);
+        dragBy(window.get(), detailsDivider, -80);
+        QCOMPARE(widths->details(), 380);
+
+        // Any column's divider sizes them all. The one dragged is in the
+        // columns' visible stretch, between the sidebar and the details.
+        QQuickItem *columnDivider = nullptr;
+        QTRY_VERIFY((columnDivider = shownItem(window.get(), "columnDivider", 200, 900)));
+        dragBy(window.get(), columnDivider, -40);
+        QCOMPARE(widths->column(), 220);
+        int columns = 0;
+        for (QQuickItem *item : itemsNamed(window->contentItem(), "column")) {
+            if (!item->isVisible())
+                continue;
+            ++columns;
+            QTRY_COMPARE(item->width(), 220.0);
+        }
+        QVERIFY(columns >= 2);
+
+        // A split of 1000 px dragged 200 to the right would leave 300 on
+        // the right; 360 is the least, so it stops at 640.
+        widths->drag("split", 200, 1000);
+        QCOMPARE(widths->splitLeft(1000), 640);
+        QCOMPARE(1000 - widths->splitLeft(1000), 360);
+
+        // Main.qml's own Settings keep them.
+        QTRY_COMPARE(QSettings(conf, QSettings::IniFormat).value("draggedSplit").toDouble(), 0.64);
+        window.reset();
+        auto again = paneWindow(view.engine, conf);
+        QVERIFY(again);
+        PaneWidths *kept = paneWidthsOf(again.get());
+        QVERIFY(kept);
+        QCOMPARE(kept->mode(), QString("fixed"));
+        QCOMPARE(kept->sidebar(), 190);
+        QCOMPARE(kept->details(), 380);
+        QCOMPARE(kept->column(), 220);
+        QCOMPARE(kept->draggedSplit(), 0.64);
+    }
+
+    void paneWidthsDragInAnyMode()
+    {
+        // Proportional widths follow the window, but a dragged divider's
+        // pane keeps its width as the window changes, while the others go
+        // on following it; a double-click gives it back to the window.
+        QTemporaryDir root, config;
+        folderFixture(root);
+        ListWindow view(root.path());
+        QVERIFY(view.shown());
+        auto window = paneWindow(view.engine, config.filePath("folio.conf"));
+        QVERIFY(window);
+        PaneWidths *widths = paneWidthsOf(window.get());
+        QVERIFY(widths);
+        widths->setMode("proportional");
+        window->setWidth(2560);
+        QTRY_COMPARE(widths->windowWidth(), 2560);
+        QCOMPARE(widths->sidebar(), 380); // 190 of 1280
+
+        QQuickItem *sidebarDivider = shownItem(window.get(), "sidebarDivider");
+        QVERIFY(sidebarDivider);
+        QTRY_COMPARE(sidebarDivider->mapToScene(QPointF(sidebarDivider->width() / 2, 0)).x(), 380.0);
+        dragBy(window.get(), sidebarDivider, -100);
+        QCOMPARE(widths->sidebar(), 280);
+
+        window->setWidth(1280);
+        QTRY_COMPARE(widths->windowWidth(), 1280);
+        QCOMPARE(widths->sidebar(), 280); // dragged
+        QCOMPARE(widths->details(), 300); // not dragged: 300 of 1280
+        QTRY_COMPARE(sidebarDivider->mapToScene(QPointF(sidebarDivider->width() / 2, 0)).x(), 280.0);
+        QTest::qWait(QGuiApplication::styleHints()->mouseDoubleClickInterval() + 50);
+        QTest::mouseDClick(window.get(), Qt::LeftButton, {}, gripAt(sidebarDivider));
+        QCOMPARE(widths->sidebar(), 190); // 190 of 1280
+        window->setWidth(2560);
+        QTRY_COMPARE(widths->windowWidth(), 2560);
+        QCOMPARE(widths->sidebar(), 380);
+    }
+
+    void paneWidthsKeyStepsThroughModes()
+    {
+        // W steps fixed, automatic, proportional and round again, Shift+W
+        // back, saying where it is; a new way lets go of what was dragged.
+        QTemporaryDir home, folder;
+        folderFixture(folder);
+        QDir(home.path()).mkpath("plugins");
+        Places places(home.path());
+        Plugins plugins("en", {home.filePath("plugins")}, home.filePath("folio.conf"));
+        Backend backend(home.path());
+        backend.navigate(folder.path());
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("places", &places);
+        engine.rootContext()->setContextProperty("plugins", &plugins);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        std::unique_ptr<QQuickWindow> window = paneHarness(engine);
+        QVERIFY(window);
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowFocused(window.get()));
+        window->setProperty("viewMode", "list");
+        QQuickItem *pane = window->property("activePane").value<QQuickItem *>();
+        QTRY_VERIFY(folderListIn(pane));
+        QMetaObject::invokeMethod(pane, "focusView");
+        QTRY_VERIFY(folderListIn(pane)->hasActiveFocus());
+
+        PaneWidths *widths = paneWidthsOf(window.get());
+        QVERIFY(widths);
+        QCOMPARE(widths->mode(), QString("fixed"));
+        widths->drag("details", 80);
+        QCOMPARE(widths->details(), 380);
+
+        QTest::keyClick(window.get(), Qt::Key_W);
+        QCOMPARE(widths->mode(), QString("automatic"));
+        QCOMPARE(backend.notice(), QString("Pane widths: Automatic"));
+        QCOMPARE(widths->details(), 300);
+        QTest::keyClick(window.get(), Qt::Key_W);
+        QCOMPARE(widths->mode(), QString("proportional"));
+        QCOMPARE(backend.notice(), QString("Pane widths: Proportional"));
+        QTest::keyClick(window.get(), Qt::Key_W);
+        QCOMPARE(widths->mode(), QString("fixed"));
+        QCOMPARE(backend.notice(), QString("Pane widths: Fixed"));
+        QTest::keyClick(window.get(), Qt::Key_W, Qt::ShiftModifier);
+        QCOMPARE(widths->mode(), QString("proportional"));
+        QTest::keyClick(window.get(), Qt::Key_W, Qt::ShiftModifier);
+        QCOMPARE(widths->mode(), QString("automatic"));
+    }
+
+    void splitDividerMovesFromWhereTheHalvesAre()
+    {
+        // Held at its limit, a split's left half is narrower than its share
+        // says: dragged, the divider moves from where it is on screen, as
+        // far as the pointer goes, without first making up the difference.
+        QTemporaryDir root;
+        folderFixture(root);
+        WholeWindow main(root.path());
+        QVERIFY(main.shown());
+        PaneWidths *widths = main.widths();
+        widths->setDraggedSplit(0.64);
+        // 800 px for the halves: the sidebar has 190 and the dividers 2, and
+        // a split window this narrow has no room for the details.
+        main.window->setWidth(800 + 190 + 2);
+        QQuickItem *left = main.pane("activePane");
+        QMetaObject::invokeMethod(main.window, "openSplit");
+        QQuickItem *right = main.pane("rightPane");
+        QVERIFY(right);
+        QQuickItem *panes = shownItem(main.window, "panes");
+        QVERIFY(panes);
+        QTRY_COMPARE(panes->property("shared").toInt(), 800);
+        // 0.64 of 800 is 512, which would leave the right half 288 of its 360.
+        QTRY_COMPARE(left->width(), 440.0);
+
+        QQuickItem *divider = shownItem(main.window, "splitDivider");
+        QVERIFY(divider);
+        dragBy(main.window, divider, -20);
+        QTRY_COMPARE(left->width(), 420.0);
+        QCOMPARE(right->width(), 380.0);
+        QCOMPARE(widths->draggedSplit(), 0.525);
+    }
+
+    void dividersTurnRoundRightToLeft()
+    {
+        // Mirrored, the sidebar is on the right and the details on the left,
+        // so each divider widens its pane the other way; a column's divider
+        // is still grabbed either side of its line.
+        QTemporaryDir root;
+        folderFixture(root);
+        QGuiApplication::setLayoutDirection(Qt::RightToLeft);
+        const auto leftToRight = qScopeGuard([] { QGuiApplication::setLayoutDirection(Qt::LeftToRight); });
+        WholeWindow main(root.path());
+        QVERIFY(main.shown());
+        QCOMPARE(main.window->property("viewMode").toString(), QString("columns"));
+        PaneWidths *widths = main.widths();
+        QCOMPARE(widths->mode(), QString("fixed"));
+
+        // A column's divider in the columns' stretch, between the details
+        // (300 px on the left) and the sidebar (190 on the right).
+        QQuickItem *columnDivider = nullptr;
+        QTRY_VERIFY((columnDivider = shownItem(main.window, "columnDivider", 310, 1080)));
+        QQuickItem *line = columnDivider->parentItem();
+        const QPointF middle = line->mapToScene(QPointF(line->width() / 2, line->height() / 2));
+        const int doubleClick = QGuiApplication::styleHints()->mouseDoubleClickInterval() + 50;
+        for (int side : {-3, 3}) {
+            QTest::qWait(doubleClick);
+            const QPoint at = (middle + QPointF(side, 0)).toPoint();
+            QTest::mousePress(main.window, Qt::LeftButton, {}, at);
+            const bool pressed = columnDivider->property("pressed").toBool();
+            QTest::mouseRelease(main.window, Qt::LeftButton, {}, at);
+            QVERIFY2(pressed, qPrintable(QString("a press %1 px from the line missed its divider").arg(side)));
+        }
+        // Its column is on its right: toward it narrows them all.
+        QTest::qWait(doubleClick);
+        dragBy(main.window, columnDivider, 40);
+        QCOMPARE(widths->column(), 220);
+
+        QQuickItem *sidebarDivider = shownItem(main.window, "sidebarDivider");
+        QVERIFY(sidebarDivider);
+        dragBy(main.window, sidebarDivider, -50);
+        QCOMPARE(widths->sidebar(), 240);
+        QQuickItem *detailsDivider = shownItem(main.window, "detailsDivider");
+        QVERIFY(detailsDivider);
+        dragBy(main.window, detailsDivider, 80);
+        QCOMPARE(widths->details(), 380);
+    }
+
+    void automaticColumnsFitTheRowsTheyDraw()
+    {
+        // Fitted to their names, the columns are as wide as the widest row
+        // drawn there needs: its whole name shows. The width is read from
+        // the row on screen (its layout, and the 14 px margins either side),
+        // not worked out the way the columns work it out.
+        QTemporaryDir config;
+        ListWindow view("/");
+        const QString longest(20, 'W');
+        QDir(view.home.path()).mkpath("fit/" + QString(10, 'W'));
+        write(view.home.filePath("fit/" + longest), "x");
+        view.backend.navigate(view.home.filePath("fit"));
+        auto window = paneWindow(view.engine, config.filePath("folio.conf"));
+        QVERIFY(window);
+        paneWidthsOf(window.get())->setMode("automatic");
+
+        QQuickItem *name = nullptr;
+        QTRY_VERIFY((name = [&]() -> QQuickItem * {
+            for (QQuickItem *item : itemsNamed(window->contentItem(), "rowName"))
+                if (item->isVisible() && item->property("text").toString() == longest)
+                    return item;
+            return nullptr;
+        }()));
+        QQuickItem *layout = name->parentItem();
+        QQuickItem *column = layout;
+        while (column && column->objectName() != "column")
+            column = column->parentItem();
+        QVERIFY(column);
+        const int expected = qMin(480, qMax(180, qRound(layout->implicitWidth() + 28)));
+        QTRY_COMPARE(column->width(), double(expected));
+        QVERIFY(!name->property("truncated").toBool());
+        QVERIFY2(name->width() >= name->implicitWidth(),
+                 qPrintable(QString("%1 px for a name of %2").arg(name->width()).arg(name->implicitWidth())));
+    }
+
+    void automaticColumnsOpenALargeFolderWithoutFreezing()
+    {
+        // Fitting the columns to 20,000 names as they arrive doesn't hold
+        // the window up.
+        QTemporaryDir config;
+        ListWindow view("/");
+        QDir(view.home.path()).mkpath("big");
+        for (int i = 0; i < 20000; ++i)
+            QVERIFY(QFile(view.home.filePath(QString("big/f%1").arg(i, 5, 10, QChar('0')))).open(QIODevice::WriteOnly));
+        auto window = paneWindow(view.engine, config.filePath("folio.conf"));
+        QVERIFY(window);
+        paneWidthsOf(window.get())->setMode("automatic");
+
+        QElapsedTimer clock;
+        qint64 last = 0, longest = 0;
+        QTimer ticks;
+        ticks.setInterval(10);
+        connect(&ticks, &QTimer::timeout, [&] {
+            longest = qMax(longest, clock.elapsed() - last);
+            last = clock.elapsed();
+        });
+        clock.start();
+        ticks.start();
+        view.backend.navigate(view.home.filePath("big"));
+        QTRY_COMPARE_WITH_TIMEOUT(view.backend.folder()->count(), 20000, 15000);
+        QTRY_VERIFY(!view.backend.folder()->loading());
+        QTest::qWait(200);
+        ticks.stop();
+        longest = qMax(longest, clock.elapsed() - last);
+        QVERIFY2(longest < 250, qPrintable(QString("the window was held up for %1 ms").arg(longest)));
+
+        // Six characters, f00000 to f19999: far narrower than the narrowest
+        // column, which they get.
+        int columns = 0;
+        for (QQuickItem *item : itemsNamed(window->contentItem(), "column")) {
+            if (!item->isVisible())
+                continue;
+            ++columns;
+            QTRY_COMPARE(item->width(), 180.0);
+        }
+        QVERIFY(columns >= 2);
+    }
+
+    void splitWindowSharesItsRoom()
+    {
+        // The real split: the halves, the sidebar, the details and the two
+        // dividers fill the window to the pixel.
+        QTemporaryDir root;
+        folderFixture(root);
+        WholeWindow main(root.path());
+        QVERIFY(main.shown());
+        main.window->setWidth(1600);
+        PaneWidths *widths = main.widths();
+        widths->setDraggedSplit(0.64);
+        QQuickItem *left = main.pane("activePane");
+        QMetaObject::invokeMethod(main.window, "openSplit");
+        QQuickItem *right = main.pane("rightPane");
+        QVERIFY(right);
+        QQuickItem *panes = shownItem(main.window, "panes");
+        QVERIFY(panes);
+        QQuickItem *sidebar = panes->childItems().value(0);
+        QVERIFY(sidebar);
+        // 1600 less the sidebar's 190, the details' 300 and two dividers.
+        QTRY_COMPARE(panes->property("shared").toInt(), 1108);
+        QTRY_COMPARE(left->width(), 709.0); // 0.64 of 1108 is 709.12
+        QTRY_COMPARE(right->width(), 399.0);
+        QCOMPARE(sidebar->width(), 190.0);
+        QCOMPARE(main.window->property("detailsWidth").toInt(), 300);
+        QCOMPARE(left->width() + right->width() + sidebar->width() + 300 + 2, 1600.0);
+    }
+
+    void dividerPressWithoutADragKeepsTheWay()
+    {
+        // A press on a divider that only wobbles up and down goes nowhere
+        // across: it's no drag, and the pane goes on following its way.
+        QTemporaryDir root, config;
+        folderFixture(root);
+        ListWindow view(root.path());
+        QVERIFY(view.shown());
+        auto window = paneWindow(view.engine, config.filePath("folio.conf"));
+        QVERIFY(window);
+        PaneWidths *widths = paneWidthsOf(window.get());
+        QVERIFY(widths);
+        widths->setMode("proportional");
+        window->setWidth(2560);
+        QTRY_COMPARE(widths->windowWidth(), 2560);
+        QCOMPARE(widths->sidebar(), 380);
+
+        QQuickItem *sidebarDivider = shownItem(window.get(), "sidebarDivider");
+        QVERIFY(sidebarDivider);
+        QTRY_COMPARE(sidebarDivider->mapToScene(QPointF(sidebarDivider->width() / 2, 0)).x(), 380.0);
+        const QPoint at = gripAt(sidebarDivider);
+        QTest::mousePress(window.get(), Qt::LeftButton, {}, at);
+        QVERIFY(sidebarDivider->property("pressed").toBool());
+        QTest::mouseMove(window.get(), at + QPoint(0, 3));
+        QTest::mouseMove(window.get(), at + QPoint(0, 6));
+        QTest::mouseRelease(window.get(), Qt::LeftButton, {}, at + QPoint(0, 6));
+        QCOMPARE(widths->draggedSidebar(), 0);
+        window->setWidth(1280);
+        QTRY_COMPARE(widths->windowWidth(), 1280);
+        QCOMPARE(widths->sidebar(), 190); // 190 of 1280
+
+        // Fitted to their rows, the columns stay fitted.
+        widths->setMode("automatic");
+        QQuickItem *columnDivider = nullptr;
+        QTRY_VERIFY((columnDivider = shownItem(window.get(), "columnDivider", 200, 900)));
+        QQuickItem *columns = columnDivider;
+        while (columns && !columns->property("fitting").isValid())
+            columns = columns->parentItem();
+        QVERIFY(columns);
+        QTRY_VERIFY(columns->property("fitting").toBool());
+        QTest::qWait(QGuiApplication::styleHints()->mouseDoubleClickInterval() + 50);
+        const QPoint grip = gripAt(columnDivider);
+        QTest::mousePress(window.get(), Qt::LeftButton, {}, grip);
+        QVERIFY(columnDivider->property("pressed").toBool());
+        QTest::mouseMove(window.get(), grip + QPoint(0, 4));
+        QTest::mouseRelease(window.get(), Qt::LeftButton, {}, grip + QPoint(0, 4));
+        QCOMPARE(widths->draggedColumn(), 0);
+        QVERIFY(columns->property("fitting").toBool());
+    }
+
+    void scrollBarsKeepTheirPresses()
+    {
+        // A divider's grip reaches over the edge of the pane beside it, where
+        // that pane's scroll bar is: a press on the scroll bar, there, and a
+        // drag straight down scroll the files and size nothing.
+        QTemporaryDir root;
+        for (int i = 0; i < 300; ++i)
+            write(root.filePath(QString("f%1.txt").arg(i, 3, 10, QChar('0'))), "x");
+        // The vertical scroll bar a list or a column has.
+        const auto barOf = [](QQuickItem *flick) -> QQuickItem * {
+            for (QQuickItem *child : flick->childItems())
+                if (child->inherits("QQuickScrollBar") && child->property("orientation").toInt() == Qt::Vertical)
+                    return child;
+            return nullptr;
+        };
+        // Brings the bar up with the pointer, as a hand on the mouse does,
+        // presses on its thumb 2 px in from its outer edge (the one at its
+        // list's edge) and drags down 200 px.
+        const auto dragBar = [](QQuickWindow *window, QQuickItem *flick, QQuickItem *bar) {
+            // Once a new view is laid out where it stays.
+            QTest::qWait(200);
+            QQuickItem *thumb = bar->property("contentItem").value<QQuickItem *>();
+            const bool atLeft = bar->x() < flick->width() / 2;
+            const qreal y = thumb ? thumb->y() + thumb->height() / 2 : 10;
+            const QPoint start = bar->mapToScene(QPointF(atLeft ? 2 : bar->width() - 2, y)).toPoint();
+            QTest::mouseMove(window, start + QPoint(atLeft ? 6 : -6, 0));
+            QTest::mouseMove(window, start);
+            QTRY_VERIFY(bar->property("hovered").toBool());
+            QTest::mousePress(window, Qt::LeftButton, {}, start);
+            for (int step = 1; step <= 10; ++step)
+                QTest::mouseMove(window, start + QPoint(0, 20 * step));
+            QTest::mouseRelease(window, Qt::LeftButton, {}, start + QPoint(0, 200));
+        };
+        // The column showing the folder: the one with its 300 files.
+        const auto shownColumn = [](QQuickWindow *window) -> QQuickItem * {
+            for (QQuickItem *item : itemsNamed(window->contentItem(), "column"))
+                if (item->isVisible() && item->property("count").toInt() == 300)
+                    return item;
+            return nullptr;
+        };
+        // On a desktop the pointer brings a scroll bar up as it comes over
+        // it; the tests' screen has no hover effects until they're asked for.
+        const bool hoverEffects = QGuiApplication::styleHints()->useHoverEffects();
+        QGuiApplication::styleHints()->setUseHoverEffects(true);
+        const auto hoverBack = qScopeGuard([hoverEffects] { QGuiApplication::styleHints()->setUseHoverEffects(hoverEffects); });
+        for (bool mirrored : {false, true}) {
+            QGuiApplication::setLayoutDirection(mirrored ? Qt::RightToLeft : Qt::LeftToRight);
+            const auto leftToRight = qScopeGuard([] { QGuiApplication::setLayoutDirection(Qt::LeftToRight); });
+            WholeWindow main(root.path());
+            QVERIFY(main.shown());
+            main.window->setWidth(1280);
+            PaneWidths *widths = main.widths();
+            QCOMPARE(widths->mode(), QString("fixed"));
+            QQuickItem *pane = main.pane("activePane");
+
+            main.window->setProperty("viewMode", "list");
+            QQuickItem *list = nullptr;
+            QTRY_VERIFY((list = folderListIn(pane)));
+            QTRY_COMPARE(list->property("count").toInt(), 300);
+            QTRY_COMPARE(main.window->property("detailsWidth").toInt(), 300);
+            QQuickItem *bar = barOf(list);
+            QVERIFY(bar);
+            QTRY_VERIFY(bar->property("size").toDouble() < 1);
+            dragBar(main.window, list, bar);
+            QVERIFY2(list->property("contentY").toDouble() > 0, mirrored ? "mirrored" : "");
+            QCOMPARE(main.window->property("detailsWidth").toInt(), 300);
+            QCOMPARE(widths->draggedDetails(), 0);
+            QCOMPARE(widths->sidebar(), 190);
+            QCOMPARE(widths->draggedSidebar(), 0);
+
+            main.window->setProperty("viewMode", "columns");
+            QQuickItem *column = nullptr;
+            QTRY_VERIFY((column = shownColumn(main.window)));
+            QTRY_COMPARE(column->width(), 260.0);
+            bar = barOf(column);
+            QVERIFY(bar);
+            QTRY_VERIFY(bar->property("size").toDouble() < 1);
+            dragBar(main.window, column, bar);
+            QVERIFY2(column->property("contentY").toDouble() > 0, mirrored ? "mirrored" : "");
+            QCOMPARE(column->width(), 260.0);
+            QCOMPARE(widths->draggedColumn(), 0);
+            QCOMPARE(widths->sidebar(), 190);
+            QCOMPARE(widths->draggedSidebar(), 0);
+            QCOMPARE(main.window->property("detailsWidth").toInt(), 300);
+            QCOMPARE(widths->draggedDetails(), 0);
+        }
     }
 
     void fileOpsDeleteForeverOutsideTheTrash()
@@ -6078,6 +6665,269 @@ private:
     {
         QFile file(path);
         return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+    }
+
+    // A list view on a real backend showing `folder`, whose engine has
+    // what the views need, for the windows the pane width tests open.
+    struct ListWindow {
+        explicit ListWindow(const QString &folder)
+            : plugins("en", {pluginsIn(home)}, home.filePath("folio.conf")), backend(home.path()),
+              theme(home.filePath("theme"))
+        {
+            backend.navigate(folder);
+            engine.rootContext()->setContextProperty("backend", &backend);
+            engine.rootContext()->setContextProperty("theme", &theme);
+            engine.rootContext()->setContextProperty("fileOps", &fileOps);
+            engine.rootContext()->setContextProperty("plugins", &plugins);
+            engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+            QQmlComponent component(&engine);
+            component.setData("import QtQuick\n"
+                              "Window {\n"
+                              "    width: 800; height: 600; visible: true\n"
+                              "    FolderList { anchors.fill: parent }\n"
+                              "}\n",
+                              QUrl::fromLocalFile(sourceFolder() + "/FolderListTest.qml"));
+            window.reset(component.create());
+            if (!window)
+                qWarning() << component.errorString();
+        }
+        static QString pluginsIn(const QTemporaryDir &home)
+        {
+            QDir(home.path()).mkpath("plugins");
+            return home.filePath("plugins");
+        }
+        bool shown() const { return window && QTest::qWaitForWindowExposed(qobject_cast<QWindow *>(window.get())); }
+
+        QTemporaryDir home;
+        Plugins plugins;
+        Backend backend;
+        Theme theme;
+        FileOps fileOps;
+        QQmlEngine engine;
+        std::unique_ptr<QObject> window;
+    };
+
+    // Folio's own window: Main.qml, opened as the app opens it through
+    // Windows, but read from the source folder. Main.qml's Settings go to a
+    // folder of the tests' own, emptied for each window, so every window
+    // starts from the defaults.
+    struct WholeWindow {
+        explicit WholeWindow(const QString &folder)
+            : places(home.path()), plugins("en", {ListWindow::pluginsIn(home)}, home.filePath("folio.conf")),
+              theme(home.filePath("theme"))
+        {
+            static QTemporaryDir kept;
+            QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, kept.path());
+            QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, kept.path());
+            QFile::remove(QSettings().fileName());
+            qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+            qmlRegisterType<PaneWidths>("Folio", 1, 0, "PaneWidths");
+            engine.rootContext()->setContextProperty("theme", &theme);
+            engine.rootContext()->setContextProperty("places", &places);
+            engine.rootContext()->setContextProperty("plugins", &plugins);
+            engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+            windows = std::make_unique<Windows>(&engine, &plugins, nullptr, QUrl::fromLocalFile(sourceFolder() + "/"));
+            const QWindowList before = QGuiApplication::topLevelWindows();
+            backend = windows->open(folder);
+            for (QWindow *each : QGuiApplication::topLevelWindows())
+                if (!before.contains(each) && each->property("widths").isValid())
+                    window = qobject_cast<QQuickWindow *>(each);
+        }
+        ~WholeWindow()
+        {
+            // Closing it releases its panes, as the app does.
+            if (window)
+                window->close();
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        }
+        // On screen and taking clicks and keys: Main.qml waits for its size.
+        bool shown() const
+        {
+            return window && QTest::qWaitForWindowExposed(window)
+                   && QTest::qWaitFor([this] { return window->property("settled").toBool(); }, 3000);
+        }
+        PaneWidths *widths() const { return paneWidthsOf(window); }
+        QQuickItem *pane(const char *name) const { return window->property(name).value<QQuickItem *>(); }
+
+        QTemporaryDir home;
+        Places places;
+        Plugins plugins;
+        Theme theme;
+        QQmlEngine engine;
+        std::unique_ptr<Windows> windows;
+        Backend *backend = nullptr;
+        QQuickWindow *window = nullptr;
+    };
+
+    // A pane in a window with Main.qml's side of it (the view and the
+    // widths), for the pane's keys. `engine` has the contexts.
+    static std::unique_ptr<QQuickWindow> paneHarness(QQmlEngine &engine)
+    {
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        qmlRegisterType<PaneWidths>("Folio", 1, 0, "PaneWidths");
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "import QtQuick.Controls\n"
+                          "import Folio\n"
+                          "ApplicationWindow {\n"
+                          "    id: win\n"
+                          "    width: 1000; height: 600; visible: true\n"
+                          "    property string viewMode: 'columns'\n"
+                          "    property real zoom: 1\n"
+                          "    property bool previewVisible: false\n"
+                          "    property bool detailsFit: true\n"
+                          "    property bool split: false\n"
+                          "    property bool helpVisible: false\n"
+                          "    property var activePane: pane\n"
+                          "    PaneWidths { id: paneSizing; windowWidth: win.width }\n"
+                          "    readonly property var widths: paneSizing\n"
+                          "    FolderPane { id: pane; anchors.fill: parent; focus: true }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/PaneTest.qml"));
+        std::unique_ptr<QQuickWindow> window(qobject_cast<QQuickWindow *>(component.create()));
+        if (!window) {
+            qWarning() << component.errorString();
+            return {};
+        }
+        if (!QTest::qWaitForWindowExposed(window.get()))
+            return {};
+        return window;
+    }
+
+    // The list view in a pane, once it has loaded.
+    static QQuickItem *folderListIn(QQuickItem *top)
+    {
+        if (!top)
+            return nullptr;
+        for (QQuickItem *child : top->childItems()) {
+            if (QString(child->metaObject()->className()).startsWith("FolderList"))
+                return child;
+            if (QQuickItem *found = folderListIn(child))
+                return found;
+        }
+        return nullptr;
+    }
+
+    // A window laid out as Main.qml lays out the sidebar, the columns and
+    // the details, sized by a PaneWidths and kept by Main.qml's own
+    // Settings, read from it and pointed at `conf`. `engine` has the
+    // contexts the columns need.
+    static std::unique_ptr<QQuickWindow> paneWindow(QQmlEngine &engine, const QString &conf)
+    {
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        qmlRegisterType<PaneWidths>("Folio", 1, 0, "PaneWidths");
+        QFile main(sourceFolder() + "/Main.qml");
+        if (!main.open(QIODevice::ReadOnly))
+            return {};
+        const QRegularExpression block("\n(    Settings \\{\n)(.*?\n    \\}\n)", QRegularExpression::DotMatchesEverythingOption);
+        const QRegularExpressionMatch found = block.match(QString::fromUtf8(main.readAll()));
+        if (!found.hasMatch())
+            return {};
+        const QString settings = found.captured(1) + "        location: \"" + QUrl::fromLocalFile(conf).toString() + "\"\n"
+                                 + found.captured(2);
+        QQmlComponent component(&engine);
+        component.setData(("import QtQuick\n"
+                           "import QtQuick.Controls\n"
+                           "import QtCore\n"
+                           "import Folio\n"
+                           "ApplicationWindow {\n"
+                           "    id: win\n"
+                           "    width: 1280; height: 600; visible: true\n"
+                           "    property string viewMode: 'columns'\n"
+                           "    property real zoom: 1\n"
+                           "    PaneWidths { id: paneSizing; windowWidth: win.width }\n"
+                           "    readonly property var widths: paneSizing\n"
+                           + settings +
+                           "    Rectangle {\n"
+                           "        id: side; width: (paneSizing.revision, paneSizing.sidebar(0)); height: parent.height\n"
+                           "        PaneDivider { objectName: 'sidebarDivider'; anchors.horizontalCenter: parent.right; height: parent.height; widths: paneSizing; pane: 'sidebar' }\n"
+                           "    }\n"
+                           "    FolderColumns { x: side.width + 1; width: details.x - x; height: parent.height }\n"
+                           "    Rectangle {\n"
+                           "        id: details; x: parent.width - width; width: paneSizing.details; height: parent.height\n"
+                           "        PaneDivider { objectName: 'detailsDivider'; anchors.horizontalCenter: parent.left; height: parent.height; widths: paneSizing; pane: 'details'; growth: -1 }\n"
+                           "    }\n"
+                           "}\n").toUtf8(),
+                          QUrl::fromLocalFile(sourceFolder() + "/PaneWidthsTest.qml"));
+        std::unique_ptr<QQuickWindow> window(qobject_cast<QQuickWindow *>(component.create()));
+        if (!window) {
+            qWarning() << component.errorString();
+            return {};
+        }
+        if (!QTest::qWaitForWindowExposed(window.get()))
+            return {};
+        return window;
+    }
+
+    static PaneWidths *paneWidthsOf(QQuickWindow *window)
+    {
+        return qobject_cast<PaneWidths *>(window->property("widths").value<QObject *>());
+    }
+
+    // The first showing item with this objectName, optionally one whose
+    // middle is between `from` and `to` across the window.
+    static QQuickItem *shownItem(QQuickWindow *window, const QString &name, qreal from = -1, qreal to = 1e9)
+    {
+        for (QQuickItem *item : itemsNamed(window->contentItem(), name)) {
+            const qreal x = item->mapToScene(QPointF(item->width() / 2, 0)).x();
+            if (item->isVisible() && x >= from && x <= to)
+                return item;
+        }
+        return nullptr;
+    }
+
+    // A point on a divider's grip, a little in from the edge of the line:
+    // half of it reaches over the pane on the far side, which is drawn
+    // above it in these test windows.
+    static QPoint gripAt(QQuickItem *grip)
+    {
+        const bool leftHalf = grip->objectName() != "detailsDivider";
+        return grip->mapToScene(QPointF(leftHalf ? 2 : grip->width() - 2, grip->height() / 2)).toPoint();
+    }
+
+    // Presses on a divider, moves the pointer `by` px across in steps, and
+    // lets go.
+    static void dragBy(QQuickWindow *window, QQuickItem *grip, int by)
+    {
+        const QPoint start = gripAt(grip);
+        QTest::mousePress(window, Qt::LeftButton, {}, start);
+        for (int step = 1; step <= 10; ++step)
+            QTest::mouseMove(window, start + QPoint(by * step / 10, 0));
+        QTest::mouseRelease(window, Qt::LeftButton, {}, start + QPoint(by, 0));
+    }
+
+    // A folder of folders and files: Alpha/Beta/c.txt, Alpha/d.txt,
+    // Zeta/z.txt and e.txt.
+    static void folderFixture(const QTemporaryDir &root)
+    {
+        QDir(root.path()).mkpath("Alpha/Beta");
+        QDir(root.path()).mkpath("Zeta");
+        write(root.filePath("Alpha/Beta/c.txt"), "x");
+        write(root.filePath("Alpha/d.txt"), "x");
+        write(root.filePath("Zeta/z.txt"), "x");
+        write(root.filePath("e.txt"), "x");
+    }
+
+    // The rows' names, as the views read them.
+    static QStringList rowNames(const FolderModel &model)
+    {
+        QStringList names;
+        for (int row = 0; row < model.count(); ++row)
+            names << model.data(model.index(row), FolderModel::NameRole).toString();
+        return names;
+    }
+
+    // The items under `top` with this objectName, through the items' own
+    // tree (a window's items aren't all its QObject children).
+    static QList<QQuickItem *> itemsNamed(QQuickItem *top, const QString &name)
+    {
+        QList<QQuickItem *> found;
+        for (QQuickItem *child : top->childItems()) {
+            if (child->objectName() == name)
+                found << child;
+            found << itemsNamed(child, name);
+        }
+        return found;
     }
 
     static void write(const QString &path, const QByteArray &contents)
