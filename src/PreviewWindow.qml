@@ -329,7 +329,7 @@ ApplicationWindow {
                         height: 165
                         fillMode: Image.PreserveAspectCrop
                         asynchronous: true
-                        source: Format.thumb(modelData, "image/*", 256)
+                        source: Format.thumb(modelData, "image/*", 256, null)
                     }
                 }
             }

@@ -134,7 +134,14 @@ void Places::refresh() {
     refreshPlaces();
     refreshPinned();
     refreshDevices();
-    emit changed();
+}
+
+// The lists compare in order, so a reordered list is a changed one.
+void Places::setList(QVariantList &list, const QVariantList &next, void (Places::*announce)()) {
+    if (next == list)
+        return;
+    list = next;
+    emit (this->*announce)();
 }
 
 QString Places::userDirectory(int location, const QString &fallback) const {
@@ -174,12 +181,14 @@ void Places::refreshPlaces() {
         add(displayName(name), path, icons.value(path, "folder"));
     }
 
-    m_places = places;
+    setList(m_places, places, &Places::placesChanged);
 
     // Views: lists that aren't a folder of their own. The sidebar names
     // them, so a language switch renames them at once.
-    m_views = {QVariantMap{{"path", FolderModel::recentPath()}, {"icon", "recent"}},
-               QVariantMap{{"path", QDir::cleanPath(FileOps::homeTrash() + "/files")}, {"icon", "trash"}}};
+    setList(m_views,
+            {QVariantMap{{"path", FolderModel::recentPath()}, {"icon", "recent"}},
+             QVariantMap{{"path", QDir::cleanPath(FileOps::homeTrash() + "/files")}, {"icon", "trash"}}},
+            &Places::viewsChanged);
 }
 
 QString Places::bookmarksPath() const {
@@ -210,7 +219,7 @@ bool Places::writeBookmarkLines(const QStringList &lines) {
 }
 
 void Places::refreshPinned() {
-    m_pinned = parseBookmarks(readBookmarkLines(), m_home);
+    setList(m_pinned, parseBookmarks(readBookmarkLines(), m_home), &Places::pinnedChanged);
 }
 
 bool Places::isPinned(const QString &path) const {
@@ -235,7 +244,6 @@ QString Places::pin(const QString &path) {
     if (!writeBookmarkLines(lines))
         return tr("Couldn't save the pin to %1.").arg(bookmarksPath());
     refreshPinned();
-    emit changed();
     return {};
 }
 
@@ -247,10 +255,8 @@ void Places::unpin(const QString &path) {
         const QUrl url(line.section(' ', 0, 0));
         return url.isLocalFile() && QDir::cleanPath(url.toLocalFile()) == clean;
     }), lines.end());
-    if (lines.size() != before && writeBookmarkLines(lines)) {
+    if (lines.size() != before && writeBookmarkLines(lines))
         refreshPinned();
-        emit changed();
-    }
 }
 
 QVariantList Places::physicalDrives(const QList<Mount> &mounts, const QString &systemDevice) {
@@ -321,11 +327,7 @@ void Places::mountsRead() {
             mount.canUnmount = g_mount_can_unmount(gmount);
             g_object_unref(gmount);
         }
-    const QVariantList devices = physicalDrives(mounts, m_systemDevice);
-    if (devices != m_devices) {
-        m_devices = devices;
-        emit changed();
-    }
+    setList(m_devices, physicalDrives(mounts, m_systemDevice), &Places::devicesChanged);
     if (std::exchange(m_rereadMounts, false))
         refreshDevices();
 }

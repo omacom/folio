@@ -11,10 +11,10 @@
 class Places : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString home READ home CONSTANT)
-    Q_PROPERTY(QVariantList places READ places NOTIFY changed)
-    Q_PROPERTY(QVariantList pinned READ pinned NOTIFY changed)
-    Q_PROPERTY(QVariantList views READ views NOTIFY changed)
-    Q_PROPERTY(QVariantList devices READ devices NOTIFY changed)
+    Q_PROPERTY(QVariantList places READ places NOTIFY placesChanged)
+    Q_PROPERTY(QVariantList pinned READ pinned NOTIFY pinnedChanged)
+    Q_PROPERTY(QVariantList views READ views NOTIFY viewsChanged)
+    Q_PROPERTY(QVariantList devices READ devices NOTIFY devicesChanged)
 
 public:
     // `home` is overridable for tests; the real home also consults the XDG
@@ -62,13 +62,18 @@ public:
     static QVariantList physicalDrives(const QList<Mount> &mounts, const QString &systemDevice);
 
 signals:
-    void changed();
+    // Each list announces only a change from what it last held, so a poll that finds nothing new redraws nothing.
+    void placesChanged();
+    void pinnedChanged();
+    void viewsChanged();
+    void devicesChanged();
     // A drive is about to be let go of: whatever shows a folder on it
     // leaves, so Folio itself doesn't keep it busy.
     void releasing(const QString &root);
     void failed(const QString &message);
 
 private:
+    void setList(QVariantList &list, const QVariantList &next, void (Places::*announce)());
     void refreshPlaces();
     void refreshDevices();
     // Every mount and its free space, read off the UI thread: reading them
