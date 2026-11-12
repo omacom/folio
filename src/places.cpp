@@ -13,7 +13,9 @@
 #include <QStorageInfo>
 #include <QtConcurrent>
 #include <QPointer>
+#include <QHash>
 #include <algorithm>
+#include <tuple>
 #include <memory>
 
 // GIO's headers use `signals` as a struct member, which Qt defines as a
@@ -24,22 +26,14 @@
 
 namespace {
 
-// Home's own folders, all but the hidden ones (as refreshPlaces lists them),
-// are already under Home.
-bool listedUnderHome(const QString &path, const QString &home) {
-    const QString clean = QDir::cleanPath(home);
-    const QFileInfo info(path);
-    return path == clean || (info.absolutePath() == clean && !info.isHidden());
-}
-
 // Omarchy's own folder reads as the name it goes by.
 QString displayName(const QString &name) {
     return name == "omarchy" ? QStringLiteral("Omarchy") : name;
 }
 
 // Reads bookmark lines ("file:///path Label") into pinned entries, leaving
-// out folders already listed under Home and missing folders.
-QVariantList parseBookmarks(const QStringList &lines, const QString &home) {
+// out folders the Places section already lists and missing folders.
+QVariantList parseBookmarks(const QStringList &lines, const QStringList &listed) {
     QVariantList pinned;
     QStringList seen;
     for (const QString &raw : lines) {
@@ -54,9 +48,9 @@ QVariantList parseBookmarks(const QStringList &lines, const QString &home) {
         if (!url.isLocalFile())
             continue;
         const QString path = QDir::cleanPath(url.toLocalFile());
-        // Home's visible folders are already under Home; Omarchy also seeds
-        // a few of those as bookmarks for the file dialogs.
-        if (listedUnderHome(path, home) || seen.contains(path) || !QFileInfo(path).isDir())
+        // Home and its standard folders are already in Places; Omarchy also
+        // seeds a few of those as bookmarks for the file dialogs.
+        if (listed.contains(path) || seen.contains(path) || !QFileInfo(path).isDir())
             continue;
         seen << path;
         pinned << QVariantMap{{"name", label.isEmpty() ? displayName(QFileInfo(path).fileName()) : label},
@@ -146,32 +140,28 @@ QString Places::userDirectory(int location, const QString &fallback) const {
     return m_home + "/" + fallback;
 }
 
-// The sidebar's Home section is every folder in home but the hidden ones,
-// the way they appear in the home folder itself, so whatever someone keeps
-// at the top of their home (Work, omarchy, Dropbox) is one click away
-// without pinning it.
+// The sidebar's Places, as Nautilus has them: Home and its standard
+// folders (wherever user-dirs points, and only those that exist), then
+// Recents and Trash. Everything else in home is a click into Home away, or
+// pinned.
 void Places::refreshPlaces() {
     QVariantList places;
-    auto add = [&](const QString &name, const QString &path, const QString &icon) {
-        places << QVariantMap{{"name", name}, {"path", path}, {"icon", icon}};
+    places << QVariantMap{{"name", "Home"}, {"path", QDir::cleanPath(m_home)}, {"icon", "home"}};
+    const QList<std::tuple<int, const char *, const char *>> standard{
+        {QStandardPaths::DesktopLocation, "Desktop", "desktop"},
+        {QStandardPaths::DocumentsLocation, "Documents", "documents"},
+        {QStandardPaths::DownloadLocation, "Downloads", "downloads"},
+        {QStandardPaths::MusicLocation, "Music", "music"},
+        {QStandardPaths::PicturesLocation, "Pictures", "pictures"},
+        {QStandardPaths::MoviesLocation, "Videos", "videos"},
     };
-    // The XDG folders keep their own glyphs, wherever user-dirs points.
-    const QHash<QString, QString> icons{
-        {userDirectory(QStandardPaths::DocumentsLocation, "Documents"), "documents"},
-        {userDirectory(QStandardPaths::DownloadLocation, "Downloads"), "downloads"},
-        {userDirectory(QStandardPaths::PicturesLocation, "Pictures"), "pictures"},
-        {userDirectory(QStandardPaths::MusicLocation, "Music"), "music"},
-        {userDirectory(QStandardPaths::MoviesLocation, "Videos"), "videos"},
-    };
-
-    QStringList names = QDir(m_home).entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::NoSort);
-    QCollator collator;
-    collator.setNumericMode(true);
-    collator.setCaseSensitivity(Qt::CaseInsensitive);
-    std::sort(names.begin(), names.end(), [&](const QString &a, const QString &b) { return collator.compare(a, b) < 0; });
-    for (const QString &name : names) {
-        const QString path = m_home + "/" + name;
-        add(displayName(name), path, icons.value(path, "folder"));
+    QStringList seen{QDir::cleanPath(m_home)};
+    for (const auto &[location, fallback, icon] : standard) {
+        const QString path = QDir::cleanPath(userDirectory(location, fallback));
+        if (seen.contains(path) || !QFileInfo(path).isDir())
+            continue;
+        seen << path;
+        places << QVariantMap{{"name", displayName(QFileInfo(path).fileName())}, {"path", path}, {"icon", icon}};
     }
 
     m_places = places;
@@ -180,6 +170,13 @@ void Places::refreshPlaces() {
     // them, so a language switch renames them at once.
     m_views = {QVariantMap{{"path", FolderModel::recentPath()}, {"icon", "recent"}},
                QVariantMap{{"path", QDir::cleanPath(FileOps::homeTrash() + "/files")}, {"icon", "trash"}}};
+}
+
+QStringList Places::listedPaths() const {
+    QStringList paths;
+    for (const QVariant &p : m_places)
+        paths << p.toMap().value("path").toString();
+    return paths;
 }
 
 QString Places::bookmarksPath() const {
@@ -210,7 +207,7 @@ bool Places::writeBookmarkLines(const QStringList &lines) {
 }
 
 void Places::refreshPinned() {
-    m_pinned = parseBookmarks(readBookmarkLines(), m_home);
+    m_pinned = parseBookmarks(readBookmarkLines(), listedPaths());
 }
 
 bool Places::isPinned(const QString &path) const {
@@ -226,7 +223,7 @@ QString Places::pin(const QString &path) {
     const QFileInfo info(clean);
     if (!info.isDir())
         return tr("Only folders can be pinned.");
-    if (listedUnderHome(clean, m_home))
+    if (listedPaths().contains(clean))
         return tr("%1 is already under Home.").arg(displayName(info.fileName()));
     if (isPinned(clean))
         return {};
@@ -248,6 +245,39 @@ void Places::unpin(const QString &path) {
         return url.isLocalFile() && QDir::cleanPath(url.toLocalFile()) == clean;
     }), lines.end());
     if (lines.size() != before && writeBookmarkLines(lines)) {
+        refreshPinned();
+        emit changed();
+    }
+}
+
+void Places::movePin(const QString &path, int to) {
+    QStringList order;
+    for (const QVariant &p : m_pinned)
+        order << p.toMap().value("path").toString();
+    const int from = order.indexOf(QDir::cleanPath(path));
+    to = std::clamp(to, 0, int(order.size()) - 1);
+    if (from < 0 || from == to)
+        return;
+    order.move(from, to);
+    // Each pin's line, and the lineSlots they take in the file: the pins are
+    // put back into the same lineSlots in their new order, so remote bookmarks
+    // and Omarchy's seeded ones stay where they were.
+    QStringList lines = readBookmarkLines();
+    QList<int> lineSlots;
+    QHash<QString, QString> lineOf;
+    for (int i = 0; i < lines.size(); ++i) {
+        const QUrl url(lines[i].trimmed().section(' ', 0, 0));
+        const QString p = url.isLocalFile() ? QDir::cleanPath(url.toLocalFile()) : QString();
+        if (order.contains(p) && !lineOf.contains(p)) {
+            lineOf.insert(p, lines[i]);
+            lineSlots << i;
+        }
+    }
+    if (lineSlots.size() != order.size())
+        return;
+    for (int i = 0; i < lineSlots.size(); ++i)
+        lines[lineSlots[i]] = lineOf.value(order[i]);
+    if (writeBookmarkLines(lines)) {
         refreshPinned();
         emit changed();
     }
@@ -359,3 +389,4 @@ void Places::eject(const QString &path) {
         g_mount_unmount_with_operation(mount, G_MOUNT_UNMOUNT_NONE, nullptr, nullptr, released, context);
     g_object_unref(mount);
 }
+

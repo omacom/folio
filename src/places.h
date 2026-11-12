@@ -43,6 +43,9 @@ public:
     // Whatever shows a folder on the drive mounted at `root` leaves it,
     // before the drive is let go of or changed.
     Q_INVOKABLE void leave(const QString &root);
+    // Moves the pinned folder at `path` to place `to` among the pins,
+    // keeping every other bookmark line where it was.
+    Q_INVOKABLE void movePin(const QString &path, int to);
 
     struct Mount {
         QString root;
@@ -76,6 +79,8 @@ private:
     // gone away) can take its time answering, or never answer.
     static QList<Mount> readMounts();
     void mountsRead();
+    // The paths the Places section lists, which pins leave out.
+    QStringList listedPaths() const;
     void refreshPinned();
     QString bookmarksPath() const;
     QStringList readBookmarkLines() const;
