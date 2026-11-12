@@ -46,6 +46,8 @@ Rectangle {
         ["Alt+Home", qsTr("Go home")],
         ["Ctrl+L", qsTr("Type a path, or a server's address like sftp://host/ (Tab completes)")],
         ["/", qsTr("Search this folder and below")],
+        ["/ ext:jpg,png", qsTr("Search by extension, alone or after a name")],
+        ["/ re:^IMG_\\d+", qsTr("Search by regular expression")],
         ["Ctrl+1 / 2 / 3", qsTr("Grid, list or columns")],
         ["Ctrl+= / Ctrl+- / Ctrl+0", qsTr("Bigger, smaller or normal tiles (or Ctrl+scroll)")],
         ["Space", qsTr("Preview the selected file")],
