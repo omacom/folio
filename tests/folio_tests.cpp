@@ -5792,6 +5792,48 @@ private slots:
         }
     }
 
+    void tileDrawsItsPageFromSixBarsAndNothingElse()
+    {
+        // The page that stands in for a file without a thumbnail keeps its heading and five lines where they were, with no item beside them.
+        QTemporaryDir home;
+        const QString file = home.filePath("notes.bin");
+        write(file, "x");
+        Theme theme(home.filePath("theme"));
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "FileTile {\n"
+                          "    width: 168; height: 192\n"
+                          "    function all(item) { return Array.from(item.children).reduce((found, child) => found.concat(all(child)), [item]) }\n"
+                          "    function page() {\n"
+                          "        const sheet = all(this).find(item => item.width === 66 && item.height === 92 && item.border !== undefined)\n"
+                          "        if (!sheet) return 'no page'\n"
+                          "        const within = all(sheet).slice(1)\n"
+                          "        const bars = within.filter(item => item.color !== undefined && item.height <= 4).map(item => {\n"
+                          "            const at = item.mapToItem(sheet, 0, 0)\n"
+                          "            return at.x + ',' + at.y + ' ' + item.width + 'x' + item.height + (Qt.colorEqual(item.color, kindColor) ? ' heading' : '')\n"
+                          "        })\n"
+                          "        return within.length + ' items: ' + bars.join('; ')\n"
+                          "    }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/TilePageTest.qml"));
+        std::unique_ptr<QObject> tile(component.createWithInitialProperties(
+            {{"index", 0}, {"name", "notes.bin"}, {"path", file}, {"isDir", false}, {"kind", "other"},
+             {"mime", "application/octet-stream"}, {"extension", "BIN"}, {"itemCount", -1}, {"icon", QString()},
+             {"size", 1}, {"modified", QFileInfo(file).lastModified()}, {"selected", false}}));
+        QVERIFY2(tile, qPrintable(component.errorString()));
+        const auto page = [&] {
+            QVariant result;
+            QMetaObject::invokeMethod(tile.get(), "page", Q_RETURN_ARG(QVariant, result));
+            return result.toString();
+        };
+        QTRY_COMPARE(page(), QString("6 items: 9,11 34x4 heading; 9,21 48x2; 9,29 48x2; 9,37 40x2; 9,45 48x2; 9,53 30x2"));
+    }
+
     void themeFallsBack()
     {
         QTemporaryDir dir;

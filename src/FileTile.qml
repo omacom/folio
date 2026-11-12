@@ -308,15 +308,13 @@ Item {
                 border.width: 1
                 border.color: Qt.alpha(theme.foreground, 0.16)
                 radius: tile.iconRadius
-                Column {
-                    x: 9; y: 11
-                    spacing: 6
-                    Rectangle { width: 34; height: 4; color: tile.kindColor }
-                    Repeater {
-                        model: [48, 48, 40, 48, 30]
-                        Rectangle { required property int modelData; width: modelData; height: 2; color: Qt.alpha(theme.foreground, 0.3) }
-                    }
-                }
+                // A heading and five lines of text, each placed by hand: a Column and a Repeater cost more to make than the six bars.
+                Rectangle { x: 9; y: 11; width: 34; height: 4; color: tile.kindColor }
+                Rectangle { x: 9; y: 21; width: 48; height: 2; color: Qt.alpha(theme.foreground, 0.3) }
+                Rectangle { x: 9; y: 29; width: 48; height: 2; color: Qt.alpha(theme.foreground, 0.3) }
+                Rectangle { x: 9; y: 37; width: 40; height: 2; color: Qt.alpha(theme.foreground, 0.3) }
+                Rectangle { x: 9; y: 45; width: 48; height: 2; color: Qt.alpha(theme.foreground, 0.3) }
+                Rectangle { x: 9; y: 53; width: 30; height: 2; color: Qt.alpha(theme.foreground, 0.3) }
             }
             Rectangle {
                 visible: tile.extension.length > 0
