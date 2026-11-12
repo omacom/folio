@@ -5731,6 +5731,109 @@ private slots:
         }
     }
 
+    void tileMakesItsPlayMarkOnlyForAVideoWithAFrame()
+    {
+        // The play mark is made for a video whose frame is shown, and no other tile carries its items.
+        QTemporaryDir home;
+        const QString clip = home.filePath("clip.mp4"), bare = home.filePath("bare.mp4");
+        const QString photo = home.filePath("photo.png"), other = home.filePath("notes.bin");
+        for (const QString &file : {clip, bare, other})
+            write(file, "x");
+        QVERIFY(QImage(64, 32, QImage::Format_RGB32).save(photo));
+        // A frame another program left in the cache: nothing here makes one from a video.
+        QImage frame(256, 144, QImage::Format_RGB32);
+        frame.fill(Qt::blue);
+        frame.setText("Thumb::MTime", QString::number(QFileInfo(clip).lastModified().toSecsSinceEpoch()));
+        QVERIFY(QDir().mkpath(home.filePath("cache/large")));
+        QVERIFY(frame.save(home.filePath("cache/large/" + Thumbnails::cacheKey(clip))));
+
+        Theme theme(home.filePath("theme"));
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "FileTile {\n"
+                          "    width: 168; height: 192\n"
+                          "    function all(item) { return Array.from(item.children).reduce((found, child) => found.concat(all(child)), [item]) }\n"
+                          "    function picture() { return all(this).find(item => item.asynchronous === true).status }\n"
+                          "    function marks() {\n"
+                          "        const glyphs = all(this).filter(item => item.name === 'play' && item.size === 16)\n"
+                          "        if (glyphs.length !== 1) return String(glyphs.length)\n"
+                          "        const mark = glyphs[0].parent, middle = mark.mapToItem(this, mark.width / 2, mark.height / 2)\n"
+                          "        return '1 ' + mark.width + 'x' + mark.height + ' at ' + middle.x + ',' + middle.y + (mark.visible ? '' : ' hidden')\n"
+                          "    }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/TilePlayMarkTest.qml"));
+        const auto tileOf = [&](const QString &path, const QString &kind, const QString &mime) {
+            return std::unique_ptr<QObject>(component.createWithInitialProperties(
+                {{"index", 0}, {"name", QFileInfo(path).fileName()}, {"path", path}, {"isDir", false}, {"kind", kind},
+                 {"mime", mime}, {"extension", QFileInfo(path).suffix().toUpper()}, {"itemCount", -1}, {"icon", QString()},
+                 {"size", 1}, {"modified", QFileInfo(path).lastModified()}, {"selected", false}}));
+        };
+        const auto said = [](QObject *tile, const char *function) {
+            QVariant result;
+            QMetaObject::invokeMethod(tile, function, Q_RETURN_ARG(QVariant, result));
+            return result;
+        };
+        // The art is 128 by 92, 18 down from the tile's top and centered in its 168: the mark sits in the art's middle.
+        const QString shown = "1 30x30 at 84,64";
+        struct Case { QString path, kind, mime; int status; QString marks; };
+        const QList<Case> cases{{clip, "video", "video/mp4", 1, shown}, {bare, "video", "video/mp4", 3, "0"},
+                                {photo, "image", "image/png", 1, "0"}, {other, "other", "application/octet-stream", 3, "0"}};
+        for (const Case &c : cases) {
+            const auto tile = tileOf(c.path, c.kind, c.mime);
+            QVERIFY2(tile, qPrintable(component.errorString()));
+            // Image.Ready is 1 and Image.Error 3: the picture is shown, or there is none to show.
+            QTRY_COMPARE_WITH_TIMEOUT(said(tile.get(), "picture").toInt(), c.status, 5000);
+            QTRY_COMPARE(said(tile.get(), "marks").toString(), c.marks);
+        }
+    }
+
+    void tileDrawsItsPageFromSixBarsAndNothingElse()
+    {
+        // The page that stands in for a file without a thumbnail keeps its heading and five lines where they were, with no item beside them.
+        QTemporaryDir home;
+        const QString file = home.filePath("notes.bin");
+        write(file, "x");
+        Theme theme(home.filePath("theme"));
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "FileTile {\n"
+                          "    width: 168; height: 192\n"
+                          "    function all(item) { return Array.from(item.children).reduce((found, child) => found.concat(all(child)), [item]) }\n"
+                          "    function page() {\n"
+                          "        const sheet = all(this).find(item => item.width === 66 && item.height === 92 && item.border !== undefined)\n"
+                          "        if (!sheet) return 'no page'\n"
+                          "        const within = all(sheet).slice(1)\n"
+                          "        const bars = within.filter(item => item.color !== undefined && item.height <= 4).map(item => {\n"
+                          "            const at = item.mapToItem(sheet, 0, 0)\n"
+                          "            return at.x + ',' + at.y + ' ' + item.width + 'x' + item.height + (Qt.colorEqual(item.color, kindColor) ? ' heading' : '')\n"
+                          "        })\n"
+                          "        return within.length + ' items: ' + bars.join('; ')\n"
+                          "    }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/TilePageTest.qml"));
+        std::unique_ptr<QObject> tile(component.createWithInitialProperties(
+            {{"index", 0}, {"name", "notes.bin"}, {"path", file}, {"isDir", false}, {"kind", "other"},
+             {"mime", "application/octet-stream"}, {"extension", "BIN"}, {"itemCount", -1}, {"icon", QString()},
+             {"size", 1}, {"modified", QFileInfo(file).lastModified()}, {"selected", false}}));
+        QVERIFY2(tile, qPrintable(component.errorString()));
+        const auto page = [&] {
+            QVariant result;
+            QMetaObject::invokeMethod(tile.get(), "page", Q_RETURN_ARG(QVariant, result));
+            return result.toString();
+        };
+        QTRY_COMPARE(page(), QString("6 items: 9,11 34x4 heading; 9,21 48x2; 9,29 48x2; 9,37 40x2; 9,45 48x2; 9,53 30x2"));
+    }
+
     void themeFallsBack()
     {
         QTemporaryDir dir;
