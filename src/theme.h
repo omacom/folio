@@ -7,6 +7,8 @@
 #include <QProcess>
 #include <QTimer>
 
+class QSocketNotifier;
+
 // The Omarchy palette, followed live. A file manager draws far more surface
 // than a one-tool app, so it reads the whole colors.toml rather than only the
 // accent, and the Material style flips with the theme's light or dark mode.
@@ -49,6 +51,12 @@ public:
     QColor orange() const { return color("orange"); }
     bool light() const { return m_light; }
     int radius() const { return m_radius; }
+    // The most of Hyprland's events read in one turn of the event loop: a burst is read over several, so the window stays live.
+    static constexpr qsizetype eventsATurn = 64 * 1024;
+    // The longest line of Hyprland's events kept: window titles arrive there too, and no line we want is this long.
+    static constexpr qsizetype longestEventLine = 64 * 1024;
+    // How long after Hyprland hung up the watch is taken up again, in milliseconds.
+    static constexpr int watchAgainAfter = 1000;
 
 signals:
     void changed();
@@ -57,6 +65,9 @@ private:
     QColor color(const QString &key) const;
     void reload();
     void refreshRounding();
+    void watchHyprland();
+    void readHyprlandEvents();
+    void closeHyprlandEvents();
 
     QString m_directory;
     QHash<QString, QColor> m_colors;
@@ -66,5 +77,12 @@ private:
     QString m_hyprctl;
     int m_radius = 0;
     QProcess m_roundingProcess;
-    QTimer m_roundingPoll, m_roundingTimeout;
+    QTimer m_roundingTimeout;
+    bool m_roundingPending = false;
+    int m_hyprlandEvents = -1;
+    QSocketNotifier *m_hyprlandNotifier = nullptr;
+    QTimer m_hyprlandAgain;
+    bool m_inUse = true;
+    QByteArray m_hyprlandLine;
+    bool m_hyprlandLineTooLong = false;
 };

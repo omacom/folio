@@ -197,6 +197,10 @@ Item {
             readonly property real fit: Math.min(width / natural.width, height / natural.height)
             Image {
                 id: thumb
+                // Whole steps of the zoom, which scales the art and leaves its size alone: the page is read again only when the zoom crosses one.
+                readonly property int steps: Math.ceil(tile.zoom)
+                // A text file's page is kept at the size it's drawn, which Qt counts in the screen's own pixels; a thumbnail keeps all it has.
+                sourceSize: tile.kind !== "text" ? undefined : Qt.size(Math.ceil(parent.width) * steps, Math.ceil(parent.height) * steps)
                 width: parent.crop ? parent.width : parent.natural.width * parent.fit
                 height: parent.crop ? parent.height : parent.natural.height * parent.fit
                 x: (parent.width - width) / 2

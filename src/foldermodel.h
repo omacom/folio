@@ -4,11 +4,13 @@
 #include <functional>
 #include <QDateTime>
 #include <QFileSystemWatcher>
+#include <QHash>
 #include <QLocale>
 #include <QStringList>
 #include <QTimer>
 #include <QVariantList>
 #include <QSet>
+#include <QSharedDataPointer>
 #include <QVector>
 #include <atomic>
 #include <memory>
@@ -50,20 +52,40 @@ public:
 
     struct Entry {
         QString name;
-        QString path;
+        // What a row's path starts with, its name being the rest: its folder and a slash, or for a search's match the folder searched. A folder's rows share one string, as a search's matches do.
+        QString folder;
         bool isDir = false;
+        // Listed by name, with the size and date left for when a view asks for them.
+        bool unread = false;
+        int itemCount = -1;
         qint64 size = 0;
         QDateTime modified;
-        QString kind;
-        QString mime;
-        // A file's extension; a plugin item's subtitle.
-        QString extension;
-        // A plugin item's glyph and its rows for the details pane.
-        QString icon;
-        QVariantList details;
-        int itemCount = -1;
-        // The first pictures in a folder, for the preview window.
-        QStringList peek;
+        // What few rows have, kept aside: a large folder's listing is mostly rows, and each stays small.
+        struct More : QSharedData {
+            // Null for a file or folder the model listed: typed() reads them from its name when they're asked for.
+            QString kind;
+            QString mime;
+            // A file's extension; a plugin item's subtitle.
+            QString extension;
+            // A plugin item's glyph and its rows for the details pane.
+            QString icon;
+            QVariantList details;
+            // The first pictures in a folder, for the preview window.
+            QStringList peek;
+            // The path of a row that isn't its folder and then its name: a plugin item's id.
+            QString path;
+        };
+        // Null for a row with none of it; rows of one type in a listing share one, and a write gives a row its own.
+        QSharedDataPointer<More> aside;
+        const More &more() const;
+        More &toSet();
+        QString path() const;
+        // The same, written into `into`, whose room is used again from row to row: a pass over a large folder allocates nothing.
+        const QString &path(QString &into) const;
+        // Whether the row is at `path`, told without putting its own together.
+        bool isAt(const QString &path) const;
+        // Set after the name. `like` is a folder to share when the row is in it: in a listing, the row before's.
+        void setPath(const QString &path, const QString &like = {});
     };
 
     explicit FolderModel(QObject *parent = nullptr);
@@ -106,14 +128,22 @@ public:
     Q_INVOKABLE bool isSelected(int row) const;
     Q_INVOKABLE QStringList selectedPaths() const;
 
+    // Rows a listing reads sizes and dates for: 13 rows of 22 smallest tiles fill a 4K screen and what a view builds ahead.
+    static constexpr int firstRows = 320;
+    // How many names' types a model keeps: the rows in sight and many folders back, never all of a large folder scrolled through.
+    static constexpr int typesKept = 4096;
+
     // Synchronous building blocks, used by the background passes and tests.
     // A listing stops, empty, as soon as `stop` returns true. Names sort
     // by `locale`'s alphabet; a background pass passes the one it was
     // started with, because the default locale may only be read on the
-    // thread that sets it.
+    // thread that sets it. Not whole, it leaves types, and sizes and dates past firstRows, unread.
     static QVector<Entry> list(const QString &path, bool showHidden, const QString &sort, QString *error,
-                               const std::function<bool()> &stop = {}, const QLocale &locale = QLocale());
-    static Entry entryFor(const QFileInfo &info, const QMimeDatabase &mimes);
+                               const std::function<bool()> &stop = {}, const QLocale &locale = QLocale(),
+                               bool whole = true);
+    static Entry entryFor(const QFileInfo &info, const QMimeDatabase &mimes, const QString &like = {});
+    // The entry with its kind, MIME type and extension, read from its name when it was listed untyped.
+    static Entry typed(const Entry &entry);
     // An entry as QML reads it, by the names of its fields.
     static QVariantMap toMap(const Entry &entry);
     // A folder's item count and first pictures, for the preview window.
@@ -123,6 +153,8 @@ public:
     static int itemCount(const QString &folder, bool showHidden);
     static QStringList sortModes();
     static void sortEntries(QVector<Entry> &entries, const QString &sort, const QLocale &locale = QLocale());
+    // Sorts `entries` by merging the ascending runs they arrived in, as stable_sort would; false, untouched, when they're too many.
+    static bool mergeRuns(QVector<Entry> &entries, const std::function<bool(const Entry &, const Entry &)> &less);
     // The Recents view: a path that isn't a folder, listing recently used files.
     static QString recentPath() { return QStringLiteral("recent:"); }
     static QString recentFile();
@@ -162,6 +194,14 @@ private:
     QString cacheKey() const;
     void remember();
     static bool sameListing(const QVector<Entry> &a, const QVector<Entry> &b);
+    void takeSizesAndDates(QVector<Entry> entries);
+    // A row's kind, MIME type and extension as its roles give them.
+    struct Type {
+        QString kind, mime, extension;
+    };
+    Type typeOf(const Entry &entry) const;
+    void ask(int row) const;
+    void readAsked();
     void setError(const QString &error);
     void countFolders(quint64 generation);
 
@@ -180,6 +220,15 @@ private:
     // search and folder counts, so work that's been overtaken (more typing,
     // another folder, the model gone) stops early.
     std::shared_ptr<std::atomic<quint64>> m_latest = std::make_shared<std::atomic<quint64>>(0);
+    // What typed() read from a file's name, kept by that name until a folder is found changed: a view asks for a row's type three times each time it makes the row.
+    mutable QHash<QString, Type> m_types;
+    // Rows a view asked for a size or date this turn, read together, and every row asked for and not back yet.
+    mutable QList<int> m_asked;
+    mutable QSet<int> m_reading;
+    // Rows asked for and not read by the try that followed: a view may ask again, and the folder's next re-read reads them.
+    mutable QSet<int> m_owed;
+    // A get() answered without a size or date, so QML takes its snapshots again (on countChanged) once they're in.
+    mutable bool m_snapshotWaiting = false;
     QFileSystemWatcher m_watcher;
     QTimer m_debounce;
     QTimer m_staleClear;
