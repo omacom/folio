@@ -164,20 +164,36 @@ void Theme::watchHyprland() {
 }
 
 void Theme::readHyprlandEvents() {
-    constexpr qsizetype longestLine = 64 * 1024; // window titles arrive here too; no line we want is this long
     char chunk[4096];
-    ssize_t got;
-    while ((got = ::read(m_hyprlandEvents, chunk, sizeof chunk)) > 0 || (got < 0 && errno == EINTR))
-        if (got > 0)
-            m_hyprlandLine.append(chunk, got);
-    const bool closed = got == 0 || (errno != EAGAIN && errno != EWOULDBLOCK);
-
-    // Sample input: "activewindow>>kitty,~\nconfigreloaded>>\n"; only a whole configreloaded line counts.
-    bool reloaded = false;
-    for (qsizetype end; (end = m_hyprlandLine.indexOf('\n')) >= 0; m_hyprlandLine.remove(0, end + 1))
-        reloaded |= QByteArrayView(m_hyprlandLine).first(end) == "configreloaded>>";
-    if (m_hyprlandLine.size() > longestLine)
-        m_hyprlandLine.clear();
+    bool reloaded = false, closed = false;
+    for (qsizetype read = 0; read < eventsATurn; read += sizeof chunk) {
+        const ssize_t got = ::read(m_hyprlandEvents, chunk, sizeof chunk);
+        if (got < 0 && errno == EINTR)
+            continue;
+        if (got < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+            break;
+        if (got <= 0) {
+            closed = true;
+            break;
+        }
+        QByteArrayView piece(chunk, got);
+        // The rest of a line too long to want is dropped up to its end, never read as a line of its own.
+        if (m_hyprlandLineTooLong) {
+            const qsizetype end = piece.indexOf('\n');
+            if (end < 0)
+                continue;
+            piece = piece.sliced(end + 1);
+            m_hyprlandLineTooLong = false;
+        }
+        m_hyprlandLine.append(piece);
+        // Sample input: "activewindow>>kitty,~\nconfigreloaded>>\n"; only a whole configreloaded line counts.
+        for (qsizetype end; (end = m_hyprlandLine.indexOf('\n')) >= 0; m_hyprlandLine.remove(0, end + 1))
+            reloaded |= QByteArrayView(m_hyprlandLine).first(end) == "configreloaded>>";
+        if (m_hyprlandLine.size() > longestEventLine) {
+            m_hyprlandLine.clear();
+            m_hyprlandLineTooLong = true;
+        }
+    }
     if (reloaded)
         refreshRounding();
     // Hyprland is gone, and the corners keep their last rounding.
@@ -195,6 +211,7 @@ void Theme::closeHyprlandEvents() {
         ::close(m_hyprlandEvents);
     m_hyprlandEvents = -1;
     m_hyprlandLine.clear();
+    m_hyprlandLineTooLong = false;
 }
 
 QColor Theme::color(const QString &key) const {

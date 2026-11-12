@@ -51,6 +51,10 @@ public:
     QColor orange() const { return color("orange"); }
     bool light() const { return m_light; }
     int radius() const { return m_radius; }
+    // The most of Hyprland's events read in one turn of the event loop: a burst is read over several, so the window stays live.
+    static constexpr qsizetype eventsATurn = 64 * 1024;
+    // The longest line of Hyprland's events kept: window titles arrive there too, and no line we want is this long.
+    static constexpr qsizetype longestEventLine = 64 * 1024;
 
 signals:
     void changed();
@@ -76,4 +80,5 @@ private:
     int m_hyprlandEvents = -1;
     QSocketNotifier *m_hyprlandNotifier = nullptr;
     QByteArray m_hyprlandLine;
+    bool m_hyprlandLineTooLong = false;
 };

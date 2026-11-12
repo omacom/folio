@@ -6621,6 +6621,76 @@ private slots:
         QCOMPARE(countRuns(runs), 2);
     }
 
+    void themeReadsABurstOfHyprlandEventsOverSeveralTurns()
+    {
+        // More events than one turn reads are read a piece a turn, and the reload at their end still counts.
+        QTemporaryDir dir, stage;
+        const QString response = stage.filePath("response.json"), runs = stage.filePath("runs");
+        const QString command = standInHyprctl(stage, response, runs);
+        write(response, "{\"int\":2}");
+        const QByteArray runtime = qgetenv("XDG_RUNTIME_DIR");
+        const int hyprland = listenAsHyprland(stage.path());
+        QVERIFY(hyprland >= 0);
+        const auto restore = qScopeGuard([=] { stopHyprland(hyprland, runtime); });
+
+        Theme theme(dir.path(), nullptr, command);
+        const int events = ::accept4(hyprland, nullptr, nullptr, SOCK_CLOEXEC);
+        QVERIFY(events >= 0);
+        const auto hangUp = qScopeGuard([events] { ::close(events); });
+        QTRY_COMPARE(theme.radius(), 2);
+        write(response, "{\"int\":6}");
+        QByteArray burst;
+        while (burst.size() < 2 * Theme::eventsATurn)
+            burst += "activewindow>>kitty,a title\n";
+        burst += "configreloaded>>\n";
+        // Room asked for the whole burst unread, and sent without waiting, so a socket too small fails here instead of hanging.
+        const int room = 2 * int(burst.size());
+        QCOMPARE(::setsockopt(events, SOL_SOCKET, SO_SNDBUF, &room, sizeof room), 0);
+        QCOMPARE(::send(events, burst.constData(), burst.size(), MSG_DONTWAIT), ssize_t(burst.size()));
+        const int queued = unread(events);
+        // One turn at a time, up to the first that reads: it leaves the rest for the turns after it.
+        for (int turn = 0; turn < 100 && unread(events) == queued; ++turn)
+            QCoreApplication::processEvents();
+        QVERIFY(unread(events) < queued);
+        QVERIFY(unread(events) > 0);
+        QTRY_COMPARE(theme.radius(), 6);
+        QCOMPARE(unread(events), 0);
+        QCOMPARE(countRuns(runs), 2);
+    }
+
+    void themeDropsTheRestOfAHyprlandLineTooLong()
+    {
+        // A line longer than any kept is dropped whole: its last piece, which reads like a reload, asks nothing.
+        QTemporaryDir dir, stage;
+        const QString response = stage.filePath("response.json"), runs = stage.filePath("runs");
+        const QString command = standInHyprctl(stage, response, runs);
+        write(response, "{\"int\":2}");
+        const QByteArray runtime = qgetenv("XDG_RUNTIME_DIR");
+        const int hyprland = listenAsHyprland(stage.path());
+        QVERIFY(hyprland >= 0);
+        const auto restore = qScopeGuard([=] { stopHyprland(hyprland, runtime); });
+
+        Theme theme(dir.path(), nullptr, command);
+        const int events = ::accept4(hyprland, nullptr, nullptr, SOCK_CLOEXEC);
+        QVERIFY(events >= 0);
+        const auto hangUp = qScopeGuard([events] { ::close(events); });
+        QTRY_COMPARE(theme.radius(), 2);
+        write(response, "{\"int\":6}");
+        // All the theme keeps of one line, then one byte more: the line is given up there, with nothing of it left over.
+        send(events, QByteArray(Theme::longestEventLine, 'x'));
+        QTRY_COMPARE(unread(events), 0);
+        send(events, "x");
+        QTRY_COMPARE(unread(events), 0);
+        // The line's end comes last, and reads like a reload standing alone.
+        send(events, "configreloaded>>\n");
+        QTRY_COMPARE(unread(events), 0);
+        QTest::qWait(300);
+        QCOMPARE(countRuns(runs), 1);
+        send(events, "configreloaded>>\n");
+        QTRY_COMPARE(theme.radius(), 6);
+        QCOMPARE(countRuns(runs), 2);
+    }
+
     void themeAsksAgainForAReloadDuringAnAsk()
     {
         QTemporaryDir dir, stage;
