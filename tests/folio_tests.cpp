@@ -46,6 +46,7 @@
 #include "theme.h"
 #include "thumbnails.h"
 #include "translator.h"
+#include "windows.h"
 
 // Puts XDG_DATA_HOME, where the trash and recent files live, in `path` for
 // as long as the returned guard does.
@@ -757,6 +758,660 @@ private slots:
         model.setPath(b.path());
         QVERIFY(loaded.wait(3000));
         QCOMPARE(model.get(0).value("path").toString(), b.filePath("report.txt"));
+    }
+
+    void treeOpensFoldersInPlace()
+    {
+        // In the list view an open folder's items are rows below it, one
+        // level further in, and work like any other row.
+        QTemporaryDir root;
+        treeFixture(root);
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(root.path());
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(rowNames(model), QStringList({"Alpha", "Zeta", "e.txt"}));
+        QCOMPARE(rowDepths(model), QList<int>({0, 0, 0}));
+        QCOMPARE(openRows(model), QList<int>());
+
+        QVERIFY(model.expand(0));
+        QTRY_COMPARE(rowNames(model), QStringList({"Alpha", "Beta", "d.txt", "Zeta", "e.txt"}));
+        QCOMPARE(rowDepths(model), QList<int>({0, 1, 1, 0, 0}));
+        QCOMPARE(openRows(model), QList<int>({0}));
+
+        QVERIFY(model.expand(1));
+        QTRY_COMPARE(rowNames(model), QStringList({"Alpha", "Beta", "c.txt", "d.txt", "Zeta", "e.txt"}));
+        QCOMPARE(rowDepths(model), QList<int>({0, 1, 2, 1, 0, 0}));
+        QCOMPARE(model.count(), 6);
+        QCOMPARE(model.get(2).value("path").toString(), root.filePath("Alpha/Beta/c.txt"));
+        QCOMPARE(model.indexOfPath(root.filePath("Alpha/Beta/c.txt")), 2);
+
+        // A file has nothing to open.
+        QVERIFY(!model.expand(2));
+        QCOMPARE(model.count(), 6);
+
+        QCOMPARE(model.parentRow(2), 1);
+        QCOMPARE(model.parentRow(1), 0);
+        QCOMPARE(model.parentRow(0), -1);
+        QCOMPARE(model.parentRow(4), -1);
+
+        // Closed and opened again, it shows at once, with Beta still open.
+        QVERIFY(model.collapse(0));
+        QCOMPARE(rowNames(model), QStringList({"Alpha", "Zeta", "e.txt"}));
+        QVERIFY(model.expand(0));
+        QCOMPARE(rowNames(model), QStringList({"Alpha", "Beta", "c.txt", "d.txt", "Zeta", "e.txt"}));
+    }
+
+    void treeKeepsOpenFoldersThroughChanges()
+    {
+        // Open folders are watched: what changes in them shows, and they
+        // stay open through a re-read until the model goes elsewhere.
+        QTemporaryDir root;
+        treeFixture(root);
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(root.path());
+        QVERIFY(loaded.wait(3000));
+        QVERIFY(model.expand(0));
+        QTRY_COMPARE(rowNames(model).size(), 5);
+        QVERIFY(model.expand(1));
+        QTRY_COMPARE(rowNames(model), QStringList({"Alpha", "Beta", "c.txt", "d.txt", "Zeta", "e.txt"}));
+
+        write(root.filePath("Alpha/a2.txt"), "x");
+        QTRY_COMPARE_WITH_TIMEOUT(rowNames(model),
+                                  QStringList({"Alpha", "Beta", "c.txt", "a2.txt", "d.txt", "Zeta", "e.txt"}), 5000);
+        QVERIFY(QDir(root.filePath("Alpha/Beta")).removeRecursively());
+        QTRY_COMPARE_WITH_TIMEOUT(rowNames(model), QStringList({"Alpha", "a2.txt", "d.txt", "Zeta", "e.txt"}), 5000);
+
+        model.reload();
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(rowNames(model), QStringList({"Alpha", "a2.txt", "d.txt", "Zeta", "e.txt"}));
+        QCOMPARE(openRows(model), QList<int>({0}));
+
+        model.setPath(root.filePath("Zeta"));
+        QVERIFY(loaded.wait(3000));
+        model.setPath(root.path());
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(rowNames(model), QStringList({"Alpha", "Zeta", "e.txt"}));
+        QCOMPARE(openRows(model), QList<int>());
+    }
+
+    void treeLetsGoOfHiddenSelection()
+    {
+        // Closing a folder unselects what was in it, so a copy or a delete
+        // never takes along something out of sight.
+        QTemporaryDir root;
+        treeFixture(root);
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(root.path());
+        QVERIFY(loaded.wait(3000));
+        QVERIFY(model.expand(0));
+        QTRY_COMPARE(rowNames(model).size(), 5);
+        QVERIFY(model.expand(1));
+        QTRY_COMPARE(rowNames(model).size(), 6);
+
+        model.selectOnly(model.indexOfPath(root.filePath("Alpha/Beta/c.txt")));
+        model.toggleSelected(model.indexOfPath(root.filePath("e.txt")));
+        QCOMPARE(model.selectedCount(), 2);
+        QVERIFY(model.collapse(0));
+        QCOMPARE(model.selectedPaths(), QStringList({root.filePath("e.txt")}));
+
+        QVERIFY(model.expand(0));
+        QTRY_COMPARE(model.count(), 6);
+        model.selectAll();
+        QCOMPARE(model.selectedCount(), model.count());
+        QCOMPARE(model.selectedCount(), 6);
+    }
+
+    void treeStaysFlatWhereItCannotNest()
+    {
+        // Search results come from all over, and Recents isn't a folder:
+        // neither opens folders in place.
+        QTemporaryDir root, data;
+        treeFixture(root);
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(root.path());
+        QVERIFY(loaded.wait(3000));
+        QVERIFY(model.expand(0));
+        QTRY_COMPARE(rowNames(model).size(), 5);
+
+        model.setQuery("txt");
+        QVERIFY(loaded.wait(3000));
+        QVERIFY(model.count() > 0);
+        for (int row = 0; row < model.count(); ++row)
+            QVERIFY(!model.expand(row));
+        QCOMPARE(rowDepths(model), QList<int>(model.count(), 0));
+
+        // The folder comes back closed.
+        model.setQuery("");
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(rowNames(model), QStringList({"Alpha", "Zeta", "e.txt"}));
+        QCOMPARE(openRows(model), QList<int>());
+
+        const QByteArray url = QUrl::fromLocalFile(root.path()).toEncoded();
+        write(data.filePath("recently-used.xbel"),
+              "<?xml version=\"1.0\"?>\n<xbel version=\"1.0\">\n"
+              "<bookmark href=\"" + url + "/e.txt\" modified=\"2026-01-01T10:00:00Z\"/>\n"
+              "<bookmark href=\"" + url + "/Alpha\" modified=\"2026-02-01T10:00:00Z\"/>\n"
+              "</xbel>\n");
+        const auto restore = dataHomeAt(data.path());
+        model.setPath(FolderModel::recentPath());
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 2);
+        QCOMPARE(model.get(0).value("path").toString(), root.filePath("Alpha"));
+        QVERIFY(!model.expand(0));
+        QCOMPARE(model.count(), 2);
+    }
+
+    void treeListKeys()
+    {
+        // In the list → opens a folder in place and steps into it, ← closes
+        // it and steps back out, and at the top ← still goes up. ⏎ still
+        // goes into a folder. Mirrored, the arrows swap.
+        QTemporaryDir home, root;
+        treeFixture(root);
+        QDir(home.path()).mkpath("plugins");
+        Plugins plugins("en", {home.filePath("plugins")}, home.filePath("folio.conf"));
+        Backend backend(home.path());
+        backend.navigate(root.path());
+        FolderModel &model = *backend.folder();
+        QTRY_COMPARE(rowNames(model), QStringList({"Alpha", "Zeta", "e.txt"}));
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("plugins", &plugins);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window {\n"
+                          "    property bool mirrored\n"
+                          "    width: 800; height: 600; visible: true\n"
+                          "    Item { anchors.fill: parent\n"
+                          "        LayoutMirroring.enabled: mirrored; LayoutMirroring.childrenInherit: true\n"
+                          // The tree is off by default: these keys are the tree's.
+                          "        FolderList { id: list; anchors.fill: parent; tree: true } }\n"
+                          // ⏎ belongs to the pane: the same shortcut as there.
+                          "    Shortcut { sequence: 'Return'; onActivated: backend.open(backend.folder.get(list.currentIndex).path) }\n"
+                          "    readonly property int cursor: list.currentIndex\n"
+                          "    function place(row) { list.select(row, false); list.forceActiveFocus() }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/FolderListTest.qml"));
+        std::unique_ptr<QObject> created(component.create());
+        QVERIFY2(created, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(created.get());
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowFocused(window));
+        const auto cursor = [&] { return window->property("cursor").toInt(); };
+        const auto place = [&](int row) { QMetaObject::invokeMethod(window, "place", Q_ARG(QVariant, row)); };
+
+        place(0);
+        QCOMPARE(cursor(), 0);
+        QTest::keyClick(window, Qt::Key_Right);
+        QCOMPARE(openRows(model), QList<int>({0}));
+        QTRY_COMPARE(rowNames(model), QStringList({"Alpha", "Beta", "d.txt", "Zeta", "e.txt"}));
+        QCOMPARE(cursor(), 0);
+        QTest::keyClick(window, Qt::Key_Right);
+        QCOMPARE(cursor(), 1);
+        QTest::keyClick(window, Qt::Key_Right);
+        QCOMPARE(openRows(model), QList<int>({0, 1}));
+        QTRY_COMPARE(rowNames(model), QStringList({"Alpha", "Beta", "c.txt", "d.txt", "Zeta", "e.txt"}));
+        QCOMPARE(cursor(), 1);
+        QTest::keyClick(window, Qt::Key_Right);
+        QCOMPARE(cursor(), 2);
+        // A file has nowhere to go.
+        QTest::keyClick(window, Qt::Key_Right);
+        QCOMPARE(cursor(), 2);
+        QCOMPARE(model.count(), 6);
+        QCOMPARE(backend.path(), root.path());
+
+        QTest::keyClick(window, Qt::Key_Left);
+        QCOMPARE(cursor(), 1);
+        QTest::keyClick(window, Qt::Key_Left);
+        QCOMPARE(rowNames(model), QStringList({"Alpha", "Beta", "d.txt", "Zeta", "e.txt"}));
+        QCOMPARE(cursor(), 1);
+        QTest::keyClick(window, Qt::Key_Left);
+        QCOMPARE(cursor(), 0);
+        QTest::keyClick(window, Qt::Key_Left);
+        QCOMPARE(rowNames(model), QStringList({"Alpha", "Zeta", "e.txt"}));
+        QCOMPARE(cursor(), 0);
+        // At the top, ← goes up as it always has.
+        QTest::keyClick(window, Qt::Key_Left);
+        QTRY_COMPARE(backend.path(), QFileInfo(root.path()).path());
+
+        backend.navigate(root.path());
+        QTRY_COMPARE(rowNames(model), QStringList({"Alpha", "Zeta", "e.txt"}));
+        place(1);
+        QTest::keyClick(window, Qt::Key_Return);
+        QTRY_COMPARE(backend.path(), root.filePath("Zeta"));
+
+        backend.navigate(root.path());
+        QTRY_COMPARE(rowNames(model), QStringList({"Alpha", "Zeta", "e.txt"}));
+        window->setProperty("mirrored", true);
+        place(0);
+        QTest::keyClick(window, Qt::Key_Left);
+        QCOMPARE(openRows(model), QList<int>({0}));
+        QTRY_COMPARE(rowNames(model).size(), 5);
+        QCOMPARE(backend.path(), root.path());
+        QTest::keyClick(window, Qt::Key_Right);
+        QCOMPARE(rowNames(model), QStringList({"Alpha", "Zeta", "e.txt"}));
+        QCOMPARE(cursor(), 0);
+    }
+
+    void treeArrowKeepsTheCursorOnTheFolder()
+    {
+        // Closed by its arrow with the cursor on an item inside, the folder
+        // takes the cursor: on the next row instead, Delete would take a
+        // file that was never picked.
+        QTemporaryDir root;
+        treeFixture(root);
+        TreeList view(root.path());
+        QVERIFY(view.shown());
+        FolderModel &model = *view.backend.folder();
+        QTRY_COMPARE(rowNames(model), QStringList({"Alpha", "Zeta", "e.txt"}));
+        QVERIFY(model.expand(0));
+        QTRY_COMPARE(rowNames(model).size(), 5);
+        QVERIFY(model.expand(1));
+        QTRY_COMPARE(rowNames(model), QStringList({"Alpha", "Beta", "c.txt", "d.txt", "Zeta", "e.txt"}));
+        view.moveCursor(2);
+        QCOMPARE(model.selectedPaths(), QStringList({root.filePath("Alpha/Beta/c.txt")}));
+
+        view.toggle(0);
+        QCOMPARE(rowNames(model), QStringList({"Alpha", "Zeta", "e.txt"}));
+        QCOMPARE(view.cursor(), 0);
+        QCOMPARE(model.selectedPaths(), QStringList({root.filePath("Alpha")}));
+        QTest::qWait(100);
+        QCOMPARE(view.cursor(), 0);
+        QCOMPARE(model.selectedPaths(), QStringList({root.filePath("Alpha")}));
+    }
+
+    void treeKeepsTheSelectionAsRowsArrive()
+    {
+        // Rows showing above the cursor (a folder opened, a file appearing)
+        // move it down with its item and leave a selection of several alone.
+        QTemporaryDir root;
+        treeFixture(root);
+        TreeList view(root.path());
+        QVERIFY(view.shown());
+        FolderModel &model = *view.backend.folder();
+        QTRY_COMPARE(rowNames(model), QStringList({"Alpha", "Zeta", "e.txt"}));
+        view.moveCursor(2);
+        model.toggleSelected(1);
+        const QStringList picked{root.filePath("Zeta"), root.filePath("e.txt")};
+        QCOMPARE(model.selectedPaths(), picked);
+
+        view.toggle(0);
+        QTRY_COMPARE(rowNames(model), QStringList({"Alpha", "Beta", "d.txt", "Zeta", "e.txt"}));
+        QTest::qWait(100);
+        QCOMPARE(model.selectedPaths(), picked);
+        QCOMPARE(view.cursor(), 4);
+        QCOMPARE(model.get(view.cursor()).value("path").toString(), root.filePath("e.txt"));
+
+        write(root.filePath("b.txt"), "x");
+        QTRY_COMPARE_WITH_TIMEOUT(rowNames(model),
+                                  QStringList({"Alpha", "Beta", "d.txt", "Zeta", "b.txt", "e.txt"}), 5000);
+        QTest::qWait(100);
+        QCOMPARE(model.selectedPaths(), picked);
+        QCOMPARE(model.get(view.cursor()).value("path").toString(), root.filePath("e.txt"));
+    }
+
+    void treeFindsNamesInTheFolderShown()
+    {
+        // What's pasted, made or renamed is in the folder shown, so finding
+        // it by name passes over the same name in an open folder.
+        QTemporaryDir root;
+        treeFixture(root);
+        write(root.filePath("d.txt"), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(root.path());
+        QVERIFY(loaded.wait(3000));
+        QVERIFY(model.expand(0));
+        QTRY_COMPARE(rowNames(model), QStringList({"Alpha", "Beta", "d.txt", "Zeta", "d.txt", "e.txt"}));
+        QCOMPARE(model.get(2).value("path").toString(), root.filePath("Alpha/d.txt"));
+        QCOMPARE(model.indexOf("d.txt"), 4);
+        QCOMPARE(model.get(model.indexOf("d.txt")).value("path").toString(), root.filePath("d.txt"));
+    }
+
+    void treeKeepsTheCursorThroughANewOrder()
+    {
+        // Sorted another way, an open folder's items come in their new
+        // order after the folder itself: the cursor stays on its item, and
+        // nothing else gets selected.
+        QTemporaryDir root;
+        treeFixture(root);
+        write(root.filePath("Alpha/a2.txt"), "x");
+        const QDateTime now = QDateTime::currentDateTime();
+        for (const auto &[name, when] : {qMakePair(QString("Alpha/a2.txt"), now),
+                                         qMakePair(QString("Alpha/d.txt"), now.addSecs(-120))}) {
+            QFile file(root.filePath(name));
+            QVERIFY(file.open(QIODevice::ReadWrite));
+            QVERIFY(file.setFileTime(when, QFileDevice::FileModificationTime));
+        }
+        TreeList view(root.path());
+        QVERIFY(view.shown());
+        FolderModel &model = *view.backend.folder();
+        QTRY_COMPARE(rowNames(model).size(), 3);
+        const auto inAlpha = [&] {
+            QStringList names;
+            const int alpha = model.indexOfPath(root.filePath("Alpha"));
+            for (int row = 0; row < model.count(); ++row)
+                if (alpha >= 0 && model.parentRow(row) == alpha)
+                    names << model.get(row).value("name").toString();
+            return names;
+        };
+        model.setSortMode("modified");
+        QTRY_VERIFY(!model.loading());
+        QVERIFY(model.expand(model.indexOfPath(root.filePath("Alpha"))));
+        QTRY_COMPARE(inAlpha(), QStringList({"Beta", "a2.txt", "d.txt"}));
+        QTest::qWait(100);
+        view.moveCursor(model.indexOfPath(root.filePath("Alpha/d.txt")));
+        QCOMPARE(model.selectedPaths(), QStringList({root.filePath("Alpha/d.txt")}));
+
+        model.setSortMode("oldest");
+        QTRY_COMPARE_WITH_TIMEOUT(inAlpha(), QStringList({"Beta", "d.txt", "a2.txt"}), 5000);
+        QTest::qWait(100);
+        QCOMPARE(model.get(view.cursor()).value("path").toString(), root.filePath("Alpha/d.txt"));
+        QCOMPARE(model.selectedPaths(), QStringList({root.filePath("Alpha/d.txt")}));
+    }
+
+    void treeOpensALargeFolderWithoutFreezing()
+    {
+        // 20,000 items opened above 20,000 more go in as one stretch, not
+        // one row at a time with everything below moving each time.
+        QTemporaryDir root;
+        QDir(root.path()).mkpath("A");
+        for (int i = 0; i < 20000; ++i) {
+            QVERIFY(QFile(root.filePath(QString("A/a%1").arg(i, 5, 10, QChar('0')))).open(QIODevice::WriteOnly));
+            QVERIFY(QFile(root.filePath(QString("f%1").arg(i, 5, 10, QChar('0')))).open(QIODevice::WriteOnly));
+        }
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(root.path());
+        QVERIFY(loaded.wait(10000));
+        QCOMPARE(model.count(), 20001);
+        QCOMPARE(model.get(0).value("name").toString(), QString("A"));
+
+        QElapsedTimer clock;
+        qint64 last = 0, longest = 0;
+        QTimer ticks;
+        ticks.setInterval(10);
+        connect(&ticks, &QTimer::timeout, [&] {
+            longest = qMax(longest, clock.elapsed() - last);
+            last = clock.elapsed();
+        });
+        clock.start();
+        ticks.start();
+        QVERIFY(model.expand(0));
+        QTRY_COMPARE_WITH_TIMEOUT(model.count(), 40001, 15000);
+        ticks.stop();
+        longest = qMax(longest, clock.elapsed() - last);
+        QVERIFY2(longest < 250, qPrintable(QString("the window was held up for %1 ms").arg(longest)));
+    }
+
+    void treeIsOffUntilTurnedOn()
+    {
+        // Until the tree is turned on the list is the plain list it always
+        // was: no arrows, no lines, no indent, and → goes into a folder.
+        // Turned on, → opens it in place; turned off, what's open closes.
+        QTemporaryDir root;
+        treeFixture(root);
+        TreeList view(root.path(), false);
+        QVERIFY(view.shown());
+        auto *window = qobject_cast<QQuickWindow *>(view.window.get());
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowFocused(window));
+        FolderModel &model = *view.backend.folder();
+        QTRY_COMPARE(rowNames(model), QStringList({"Alpha", "Zeta", "e.txt"}));
+        QCOMPARE(window->property("treeView").toBool(), false);
+        for (int row = 0; row < 3; ++row) {
+            QTRY_VERIFY(view.rowItem(row));
+            QQuickItem *item = view.rowItem(row);
+            QCOMPARE(shownNamed(item, "disclosure"), 0);
+            QCOMPARE(shownNamed(item, "treeLines"), 0);
+            // Main's row: the name after the 14 px margin, the 20 px icon
+            // and the 12 px between them.
+            auto *name = item->findChild<QQuickItem *>("rowName");
+            QVERIFY(name);
+            QTRY_COMPARE(name->mapToItem(item, QPointF(0, 0)).x(), 46.0);
+        }
+
+        view.place(0);
+        QCOMPARE(view.cursor(), 0);
+        QTest::keyClick(window, Qt::Key_Right);
+        QTRY_COMPARE(view.backend.path(), root.filePath("Alpha"));
+        QCOMPARE(openRows(model), QList<int>());
+
+        view.backend.navigate(root.path());
+        QTRY_COMPARE(rowNames(model), QStringList({"Alpha", "Zeta", "e.txt"}));
+        window->setProperty("treeView", true);
+        view.place(0);
+        QTest::keyClick(window, Qt::Key_Right);
+        QTRY_COMPARE(rowNames(model), QStringList({"Alpha", "Beta", "d.txt", "Zeta", "e.txt"}));
+        QCOMPARE(view.backend.path(), root.path());
+        QTest::keyClick(window, Qt::Key_Right);
+        QCOMPARE(view.cursor(), 1);
+        QTest::keyClick(window, Qt::Key_Right);
+        QTRY_COMPARE(rowNames(model), QStringList({"Alpha", "Beta", "c.txt", "d.txt", "Zeta", "e.txt"}));
+
+        window->setProperty("treeView", false);
+        QTRY_COMPARE(rowNames(model), QStringList({"Alpha", "Zeta", "e.txt"}));
+        QTRY_COMPARE(view.cursor(), 0);
+        QCOMPARE(model.get(view.cursor()).value("path").toString(), root.filePath("Alpha"));
+        QCOMPARE(view.backend.path(), root.path());
+    }
+
+    void treeDrawsItsLines()
+    {
+        // Rows in open folders are joined by lines, as the tree command
+        // draws them: a line carrying on for each outer folder with more
+        // rows to come, then a tee, or an elbow for a folder's last item.
+        QTemporaryDir root;
+        treeFixture(root);
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(root.path());
+        QVERIFY(loaded.wait(3000));
+        QVERIFY(model.expand(0));
+        QTRY_COMPARE(rowNames(model).size(), 5);
+        QVERIFY(model.expand(1));
+        QTRY_COMPARE(rowNames(model), QStringList({"Alpha", "Beta", "c.txt", "d.txt", "Zeta", "e.txt"}));
+        QCOMPARE(rowLines(model), QStringList({"", "├", "│└", "└", "", ""}));
+
+        write(root.filePath("Alpha/Beta/f.txt"), "x");
+        QTRY_COMPARE_WITH_TIMEOUT(rowNames(model),
+                                  QStringList({"Alpha", "Beta", "c.txt", "f.txt", "d.txt", "Zeta", "e.txt"}), 5000);
+        QCOMPARE(rowLines(model), QStringList({"", "├", "│├", "│└", "└", "", ""}));
+
+        QVERIFY(model.collapse(1));
+        QCOMPARE(rowNames(model), QStringList({"Alpha", "Beta", "d.txt", "Zeta", "e.txt"}));
+        QCOMPARE(rowLines(model), QStringList({"", "├", "└", "", ""}));
+
+        // Drawn in the list with the tree on, and nowhere else.
+        TreeList view(root.path());
+        QVERIFY(view.shown());
+        FolderModel &shown = *view.backend.folder();
+        QTRY_COMPARE(rowNames(shown).size(), 3);
+        QVERIFY(shown.expand(0));
+        QTRY_COMPARE(rowNames(shown).size(), 5);
+        QVERIFY(shown.expand(1));
+        QTRY_COMPARE(rowNames(shown), QStringList({"Alpha", "Beta", "c.txt", "f.txt", "d.txt", "Zeta", "e.txt"}));
+        QTRY_VERIFY(view.rowItem(2));
+        QTRY_COMPARE(shownNamed(view.rowItem(2), "treeLines"), 1);
+
+        view.window->setProperty("treeView", false);
+        QTRY_COMPARE(rowNames(shown), QStringList({"Alpha", "Zeta", "e.txt"}));
+        auto *list = qobject_cast<QQuickWindow *>(view.window.get());
+        QTRY_COMPARE(shownNamed(list->contentItem(), "rowName"), 3);
+        QCOMPARE(shownNamed(list->contentItem(), "treeLines"), 0);
+
+        // In the columns, even with folders open in the model below them.
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        QQmlComponent component(&view.engine);
+        component.setData("import QtQuick\n"
+                          "Window {\n"
+                          "    width: 1200; height: 600; visible: true\n"
+                          "    FolderColumns { anchors.fill: parent }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/FolderColumnsTest.qml"));
+        std::unique_ptr<QObject> created(component.create());
+        QVERIFY2(created, qPrintable(component.errorString()));
+        auto *columns = qobject_cast<QQuickWindow *>(created.get());
+        QVERIFY(QTest::qWaitForWindowExposed(columns));
+        QVERIFY(shown.expand(0));
+        QTRY_COMPARE(rowNames(shown).size(), 5);
+        QVERIFY(shown.expand(1));
+        QTRY_COMPARE(rowNames(shown).size(), 7);
+        QTRY_VERIFY(shownNamed(columns->contentItem(), "rowName") >= 7);
+        QCOMPARE(shownNamed(columns->contentItem(), "treeLines"), 0);
+    }
+
+    void treeKeyAndButton()
+    {
+        // In the list, T and the tree button beside the view button turn the
+        // tree on and off; the key says so. The grid and the columns have
+        // no tree: no button, and T does nothing.
+        QTemporaryDir home, folder;
+        treeFixture(folder);
+        QDir(home.path()).mkpath("plugins");
+        Places places(home.path());
+        Plugins plugins("en", {home.filePath("plugins")}, home.filePath("folio.conf"));
+        Backend backend(home.path());
+        backend.navigate(folder.path());
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("places", &places);
+        engine.rootContext()->setContextProperty("plugins", &plugins);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        std::unique_ptr<QQuickWindow> window = paneHarness(engine);
+        QVERIFY(window);
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowFocused(window.get()));
+        QQuickItem *pane = window->property("activePane").value<QQuickItem *>();
+        QVERIFY(pane);
+        const QList<QQuickItem *> buttons = itemsNamed(window->contentItem(), "treeButton");
+        QCOMPARE(buttons.size(), 1);
+        QQuickItem *button = buttons.first();
+        QCOMPARE(button->property("text").toString(), QString("Tree"));
+        const auto focusFiles = [&] {
+            QMetaObject::invokeMethod(pane, "focusView");
+            return QTest::qWaitFor([&] { return pane->hasActiveFocus() && !button->hasActiveFocus(); }, 2000);
+        };
+
+        window->setProperty("viewMode", "list");
+        QTRY_VERIFY(folderListIn(pane));
+        QVERIFY(focusFiles());
+        QTRY_VERIFY(button->isVisible());
+        QCOMPARE(button->property("checked").toBool(), false);
+        QCOMPARE(window->property("treeView").toBool(), false);
+        QTest::keyClick(window.get(), Qt::Key_T);
+        QCOMPARE(window->property("treeView").toBool(), true);
+        QCOMPARE(button->property("checked").toBool(), true);
+        QCOMPARE(backend.notice(), QString("Tree on"));
+        QTest::mouseClick(window.get(), Qt::LeftButton, {},
+                          button->mapToScene(QPointF(button->width() / 2, button->height() / 2)).toPoint());
+        QTRY_COMPARE(window->property("treeView").toBool(), false);
+        QCOMPARE(button->property("checked").toBool(), false);
+
+        for (const char *mode : {"grid", "columns"}) {
+            window->setProperty("viewMode", mode);
+            QTRY_VERIFY(!button->isVisible());
+            QVERIFY(focusFiles());
+            QTest::keyClick(window.get(), Qt::Key_T);
+            QTest::qWait(50);
+            QVERIFY2(!window->property("treeView").toBool(), mode);
+        }
+    }
+
+    void viewButtonCyclesViews()
+    {
+        // The view button moves to the next view at each click, grid, list,
+        // columns and round again, and opens nothing.
+        QTemporaryDir home, folder;
+        treeFixture(folder);
+        QDir(home.path()).mkpath("plugins");
+        Places places(home.path());
+        Plugins plugins("en", {home.filePath("plugins")}, home.filePath("folio.conf"));
+        Backend backend(home.path());
+        backend.navigate(folder.path());
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("places", &places);
+        engine.rootContext()->setContextProperty("plugins", &plugins);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        std::unique_ptr<QQuickWindow> window = paneHarness(engine);
+        QVERIFY(window);
+        const QList<QQuickItem *> buttons = itemsNamed(window->contentItem(), "viewButton");
+        QCOMPARE(buttons.size(), 1);
+        QQuickItem *button = buttons.first();
+        // A menu or any other popup open in the window; tooltips aside,
+        // which come from hovering, not from the click.
+        const auto popupShown = [&] {
+            for (QObject *each : window->findChildren<QObject *>())
+                if (each->inherits("QQuickPopup") && !each->inherits("QQuickToolTip") && each->property("visible").toBool())
+                    return true;
+            return false;
+        };
+        window->setProperty("viewMode", "grid");
+        for (const char *next : {"list", "columns", "grid"}) {
+            QTest::mouseClick(window.get(), Qt::LeftButton, {},
+                              button->mapToScene(QPointF(button->width() / 2, button->height() / 2)).toPoint());
+            QTRY_COMPARE(window->property("viewMode").toString(), QString(next));
+            QTest::qWait(100);
+            QVERIFY2(!popupShown(), next);
+        }
+    }
+
+    void treeLinesTurnRoundRightToLeft()
+    {
+        // Mirrored, the tree's lines lead from the arrows at the row's
+        // right end.
+        QTemporaryDir root;
+        treeFixture(root);
+        QGuiApplication::setLayoutDirection(Qt::RightToLeft);
+        const auto leftToRight = qScopeGuard([] { QGuiApplication::setLayoutDirection(Qt::LeftToRight); });
+        WholeWindow main(root.path());
+        QVERIFY(main.shown());
+
+        // c.txt, in Beta in Alpha: its first line runs down from Alpha's
+        // arrow, 14 px in from the row's end and 7 into the first 16 px step.
+        main.window->setProperty("viewMode", "list");
+        main.window->setProperty("treeView", true);
+        FolderModel &model = *main.backend->folder();
+        QTRY_COMPARE(rowNames(model), QStringList({"Alpha", "Zeta", "e.txt"}));
+        QVERIFY(model.expand(0));
+        QTRY_COMPARE(rowNames(model).size(), 5);
+        QVERIFY(model.expand(1));
+        QTRY_COMPARE(rowNames(model), QStringList({"Alpha", "Beta", "c.txt", "d.txt", "Zeta", "e.txt"}));
+        QQuickItem *list = nullptr;
+        QTRY_VERIFY((list = folderListIn(main.pane("activePane"))));
+        // Mapped to the row, from x 0 at its left; -1 until it's laid out.
+        const auto firstGuide = [&]() -> QRectF {
+            QQuickItem *row = listRow(list, 2);
+            for (QQuickItem *guide : row ? itemsNamed(row, "treeGuide") : QList<QQuickItem *>())
+                if (guide->isVisible() && guide->parentItem()->property("index").toInt() == 0)
+                    return guide->mapRectToItem(row, QRectF(0, 0, guide->width(), guide->height()));
+            return QRectF(-1, 0, 0, 0);
+        };
+        QTRY_VERIFY(listRow(list, 2));
+        const qreal rowWidth = listRow(list, 2)->width();
+        QTRY_COMPARE(firstGuide().x(), rowWidth - 22);
+        QCOMPARE(firstGuide().width(), 1.0);
+        QGuiApplication::setLayoutDirection(Qt::LeftToRight);
+        QTRY_COMPARE(firstGuide().x(), 21.0);
+        QCOMPARE(firstGuide().width(), 1.0);
     }
 
     void fileOpsDeleteForeverOutsideTheTrash()
@@ -6078,6 +6733,252 @@ private:
     {
         QFile file(path);
         return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+    }
+
+    // A list view on a real backend showing `folder`, for the tree tests
+    // that need the view's cursor. moveCursor() moves it as the arrows do
+    // (selecting what it lands on), toggle() clicks a row's arrow.
+    // `tree` turns the tree on, as the tree tests need; left false, the
+    // list keeps its own default.
+    struct TreeList {
+        explicit TreeList(const QString &folder, bool tree = true)
+            : plugins("en", {pluginsIn(home)}, home.filePath("folio.conf")), backend(home.path()),
+              theme(home.filePath("theme"))
+        {
+            backend.navigate(folder);
+            engine.rootContext()->setContextProperty("backend", &backend);
+            engine.rootContext()->setContextProperty("theme", &theme);
+            engine.rootContext()->setContextProperty("fileOps", &fileOps);
+            engine.rootContext()->setContextProperty("plugins", &plugins);
+            engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+            QQmlComponent component(&engine);
+            component.setData("import QtQuick\n"
+                              "Window {\n"
+                              "    width: 800; height: 600; visible: true\n"
+                              + QByteArray(tree ? "    FolderList { id: list; anchors.fill: parent; tree: true }\n"
+                                                : "    FolderList { id: list; anchors.fill: parent }\n")
+                              + "    property alias treeView: list.tree\n"
+                              "    readonly property int cursor: list.currentIndex\n"
+                              "    function moveCursor(row) { list.currentIndex = row }\n"
+                              "    function toggle(row) { list.itemAtIndex(row).toggled() }\n"
+                              "    function place(row) { list.select(row, false); list.forceActiveFocus() }\n"
+                              "    function rowItem(row) { return list.itemAtIndex(row) }\n"
+                              "}\n",
+                              QUrl::fromLocalFile(sourceFolder() + "/FolderListTest.qml"));
+            window.reset(component.create());
+            if (!window)
+                qWarning() << component.errorString();
+        }
+        static QString pluginsIn(const QTemporaryDir &home)
+        {
+            QDir(home.path()).mkpath("plugins");
+            return home.filePath("plugins");
+        }
+        bool shown() const { return window && QTest::qWaitForWindowExposed(qobject_cast<QWindow *>(window.get())); }
+        int cursor() const { return window->property("cursor").toInt(); }
+        void moveCursor(int row) { QMetaObject::invokeMethod(window.get(), "moveCursor", Q_ARG(QVariant, row)); }
+        void toggle(int row) { QMetaObject::invokeMethod(window.get(), "toggle", Q_ARG(QVariant, row)); }
+        void place(int row) { QMetaObject::invokeMethod(window.get(), "place", Q_ARG(QVariant, row)); }
+        QQuickItem *rowItem(int row) const
+        {
+            QVariant item;
+            QMetaObject::invokeMethod(window.get(), "rowItem", Q_RETURN_ARG(QVariant, item), Q_ARG(QVariant, row));
+            return item.value<QQuickItem *>();
+        }
+
+        QTemporaryDir home;
+        Plugins plugins;
+        Backend backend;
+        Theme theme;
+        FileOps fileOps;
+        QQmlEngine engine;
+        std::unique_ptr<QObject> window;
+    };
+
+    // Folio's own window: Main.qml, opened as the app opens it through
+    // Windows, but read from the source folder. Main.qml's Settings go to a
+    // folder of the tests' own, emptied for each window, so every window
+    // starts from the defaults.
+    struct WholeWindow {
+        explicit WholeWindow(const QString &folder)
+            : places(home.path()), plugins("en", {TreeList::pluginsIn(home)}, home.filePath("folio.conf")),
+              theme(home.filePath("theme"))
+        {
+            static QTemporaryDir kept;
+            QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, kept.path());
+            QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, kept.path());
+            QFile::remove(QSettings().fileName());
+            qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+            engine.rootContext()->setContextProperty("theme", &theme);
+            engine.rootContext()->setContextProperty("places", &places);
+            engine.rootContext()->setContextProperty("plugins", &plugins);
+            engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+            windows = std::make_unique<Windows>(&engine, &plugins, nullptr, QUrl::fromLocalFile(sourceFolder() + "/"));
+            const QWindowList before = QGuiApplication::topLevelWindows();
+            backend = windows->open(folder);
+            for (QWindow *each : QGuiApplication::topLevelWindows())
+                if (!before.contains(each) && each->property("treeView").isValid())
+                    window = qobject_cast<QQuickWindow *>(each);
+        }
+        ~WholeWindow()
+        {
+            // Closing it releases its panes, as the app does.
+            if (window)
+                window->close();
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        }
+        // On screen and taking clicks and keys: Main.qml waits for its size.
+        bool shown() const
+        {
+            return window && QTest::qWaitForWindowExposed(window)
+                   && QTest::qWaitFor([this] { return window->property("settled").toBool(); }, 3000);
+        }
+        QQuickItem *pane(const char *name) const { return window->property(name).value<QQuickItem *>(); }
+
+        QTemporaryDir home;
+        Places places;
+        Plugins plugins;
+        Theme theme;
+        QQmlEngine engine;
+        std::unique_ptr<Windows> windows;
+        Backend *backend = nullptr;
+        QQuickWindow *window = nullptr;
+    };
+
+    // A pane in a window with Main.qml's side of it (the view and the
+    // tree), for the path bar's buttons and the pane's keys. `engine` has
+    // the contexts.
+    static std::unique_ptr<QQuickWindow> paneHarness(QQmlEngine &engine)
+    {
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "import QtQuick.Controls\n"
+                          "import Folio\n"
+                          "ApplicationWindow {\n"
+                          "    id: win\n"
+                          "    width: 1000; height: 600; visible: true\n"
+                          "    property string viewMode: 'columns'\n"
+                          "    property real zoom: 1\n"
+                          "    property bool treeView: false\n"
+                          "    property bool previewVisible: false\n"
+                          "    property bool detailsFit: true\n"
+                          "    property bool split: false\n"
+                          "    property bool helpVisible: false\n"
+                          "    property var activePane: pane\n"
+                          "    FolderPane { id: pane; anchors.fill: parent; focus: true }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/PaneTest.qml"));
+        std::unique_ptr<QQuickWindow> window(qobject_cast<QQuickWindow *>(component.create()));
+        if (!window) {
+            qWarning() << component.errorString();
+            return {};
+        }
+        if (!QTest::qWaitForWindowExposed(window.get()))
+            return {};
+        return window;
+    }
+
+    // The list view in a pane, once it has loaded.
+    static QQuickItem *folderListIn(QQuickItem *top)
+    {
+        if (!top)
+            return nullptr;
+        for (QQuickItem *child : top->childItems()) {
+            if (QString(child->metaObject()->className()).startsWith("FolderList"))
+                return child;
+            if (QQuickItem *found = folderListIn(child))
+                return found;
+        }
+        return nullptr;
+    }
+
+    // A list's row item, while it's laid out.
+    static QQuickItem *listRow(QQuickItem *list, int row)
+    {
+        QQuickItem *item = nullptr;
+        QMetaObject::invokeMethod(list, "itemAtIndex", Q_RETURN_ARG(QQuickItem *, item), Q_ARG(int, row));
+        return item;
+    }
+
+    // The first showing item with this objectName, optionally one whose
+    // middle is between `from` and `to` across the window.
+    static QQuickItem *shownItem(QQuickWindow *window, const QString &name, qreal from = -1, qreal to = 1e9)
+    {
+        for (QQuickItem *item : itemsNamed(window->contentItem(), name)) {
+            const qreal x = item->mapToScene(QPointF(item->width() / 2, 0)).x();
+            if (item->isVisible() && x >= from && x <= to)
+                return item;
+        }
+        return nullptr;
+    }
+
+    // The tree tests' folder: Alpha/Beta/c.txt, Alpha/d.txt, Zeta/z.txt
+    // and e.txt.
+    static void treeFixture(const QTemporaryDir &root)
+    {
+        QDir(root.path()).mkpath("Alpha/Beta");
+        QDir(root.path()).mkpath("Zeta");
+        write(root.filePath("Alpha/Beta/c.txt"), "x");
+        write(root.filePath("Alpha/d.txt"), "x");
+        write(root.filePath("Zeta/z.txt"), "x");
+        write(root.filePath("e.txt"), "x");
+    }
+
+    // The rows' names, their depths and the open ones, as the views read them.
+    static QStringList rowNames(const FolderModel &model)
+    {
+        QStringList names;
+        for (int row = 0; row < model.count(); ++row)
+            names << model.data(model.index(row), FolderModel::NameRole).toString();
+        return names;
+    }
+
+    static QList<int> rowDepths(const FolderModel &model)
+    {
+        QList<int> depths;
+        for (int row = 0; row < model.count(); ++row)
+            depths << model.data(model.index(row), FolderModel::DepthRole).toInt();
+        return depths;
+    }
+
+    static QStringList rowLines(const FolderModel &model)
+    {
+        QStringList lines;
+        for (int row = 0; row < model.count(); ++row)
+            lines << model.data(model.index(row), FolderModel::LinesRole).toString();
+        return lines;
+    }
+
+    // The items under `top` with this objectName, through the items' own
+    // tree (a window's items aren't all its QObject children).
+    static QList<QQuickItem *> itemsNamed(QQuickItem *top, const QString &name)
+    {
+        QList<QQuickItem *> found;
+        for (QQuickItem *child : top->childItems()) {
+            if (child->objectName() == name)
+                found << child;
+            found << itemsNamed(child, name);
+        }
+        return found;
+    }
+
+    // The items under `top` with this objectName that are showing.
+    static int shownNamed(QQuickItem *top, const QString &name)
+    {
+        int shown = 0;
+        for (QQuickItem *child : top->childItems())
+            shown += (child->objectName() == name && child->isVisible()) + shownNamed(child, name);
+        return shown;
+    }
+
+    static QList<int> openRows(const FolderModel &model)
+    {
+        QList<int> rows;
+        for (int row = 0; row < model.count(); ++row)
+            if (model.data(model.index(row), FolderModel::OpenRole).toBool())
+                rows << row;
+        return rows;
     }
 
     static void write(const QString &path, const QByteArray &contents)

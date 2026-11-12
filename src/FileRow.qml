@@ -20,15 +20,24 @@ Item {
     required property int itemCount
     required property string icon
     required property bool selected
+    required property int depth
+    required property bool open
+    required property string lines
 
     property bool current: false
     // In a column to the left: the folder the next column is showing.
     property bool trail: false
     property bool detailed: false
     property bool chevron: false
+    // In the list with the tree on: rows indented by how deep in the tree
+    // they are, joined by thin lines to the folder they're in, and an arrow
+    // on folders to open them in place. Off, the row is as it always was.
+    property bool tree: false
 
     signal clicked(int modifiers)
     signal activated()
+    // The arrow was clicked (or pressed by a screen reader).
+    signal toggled()
 
     implicitHeight: 32
 
@@ -69,12 +78,83 @@ Item {
              : "transparent"
     }
 
+    // The lines, one 16 px step for each level in, like the tree command
+    // draws them: the vertical ones run the row's full height so they join
+    // the rows above and below. Drawn left to right and flipped whole when
+    // mirrored, so they lead from the arrows on the other side.
+    Item {
+        objectName: "treeLines"
+        visible: row.tree && row.depth > 0
+        anchors.left: parent.left
+        anchors.leftMargin: 14
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        width: row.depth * 16 + 16
+        transform: Scale { xScale: row.LayoutMirroring.enabled ? -1 : 1; origin.x: (row.depth * 16 + 16) / 2 }
+        Repeater {
+            model: row.tree ? row.lines.split("") : []
+            Item {
+                required property int index
+                required property string modelData
+                readonly property bool elbow: modelData === "├" || modelData === "└"
+                x: index * 16
+                width: 16
+                height: parent.height
+                Rectangle {
+                    objectName: "treeGuide"
+                    visible: modelData !== " "
+                    x: 7
+                    width: 1
+                    height: modelData === "└" ? Math.round(parent.height / 2) : parent.height
+                    color: Qt.alpha(theme.foreground, 0.25)
+                }
+                // Over to this row's arrow, or for a file, which has none, on
+                // through the arrow's room to its icon.
+                Rectangle {
+                    visible: parent.elbow
+                    x: 8
+                    y: Math.round(parent.height / 2)
+                    width: row.isDir ? 6 : 20
+                    height: 1
+                    color: Qt.alpha(theme.foreground, 0.25)
+                }
+            }
+        }
+    }
+
     RowLayout {
         anchors.fill: parent
         anchors.leftMargin: 14
         anchors.rightMargin: 14
         spacing: 12
 
+        // One step in for each open folder above, then the arrow. A file has
+        // the same room without one, so the names line up.
+        Item {
+            visible: row.tree
+            implicitWidth: row.depth * 16 + 16
+            implicitHeight: 16
+            Item {
+                id: disclosure
+                objectName: "disclosure"
+                visible: row.isDir
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                width: 16
+                height: 16
+                Accessible.role: Accessible.Button
+                Accessible.name: row.open ? qsTr("Collapse %1").arg(row.name) : qsTr("Expand %1").arg(row.name)
+                Accessible.onPressAction: row.toggled()
+                // Points along the row, and down once the folder is open.
+                Glyph {
+                    anchors.centerIn: parent
+                    name: row.LayoutMirroring.enabled ? "back" : "forward"
+                    rotation: row.open ? (row.LayoutMirroring.enabled ? -90 : 90) : 0
+                    size: 12
+                    color: theme.secondaryForeground
+                }
+            }
+        }
         Item {
             implicitWidth: 20
             implicitHeight: 20
@@ -113,6 +193,7 @@ Item {
         // mirrored: left as they are, they'd follow their own script, and a
         // Latin name would sit at the far end of a right-to-left row.
         Text {
+            objectName: "rowName"
             Layout.fillWidth: true
             Layout.minimumWidth: 120
             horizontalAlignment: Text.AlignLeft
@@ -154,10 +235,19 @@ Item {
         id: hover
         onHoveredChanged: if (hovered) row.grabToImage(result => row.Drag.imageSource = result.url)
     }
+    // A click on the arrow (or a little either side of it, the row's full
+    // height) only opens or closes the folder: one handler for the whole
+    // row, so the click is never taken as both.
+    function atArrow(position) {
+        if (!row.tree || !disclosure.visible)
+            return false
+        const at = disclosure.mapFromItem(row, position.x, position.y)
+        return at.x >= -6 && at.x < disclosure.width + 6
+    }
     TapHandler {
         id: tap
-        onTapped: row.clicked(tap.point.modifiers)
-        onDoubleTapped: row.activated()
+        onTapped: row.atArrow(tap.point.position) ? row.toggled() : row.clicked(tap.point.modifiers)
+        onDoubleTapped: if (!row.atArrow(tap.point.position)) row.activated()
     }
 
     // Like the tiles: dragged, a row is a file for the sidebar or another app.

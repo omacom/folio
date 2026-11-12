@@ -46,6 +46,16 @@ public:
         ItemCountRole,
         SelectedRole,
         IconRole,
+        // How far down the list view's tree a row is (0 for the folder's own
+        // items), and whether a folder row is open in it.
+        DepthRole,
+        OpenRole,
+        // The lines joining a row to the folders it's in, like the tree
+        // command draws them: one character for each level from 1 to its
+        // depth, '│' where an outer folder's line carries on past the row
+        // and ' ' where it doesn't, then '├' when more follow in the same
+        // folder or '└' for its last item. Empty for the folder's own items.
+        LinesRole,
     };
 
     struct Entry {
@@ -64,6 +74,10 @@ public:
         int itemCount = -1;
         // The first pictures in a folder, for the preview window.
         QStringList peek;
+        // 0 for the folder's own items, one more for each open folder above.
+        int depth = 0;
+        // Its tree lines, as LinesRole gives them.
+        QString lines;
     };
 
     explicit FolderModel(QObject *parent = nullptr);
@@ -93,6 +107,18 @@ public:
     // By path, for Recents, where two files from different folders can
     // share a name.
     Q_INVOKABLE int indexOfPath(const QString &path) const;
+
+    // The list view's tree: an open folder's items are rows of their own,
+    // right below it, so selection, get() and file operations treat them
+    // like any other. Open folders are listed in the background and
+    // watched. Only a folder nests: searches, Recents and plugins' views
+    // stay flat. expand() and collapse() say whether anything changed.
+    Q_INVOKABLE bool expand(int row);
+    Q_INVOKABLE bool collapse(int row);
+    // Closes every folder and forgets which were open.
+    Q_INVOKABLE void collapseAll();
+    // The open folder a row is in, or -1 for the folder's own items.
+    Q_INVOKABLE int parentRow(int row) const;
 
     // The selection, kept by path so it survives a re-read or a re-sort.
     // The views keep the cursor (the current item) themselves.
@@ -154,6 +180,11 @@ signals:
     void itemsChanged();
     void selectionChanged();
     void loaded();
+    // Around rows coming and going in place (a folder opened or closed, its
+    // items arriving, a file appearing in it): a view puts its cursor back
+    // on its item, which the rows moving around it would take it off.
+    void rowsShifting();
+    void rowsShifted();
 
 private:
     void setLoading(bool loading);
@@ -164,9 +195,36 @@ private:
     static bool sameListing(const QVector<Entry> &a, const QVector<Entry> &b);
     void setError(const QString &error);
     void countFolders(quint64 generation);
+    bool canNest() const;
+    QVector<Entry> flatten(const QVector<Entry> &top) const;
+    void addRows(QVector<Entry> &rows, const QVector<Entry> &entries, int depth, const QString &guides = {}) const;
+    void showRows(const QVector<Entry> &rows);
+    void showTree();
+    void followOpenFolders();
+    void listChildren(const QString &folder);
+    void unwatchChild(const QString &folder);
+    void clearTree();
 
     QString m_path;
+    // The rows as shown: the folder's own items (m_top) with each open
+    // folder's items below it.
     QVector<Entry> m_entries;
+    QVector<Entry> m_top;
+    // Folders open in the tree, by path. One inside a folder that's been
+    // closed stays here, so it comes back open with it, until the model
+    // moves on to another folder or a search.
+    QSet<QString> m_open;
+    // What each open folder holds, as last listed.
+    QHash<QString, QVector<Entry>> m_listed;
+    // The open folders being watched (those showing), the ones that changed
+    // and wait to be re-read, and each one's newest listing.
+    QSet<QString> m_childWatched;
+    QSet<QString> m_childDirty;
+    QHash<QString, quint64> m_childListing;
+    quint64 m_childSerial = 0;
+    // Bumped whenever the tree is cleared, so listings of a folder left
+    // behind stop early.
+    std::shared_ptr<std::atomic<quint64>> m_treeLatest = std::make_shared<std::atomic<quint64>>(1);
     QSet<QString> m_selected;
     void setSelected(const QSet<QString> &paths);
     bool m_loading = false;
@@ -182,5 +240,6 @@ private:
     std::shared_ptr<std::atomic<quint64>> m_latest = std::make_shared<std::atomic<quint64>>(0);
     QFileSystemWatcher m_watcher;
     QTimer m_debounce;
+    QTimer m_childDebounce;
     QTimer m_staleClear;
 };
