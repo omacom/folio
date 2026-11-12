@@ -77,6 +77,8 @@ private:
     int m_index = -1;
     QString m_viewer;
     QString m_text;
+    // The type read from what the shown file holds when its name gave none, for this showing only: a file written since is read again.
+    QString m_readType;
     bool m_showHidden = false;
     QString m_sort = "name";
     quint64 m_generation = 0;

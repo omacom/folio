@@ -170,6 +170,10 @@ QVariantMap Previewer::item() const {
     const FolderModel::Entry &e = m_entries.at(m_index);
     QVariantMap map = FolderModel::toMap(e);
     map.insert("peek", e.peek);
+    if (!m_readType.isEmpty()) {
+        map.insert("mime", m_readType);
+        map.insert("kind", FolderModel::kindForMime(m_readType));
+    }
     return map;
 }
 
@@ -182,7 +186,7 @@ QString Previewer::url() const {
 QString Previewer::type() const {
     if (m_index < 0 || m_index >= m_entries.size())
         return {};
-    return QMimeDatabase().mimeTypeForName(m_entries.at(m_index).mime).comment();
+    return QMimeDatabase().mimeTypeForName(m_readType.isEmpty() ? m_entries.at(m_index).mime : m_readType).comment();
 }
 
 void Previewer::next() {
@@ -208,6 +212,7 @@ void Previewer::setIndex(int index, bool report) {
     const FolderModel::Entry e = m_entries.at(index);
     m_viewer = viewerFor(e.mime, e.isDir);
     m_text.clear();
+    m_readType.clear();
 
     // A folder's count and first pictures, and a text's opening part, are
     // read off the UI thread: a big folder, or any file on a slow mount,
@@ -215,30 +220,37 @@ void Previewer::setIndex(int index, bool report) {
     const quint64 generation = ++*m_reading;
     const bool count = e.isDir && e.itemCount < 0;
     const bool text = m_viewer == "text" || m_viewer == "markdown";
-    if (count || text) {
+    // A file its extension could not name is named by what it holds, read with the rest and kept apart from the listing.
+    const bool unnamed = e.mime == "application/octet-stream";
+    if (count || text || unnamed) {
         auto *watcher = new QFutureWatcher<QPair<FolderModel::Entry, QString>>(this);
-        connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, text] {
+        connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, unnamed] {
             watcher->deleteLater();
             if (generation != *m_reading)
                 return; // Stepped on to another item while this was read.
             const auto [entry, read] = watcher->result();
-            m_entries[m_index] = entry;
+            if (unnamed)
+                m_readType = entry.mime;
+            else
+                m_entries[m_index] = entry;
             m_text = read;
+            m_viewer = viewerFor(entry.mime, entry.isDir);
             // A ".txt" that turns out to be binary is shown as a plain file.
-            if (text && m_text.isEmpty() && entry.size > 0)
+            if ((m_viewer == "text" || m_viewer == "markdown") && m_text.isEmpty() && entry.size > 0)
                 m_viewer = "other";
             emit changed();
         });
         const bool showHidden = m_showHidden;
-        const bool markdown = m_viewer == "markdown";
-        watcher->setFuture(QtConcurrent::run([entry = e, showHidden, count, text, markdown,
+        watcher->setFuture(QtConcurrent::run([entry = e, showHidden, count,
                                               latest = m_reading, generation]() mutable {
             if (*latest != generation)
                 return qMakePair(entry, QString());
             if (count)
                 FolderModel::summarize(entry, showHidden);
-            const QString read = text ? readText(entry.path) : QString();
-            return qMakePair(entry, markdown ? markdownOpening(read) : read);
+            entry.mime = FolderModel::typeByContent(entry.path, entry.mime);
+            const QString viewer = viewerFor(entry.mime, entry.isDir);
+            const QString read = viewer == "text" || viewer == "markdown" ? readText(entry.path) : QString();
+            return qMakePair(entry, viewer == "markdown" ? markdownOpening(read) : read);
         }));
     }
     emit changed();

@@ -5543,6 +5543,50 @@ private slots:
         QTRY_COMPARE(previewer.viewer(), QString("other"));
     }
 
+    void previewerNamesAFileByWhatItHoldsWhenItsNameSaysNothing()
+    {
+        // A PDF or a text whose name gives no type is shown as what it holds, read off the UI thread like a text's opening.
+        QTemporaryDir dir;
+        const QString pdf = dir.filePath("report.download"), notes = dir.filePath("notes"), blob = dir.filePath("blob");
+        const QString claimed = dir.filePath("report.zip"), download = dir.filePath("paper.oxQCuj");
+        write(pdf, "%PDF-1.4\n1 0 obj\n");
+        write(notes, "hello\nworld\n");
+        write(download, "");
+        write(blob, QByteArray("\0\1\2\3", 4));
+        write(claimed, "%PDF-1.4\n1 0 obj\n");
+        Previewer previewer;
+        previewer.start(pdf, false, "name");
+        QCOMPARE(previewer.viewer(), QString("other"));
+        QTRY_COMPARE(previewer.viewer(), QString("pdf"));
+        QCOMPARE(previewer.item().value("mime").toString(), QString("application/pdf"));
+        QCOMPARE(previewer.item().value("kind").toString(), QString("pdf"));
+        QCOMPARE(previewer.type(), QMimeDatabase().mimeTypeForName("application/pdf").comment());
+
+        // What it holds is text: its opening is read too.
+        previewer.show(notes);
+        QTRY_COMPARE(previewer.text(), QString("hello\nworld\n"));
+        QCOMPARE(previewer.viewer(), QString("text"));
+
+        // A file shown while still empty and filled since is read again at its next showing.
+        previewer.show(download);
+        QThreadPool::globalInstance()->waitForDone();
+        QCoreApplication::processEvents();
+        QCOMPARE(previewer.viewer(), QString("other"));
+        previewer.show(notes);
+        write(download, "%PDF-1.4\n1 0 obj\n");
+        previewer.show(download);
+        QTRY_COMPARE(previewer.viewer(), QString("pdf"));
+
+        // Bytes nothing knows stay a plain file, and so does a name that said a type.
+        for (const QString &plain : {blob, claimed}) {
+            previewer.show(plain);
+            QThreadPool::globalInstance()->waitForDone();
+            QCoreApplication::processEvents();
+            QCOMPARE(previewer.viewer(), QString("other"));
+        }
+        QCOMPARE(previewer.item().value("mime").toString(), QString("application/zip"));
+    }
+
     void previewerShowsOnlyWhatLaysOutQuickly()
     {
         // The preview lays out all it's given on its UI thread, about a
