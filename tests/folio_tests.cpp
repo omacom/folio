@@ -680,15 +680,16 @@ private slots:
             QTest::keyClick(window, Qt::Key_Down);
         QTRY_COMPARE(cursor(), home.filePath("files/file-05.txt"));
 
-        // The sixth file's place doesn't decide where a search starts.
-        backend.folder()->setQuery("file-11");
-        QTRY_COMPARE(backend.folder()->count(), 1);
-        QTRY_COMPARE(cursor(), home.filePath("files/file-11.txt"));
+        // Two matches, the first of them file-10: a new query starts on its
+        // first result, not on the row the cursor had.
+        backend.folder()->setQuery("file-1");
+        QTRY_COMPARE(backend.folder()->count(), 2);
+        QTRY_COMPARE(cursor(), home.filePath("files/file-10.txt"));
 
         // Ending it keeps the cursor on what it found.
         backend.folder()->setQuery(QString());
         QTRY_COMPARE(backend.folder()->count(), 12);
-        QTRY_COMPARE(cursor(), home.filePath("files/file-11.txt"));
+        QTRY_COMPARE(cursor(), home.filePath("files/file-10.txt"));
     }
 
     void folderModelSwapsFoldersWithoutAnEmptyFrame()
