@@ -4929,6 +4929,94 @@ private slots:
         QCOMPARE(window->property("answer").toString(), QString());
     }
 
+    void sidebarDeleteUnpinsOnlyPinnedRows()
+    {
+        // Delete unpins the keyed pinned row wherever that section sits, and leaves Recents and Trash alone.
+        QTemporaryDir home, files;
+        for (const char *dir : {"Work/folio", "Work/hype"})
+            QDir(home.path()).mkpath(dir);
+        QDir(files.path()).mkpath("plugins");
+        const auto dataHome = dataHomeAt(files.filePath("data"));
+        // The Trash view's own folder, pinned too, so a Delete that reached the views would unpin it.
+        const QString trashFolder = QDir::cleanPath(FileOps::homeTrash() + "/files");
+        QVERIFY(QDir().mkpath(trashFolder));
+        Places places(home.path());
+        QCOMPARE(places.pin(home.filePath("Work/folio")), QString());
+        QCOMPARE(places.pin(home.filePath("Work/hype")), QString());
+        QCOMPARE(places.pin(trashFolder), QString());
+        Plugins plugins("en", {files.filePath("plugins")}, files.filePath("folio.conf"));
+        Backend backend(home.path());
+        backend.navigate(home.path());
+        Theme theme(files.filePath("theme"));
+        FileOps fileOps;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("places", &places);
+        engine.rootContext()->setContextProperty("plugins", &plugins);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window {\n"
+                          "    width: 300; height: 900; visible: true\n"
+                          "    Sidebar { id: sidebar; anchors.fill: parent }\n"
+                          "    property alias sidebar: sidebar\n"
+                          "    function keyed() { return sidebar.rows[sidebar.cursor].path }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/SidebarDeleteTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowFocused(window));
+        auto *sidebar = window->property("sidebar").value<QObject *>();
+        const auto keyed = [&] {
+            QVariant path;
+            QMetaObject::invokeMethod(window, "keyed", Q_RETURN_ARG(QVariant, path));
+            return path.toString();
+        };
+        const auto rows = [&] { return sidebar->property("rows").toList().size(); };
+        const auto at = [&](const char *name) { return sidebar->property(name).toInt(); };
+        const auto pinnedPath = [&](int i) { return places.pinned().at(i).toMap().value("path").toString(); };
+        // At most one key per row, so a row the keys cannot reach fails instead of hanging.
+        const auto moveTo = [&](int row) {
+            for (int step = 0; step < rows() && at("cursor") != row; ++step)
+                QTest::keyClick(window, at("cursor") < row ? Qt::Key_Down : Qt::Key_Up);
+            return at("cursor") == row;
+        };
+
+        QVERIFY(QMetaObject::invokeMethod(sidebar, "focusSidebar"));
+        QVERIFY(sidebar->property("activeFocus").toBool());
+        QCOMPARE(at("cursor"), 0);
+        QCOMPARE(places.views().size(), 2);
+        QCOMPARE(places.views().at(1).toMap().value("path").toString(), trashFolder);
+        QCOMPARE(places.pinned().size(), 3);
+
+        // Recents and Trash are views, not pins.
+        const int before = rows();
+        for (int view = 0; view < 2; ++view) {
+            QVERIFY(moveTo(at("viewsAt") + view));
+            QCOMPARE(keyed(), places.views().at(view).toMap().value("path").toString());
+            QTest::keyClick(window, Qt::Key_Delete);
+            QCOMPARE(places.pinned().size(), 3);
+            QVERIFY(places.isPinned(trashFolder));
+            QCOMPARE(rows(), before);
+        }
+
+        // The last pinned row, then the first: both ends of the range.
+        const QString first = pinnedPath(0), middle = pinnedPath(1), last = pinnedPath(2);
+        QVERIFY(moveTo(at("pinnedAt") + 2));
+        QCOMPARE(keyed(), last);
+        QTest::keyClick(window, Qt::Key_Delete);
+        QVERIFY(!places.isPinned(last));
+        QVERIFY(moveTo(at("pinnedAt")));
+        QCOMPARE(keyed(), first);
+        QTest::keyClick(window, Qt::Key_Delete);
+        QVERIFY(!places.isPinned(first));
+        QVERIFY(places.isPinned(middle));
+    }
+
     void formattingOffersWhatThisMachineCanMake()
     {
         // exFAT first, and only the filesystems whose tools are installed.

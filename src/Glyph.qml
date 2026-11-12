@@ -85,6 +85,7 @@ Item {
         case "audio": return "M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"
         case "check": return "M5 12l5 5 9-10"
         case "close": return "M6 6l12 12M18 6L6 18"
+        case "home": return "M4 10l8-6 8 6v10H4zM10 20v-6h4v6"
         default: return page()
         }
     }

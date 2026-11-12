@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 
 // The breadcrumb path from the left edge; view buttons on the right. Back and
@@ -85,6 +86,12 @@ Rectangle {
                 cursorPosition = text.length
             }
             onActiveFocusChanged: if (!activeFocus && bar.editing) bar.stopEditing()
+            // A double click on the empty bar lands its second click here: keep the whole path selected, not a word.
+            MouseArea {
+                anchors.fill: parent
+                onPressed: mouse => mouse.accepted = (mouse.flags & Qt.MouseEventCreatedDoubleClick) !== 0 && pathField.selectedText === pathField.text
+                onDoubleClicked: mouse => mouse.accepted = pressed
+            }
         }
 
         PlainField {
@@ -128,29 +135,79 @@ Rectangle {
             Keys.onEscapePressed: bar.endSearch()
         }
 
-        Flickable {
+        Item {
+            id: trail
             visible: !bar.editing && !bar.searching
             Layout.fillWidth: true
             Layout.fillHeight: true
-            contentWidth: Math.max(width, crumbs.implicitWidth)
             clip: true
-            boundsBehavior: Flickable.StopAtBounds
-            // Long paths keep their end in view; that's where you are.
-            // Mirrored, the end is on the left.
-            function revealEnd() { contentX = LayoutMirroring.enabled ? 0 : Math.max(0, contentWidth - width) }
-            onContentWidthChanged: revealEnd()
-            onWidthChanged: revealEnd()
-            LayoutMirroring.onEnabledChanged: revealEnd()
+            // The end stays in view; crumbs that don't fit whole fold into "…" at the reading start (the right, when mirrored).
+            property int first: 0
+            property real offset: 0
+            // Measured from each crumb's full width, so the current folder's own elide never changes what folds.
+            function fit() {
+                let rest = 0
+                for (let k = 0; k < crumbRepeater.count; ++k)
+                    rest += crumbRepeater.itemAt(k).fullWidth + (k > 0 ? crumbs.spacing : 0)
+                let i = 0
+                if (rest > width)
+                    while (i < crumbRepeater.count - 1 && rest > width - more.implicitWidth - crumbs.spacing)
+                        rest -= crumbRepeater.itemAt(i++).fullWidth + crumbs.spacing
+                first = i
+                // How far the first shown crumb is from the row's start, which a mirrored Row puts at its right.
+                const shown = crumbRepeater.itemAt(i)
+                const lead = LayoutMirroring.enabled ? crumbs.width - shown.x - shown.width : shown.x
+                offset = i > 0 ? lead - more.implicitWidth - crumbs.spacing : 0
+            }
+            onWidthChanged: fit()
+            LayoutMirroring.onEnabledChanged: fit()
+
+            // A click on the empty part of the bar edits the path, as Ctrl+L does.
+            MouseArea {
+                anchors.fill: parent
+                onClicked: bar.editPath()
+            }
+
+            Text {
+                id: more
+                // Above the folded crumbs, which still lie under it and would take its hover.
+                z: 1
+                visible: trail.first > 0
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                text: "…"
+                color: moreMouse.containsMouse ? theme.foreground : theme.secondaryForeground
+                font.pixelSize: 14
+                // A crumb's hit margin, except toward the bar's edge, which would fall outside the clip.
+                MouseArea {
+                    id: moreMouse
+                    anchors.fill: parent
+                    anchors.margins: -4
+                    anchors.leftMargin: 0
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: backend.navigate(backend.crumbs[trail.first - 1].path)
+                    // The folded path as the crumbs write it: "/" root, "~" home.
+                    ToolTip {
+                        visible: moreMouse.containsMouse
+                        delay: 600
+                        text: crumbRepeater.model.slice(0, trail.first).map(c => c.name).join("/").replace("//", "/")
+                        enter: null
+                        exit: null
+                    }
+                }
+            }
 
             Row {
                 id: crumbs
-                // A Row isn't placed by its Flickable, so it's moved to the
-                // right edge by hand when mirrored.
-                x: LayoutMirroring.enabled ? parent.width - width : 0
+                // A Row isn't placed by its parent, so it's moved to the right edge by hand when mirrored.
+                x: LayoutMirroring.enabled ? trail.width - width + trail.offset : -trail.offset
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 10
+                onPositioningComplete: trail.fit()
 
                 Repeater {
+                    id: crumbRepeater
                     // Recents, Trash and plugins' views are named in C++, which
                     // retranslating QML doesn't redo.
                     model: { translator.language; return backend.crumbs }
@@ -159,8 +216,13 @@ Rectangle {
                         required property var modelData
                         required property int index
                         readonly property bool last: index === backend.crumbs.length - 1
+                        readonly property real fullWidth: folderName.implicitWidth + (separator.visible ? separator.implicitWidth + spacing : 0)
+                        // Folded crumbs keep their place so the others don't move.
+                        opacity: index < trail.first ? 0 : 1
+                        enabled: index >= trail.first
                         spacing: 10
                         Text {
+                            id: separator
                             // No separator after / itself: "/ run", not "/ / run".
                             visible: crumb.index > 0 && !(crumb.index === 1 && backend.crumbs[0].name === "/")
                             text: "/"
@@ -168,6 +230,11 @@ Rectangle {
                             font.pixelSize: 14
                         }
                         Text {
+                            id: folderName
+                            // The current folder always shows; alone too wide, it elides.
+                            width: crumb.last ? Math.max(0, Math.min(implicitWidth, trail.width - (separator.visible ? separator.implicitWidth + crumb.spacing : 0)
+                                                                     - (trail.first > 0 ? more.implicitWidth + crumbs.spacing : 0))) : implicitWidth
+                            elide: Text.ElideRight
                             text: crumb.modelData.name
                             color: crumb.last ? theme.brightForeground : crumbMouse.containsMouse ? theme.foreground : theme.secondaryForeground
                             font.pixelSize: 14
@@ -209,6 +276,7 @@ Rectangle {
         SortMenu { id: sortMenu }
         IconButton {
             glyph: "preview"
+            toggle: true
             // Only where the window has room to show them.
             visible: bar.previewFits
             text: qsTr("Details")
