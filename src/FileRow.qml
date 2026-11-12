@@ -32,6 +32,13 @@ Item {
 
     implicitHeight: 32
 
+    // For the columns' automatic widths: the font the name is drawn in, and
+    // the room the row needs beside its name (margins, icon, the arrow),
+    // measured from the row's own layout rather than kept as a copy of it.
+    readonly property font nameFont: nameText.font
+    readonly property real besideName: layout.implicitWidth + layout.anchors.leftMargin + layout.anchors.rightMargin
+                                       - Math.max(nameText.implicitWidth, nameText.Layout.minimumWidth)
+
     // The name always gets room: in a narrow window the date goes first,
     // then the size. (The icon says what kind a file is; there's no column
     // for it.)
@@ -70,6 +77,7 @@ Item {
     }
 
     RowLayout {
+        id: layout
         anchors.fill: parent
         anchors.leftMargin: 14
         anchors.rightMargin: 14
@@ -113,6 +121,8 @@ Item {
         // mirrored: left as they are, they'd follow their own script, and a
         // Latin name would sit at the far end of a right-to-left row.
         Text {
+            id: nameText
+            objectName: "rowName"
             Layout.fillWidth: true
             Layout.minimumWidth: 120
             horizontalAlignment: Text.AlignLeft

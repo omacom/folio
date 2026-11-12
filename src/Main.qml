@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
 import QtCore
+import Folio
 
 // The window: one bar across the top, under it the sidebar, one folder pane
 // or two side by side (Ctrl+Alt+N splits, Ctrl+W closes the right one),
@@ -57,6 +58,15 @@ ApplicationWindow {
     // Columns on a first launch; after that, whichever view was used last.
     property string viewMode: "columns"
     property real zoom: 1
+    // How wide the sidebar, the details, the columns and a split's halves
+    // are: fixed (as they always were), fitted to what they show, or
+    // proportional to the window (W steps through them), each pane's own
+    // where its divider was dragged. widths.mode is the way.
+    PaneWidths {
+        id: paneSizing
+        windowWidth: win.width
+    }
+    readonly property var widths: paneSizing
 
     // The pane keys, the sidebar and the details go to.
     property var activePane: leftPane
@@ -80,6 +90,12 @@ ApplicationWindow {
     Settings {
         property alias viewMode: win.viewMode
         property alias zoom: win.zoom
+        property alias paneWidths: paneSizing.mode
+        // The dragged widths, 0 where a divider wasn't dragged.
+        property alias draggedSidebar: paneSizing.draggedSidebar
+        property alias draggedDetails: paneSizing.draggedDetails
+        property alias draggedColumn: paneSizing.draggedColumn
+        property alias draggedSplit: paneSizing.draggedSplit
     }
 
     // Ctrl+Alt+N: a second pane on the right, starting where the active
@@ -146,8 +162,13 @@ ApplicationWindow {
         }
 
         RowLayout {
+            id: panes
+            objectName: "panes"
             anchors.fill: parent
             spacing: 0
+            // The room a split's two halves share: what the sidebar, the
+            // details and the dividers leave.
+            readonly property int shared: width - sidebar.width - 2 - win.detailsWidth
 
             Sidebar {
                 id: sidebar
@@ -156,16 +177,35 @@ ApplicationWindow {
                 onHelpRequested: win.helpVisible = !win.helpVisible
                 onFormatRequested: (disk) => win.activePane.formatDrive(disk)
                 Layout.topMargin: parent.parent.barHeight
-                Layout.preferredWidth: 190
+                Layout.preferredWidth: (paneSizing.revision, paneSizing.sidebar(sidebar.contentWidth))
                 Layout.fillHeight: true
             }
-            Rectangle { Layout.topMargin: parent.parent.barHeight; Layout.fillHeight: true; implicitWidth: 1; color: Qt.alpha(theme.foreground, 0.12) }
+            // Above the panes beside it, so its grip can reach over both.
+            Rectangle {
+                z: 1
+                Layout.topMargin: parent.parent.barHeight
+                Layout.fillHeight: true
+                implicitWidth: 1
+                color: Qt.alpha(theme.foreground, 0.12)
+                PaneDivider {
+                    objectName: "sidebarDivider"
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    height: parent.height
+                    widths: paneSizing
+                    pane: "sidebar"
+                    paneWidth: sidebar.width
+                }
+            }
 
             FolderPane {
                 id: leftPane
                 barExtension: win.split ? 0 : win.detailsWidth
                 barLeft: sidebar.width + 1
-                Layout.fillWidth: true
+                // Dragged by hand, the split's left half has its own width
+                // and the right one the rest; otherwise they're even.
+                readonly property bool sized: win.split && paneSizing.draggedSplit > 0
+                Layout.fillWidth: !sized
+                Layout.preferredWidth: sized ? (paneSizing.revision, paneSizing.splitLeft(panes.shared)) : -1
                 Layout.fillHeight: true
                 focus: true
             }
@@ -173,7 +213,21 @@ ApplicationWindow {
             // openSplit() puts the right pane of a split here. Between the
             // panes the divider runs up through the top bar, so each path
             // reads as belonging to the files below it.
-            Rectangle { visible: win.split; Layout.fillHeight: true; implicitWidth: 1; color: Qt.alpha(theme.foreground, 0.12) }
+            Rectangle {
+                z: 1
+                visible: win.split
+                Layout.fillHeight: true
+                implicitWidth: 1
+                color: Qt.alpha(theme.foreground, 0.12)
+                PaneDivider {
+                    objectName: "splitDivider"
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    height: parent.height
+                    widths: paneSizing
+                    pane: "split"
+                    shared: panes.shared
+                }
+            }
             Item {
                 id: splitHost
                 visible: win.split
@@ -185,10 +239,21 @@ ApplicationWindow {
                 id: details
                 visible: win.previewVisible && win.detailsFit
                 Layout.topMargin: parent.parent.barHeight
-                Layout.preferredWidth: 300
+                Layout.preferredWidth: paneSizing.details
                 Layout.fillHeight: true
                 folderPane: win.activePane
                 onFinished: win.activePane.focusView()
+                // On its own edge, which it draws: dragged toward the middle
+                // of the window, it widens.
+                PaneDivider {
+                    objectName: "detailsDivider"
+                    anchors.horizontalCenter: parent.left
+                    height: parent.height
+                    widths: paneSizing
+                    pane: "details"
+                    paneWidth: details.width
+                    growth: -1
+                }
             }
         }
 

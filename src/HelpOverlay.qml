@@ -63,6 +63,7 @@ Rectangle {
         ["Escape", qsTr("Stop the file work under way, or dismiss what went wrong")],
         [qsTr("Right-click / Alt+⏎ / Menu"), qsTr("Everything else, for files and for drives in the sidebar")],
         ["S / Shift+S", qsTr("Sort: name, kind, newest, oldest, size")],
+        ["W / Shift+W", qsTr("Pane widths: fixed, automatic, proportional (dragged lines stay; double-click one to put it back)")],
         ["Ctrl+H", qsTr("Show hidden files")],
         ["F5", qsTr("Reload")],
         ["?", qsTr("Show these shortcuts")],

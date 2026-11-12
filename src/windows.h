@@ -19,7 +19,10 @@ class Windows : public QObject {
     Q_OBJECT
 
 public:
-    explicit Windows(QQmlEngine *engine, Plugins *plugins, QObject *parent = nullptr);
+    // `interface` is where Main.qml and FolderPane.qml are: the app's
+    // resources, or for the tests the source folder.
+    explicit Windows(QQmlEngine *engine, Plugins *plugins, QObject *parent = nullptr,
+                     const QUrl &interface = QUrl(QStringLiteral("qrc:/")));
 
     // Opens a window on a folder, or on a file's folder with it selected.
     // Null if the interface failed to load (the errors are on stderr).
