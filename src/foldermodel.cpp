@@ -65,6 +65,25 @@ void FolderModel::remember() {
     recentListings().insert(cacheKey(), new QVector<Entry>(m_entries));
 }
 
+const FolderModel::Entry::More &FolderModel::Entry::more() const {
+    static const More none;
+    return aside ? *aside : none;
+}
+
+FolderModel::Entry::More &FolderModel::Entry::toSet() {
+    if (!aside)
+        aside = new More;
+    return *aside;
+}
+
+// One block, as rows of a type share, or two that say the same.
+static bool sameMore(const FolderModel::Entry &a, const FolderModel::Entry &b) {
+    if (a.aside.constData() == b.aside.constData())
+        return true;
+    const FolderModel::Entry::More &x = a.more(), &y = b.more();
+    return x.mime == y.mime && x.extension == y.extension && x.icon == y.icon && x.details == y.details;
+}
+
 bool FolderModel::sameListing(const QVector<Entry> &a, const QVector<Entry> &b) {
     if (a.size() != b.size())
         return false;
@@ -73,9 +92,7 @@ bool FolderModel::sameListing(const QVector<Entry> &a, const QVector<Entry> &b) 
     for (int i = 0; i < a.size(); ++i)
         // A link read again can be another type. Name, subtitle, icon and
         // details too: a plugin's item keeps its path (its id) when they change.
-        if (a[i].path != b[i].path || a[i].isDir != b[i].isDir || a[i].mime != b[i].mime
-            || a[i].name != b[i].name || a[i].extension != b[i].extension
-            || a[i].icon != b[i].icon || a[i].details != b[i].details)
+        if (a[i].path != b[i].path || a[i].isDir != b[i].isDir || a[i].name != b[i].name || !sameMore(a[i], b[i]))
             return false;
     return true;
 }
@@ -159,7 +176,7 @@ QVariant FolderModel::data(const QModelIndex &index, int role) const {
     case ExtensionRole: return typeOf(e).extension;
     case ItemCountRole: return e.itemCount;
     case SelectedRole: return m_selected.contains(e.path);
-    case IconRole: return e.icon;
+    case IconRole: return e.more().icon;
     }
     return {};
 }
@@ -193,9 +210,9 @@ static void readSizeAndDate(FolderModel::Entry &entry) {
 
 FolderModel::Type FolderModel::typeOf(const Entry &entry) const {
     // A folder's type takes no reading, and an entry that has its own keeps it whatever its name.
-    if (entry.isDir || !entry.mime.isNull() || !entry.kind.isNull()) {
+    if (entry.isDir || !entry.more().mime.isNull() || !entry.more().kind.isNull()) {
         const Entry e = typed(entry);
-        return {e.kind, e.mime, e.extension};
+        return {e.more().kind, e.more().mime, e.more().extension};
     }
     const auto kept = m_types.constFind(entry.name);
     if (kept != m_types.constEnd())
@@ -203,7 +220,7 @@ FolderModel::Type FolderModel::typeOf(const Entry &entry) const {
     if (m_types.size() >= typesKept)
         m_types.clear();
     const Entry e = typed(entry);
-    return *m_types.insert(entry.name, {e.kind, e.mime, e.extension});
+    return *m_types.insert(entry.name, {e.more().kind, e.more().mime, e.more().extension});
 }
 
 void FolderModel::ask(int row) const {
@@ -402,8 +419,8 @@ QVector<FolderModel::Entry> FolderModel::list(const QString &path, bool showHidd
     // Extension-only matching: reading every file's header would make large
     // folders and network mounts crawl.
     QMimeDatabase mimes;
-    // One string per type and extension, shared by every entry that has it.
-    QSet<QString> shared;
+    // One block per type and extension, shared by every entry that has it.
+    QHash<QString, QSharedDataPointer<Entry::More>> shared;
     // Sorting by kind compares types, and by date or size those, so they're read here.
     const bool byKind = sort == "kind";
     const bool bySize = sortsByDateOrSize(sort);
@@ -427,10 +444,13 @@ QVector<FolderModel::Entry> FolderModel::list(const QString &path, bool showHidd
             if (bySize)
                 setSizeAndDate(e, item.fileInfo());
         }
-        if (!e.mime.isNull()) {
-            e.mime = *shared.insert(e.mime);
-            if (!e.extension.isEmpty())
-                e.extension = *shared.insert(e.extension);
+        if (const Entry::More &more = e.more(); !more.mime.isNull()) {
+            // A name without a dot has no extension and a name ending in one has an empty one: each is its own key.
+            const QString type = more.extension.isNull() ? more.mime : more.mime + '\n' + more.extension;
+            if (const auto kept = shared.constFind(type); kept != shared.cend())
+                e.aside = *kept;
+            else
+                shared.insert(type, e.aside);
         }
         entries.push_back(std::move(e));
     }
@@ -449,14 +469,15 @@ QVector<FolderModel::Entry> FolderModel::list(const QString &path, bool showHidd
 
 FolderModel::Entry FolderModel::typed(const Entry &entry) {
     // A plugin's item has a kind and no file type: its name says nothing about it.
-    if (!entry.mime.isNull() || !entry.kind.isNull())
+    if (!entry.more().mime.isNull() || !entry.more().kind.isNull())
         return entry;
     Entry e = entry;
-    e.mime = e.isDir ? QStringLiteral("inode/directory")
-                     : QMimeDatabase().mimeTypeForFile(e.name, QMimeDatabase::MatchExtension).name();
-    e.kind = kindForMime(e.mime);
+    Entry::More &more = e.toSet();
+    more.mime = e.isDir ? QStringLiteral("inode/directory")
+                        : QMimeDatabase().mimeTypeForFile(e.name, QMimeDatabase::MatchExtension).name();
+    more.kind = kindForMime(more.mime);
     if (!e.isDir)
-        e.extension = QFileInfo(e.name).suffix().toUpper();
+        more.extension = QFileInfo(e.name).suffix().toUpper();
     return e;
 }
 
@@ -467,11 +488,12 @@ FolderModel::Entry FolderModel::entryFor(const QFileInfo &info, const QMimeDatab
     e.isDir = info.isDir();
     setSizeAndDate(e, info);
     // A regular file is typed by its name alone; handing Qt the QFileInfo stats it once more first.
-    e.mime = e.isDir ? QStringLiteral("inode/directory")
-           : info.isFile() ? mimes.mimeTypeForFile(e.name, QMimeDatabase::MatchExtension).name()
-                           : mimes.mimeTypeForFile(info, QMimeDatabase::MatchExtension).name();
-    e.kind = kindForMime(e.mime);
-    e.extension = e.isDir ? QString() : info.suffix().toUpper();
+    Entry::More &more = e.toSet();
+    more.mime = e.isDir ? QStringLiteral("inode/directory")
+              : info.isFile() ? mimes.mimeTypeForFile(e.name, QMimeDatabase::MatchExtension).name()
+                              : mimes.mimeTypeForFile(info, QMimeDatabase::MatchExtension).name();
+    more.kind = kindForMime(more.mime);
+    more.extension = e.isDir ? QString() : info.suffix().toUpper();
     return e;
 }
 
@@ -562,16 +584,17 @@ void FolderModel::sortEntries(QVector<Entry> &entries, const QString &sort, cons
         if (sort == "size" && !a.isDir && a.size != b.size)
             return a.size > b.size;
         if (sort == "kind" && !a.isDir) {
-            if (a.kind != b.kind)
-                return a.kind < b.kind;
-            if (a.extension != b.extension)
+            const Entry::More &x = a.more(), &y = b.more();
+            if (x.kind != y.kind)
+                return x.kind < y.kind;
+            if (x.extension != y.extension)
                 return collate(true) < 0;
         }
         return collate(false) < 0;
     };
     const auto less = [&](const Entry &a, const Entry &b) {
         return before(a, b, [&](bool extension) {
-            return extension ? collator.compare(a.extension, b.extension) : collator.compare(a.name, b.name);
+            return extension ? collator.compare(a.more().extension, b.more().extension) : collator.compare(a.name, b.name);
         });
     };
     // A folder listed in the order it was written, as btrfs gives one back, is in a few runs already.
@@ -590,7 +613,7 @@ void FolderModel::sortEntries(QVector<Entry> &entries, const QString &sort, cons
     if (sort == "kind") {
         extensions.reserve(entries.size());
         for (const Entry &e : std::as_const(entries))
-            extensions.push_back(collator.sortKey(e.extension));
+            extensions.push_back(collator.sortKey(e.more().extension));
     }
     std::vector<qsizetype> order(entries.size());
     std::iota(order.begin(), order.end(), 0);
@@ -658,10 +681,11 @@ QVector<FolderModel::Entry> FolderModel::listItems(const QVariantList &items, co
         if (!e.name.contains(query, Qt::CaseInsensitive))
             continue;
         e.path = map.value("path").toString();
-        e.kind = QStringLiteral("item");
-        e.icon = map.value("icon").toString();
-        e.extension = map.value("subtitle").toString();
-        e.details = map.value("details").toList();
+        Entry::More &more = e.toSet();
+        more.kind = QStringLiteral("item");
+        more.icon = map.value("icon").toString();
+        more.extension = map.value("subtitle").toString();
+        more.details = map.value("details").toList();
         entries.push_back(e);
     }
     return entries;
@@ -673,7 +697,6 @@ QString FolderModel::recentFile() {
 
 void FolderModel::summarize(Entry &entry, bool showHidden) {
     entry.itemCount = 0;
-    entry.peek.clear();
 
     static const QStringList pictures{"jpg", "jpeg", "png", "webp", "gif", "heic", "avif", "jxl"};
     constexpr qsizetype peekSize = 2; // pictures the preview shows of a folder
@@ -690,8 +713,12 @@ void FolderModel::summarize(Entry &entry, bool showHidden) {
             firsts.removeLast();
     }
     const QDir dir(entry.path);
+    QStringList peek;
     for (const QString &name : std::as_const(firsts))
-        entry.peek << dir.filePath(name);
+        peek << dir.filePath(name);
+    // A folder with no pictures, now or before, stays as small as it was.
+    if (!peek.isEmpty() || !entry.more().peek.isEmpty())
+        entry.toSet().peek = peek;
 }
 
 int FolderModel::itemCount(const QString &folder, bool showHidden) {
@@ -848,13 +875,14 @@ QVariantMap FolderModel::get(int row) const {
 
 QVariantMap FolderModel::toMap(const Entry &listed) {
     const Entry entry = typed(listed);
+    const Entry::More &more = entry.more();
     // Not read yet, the size and date are absent rather than 0 B and 1970.
     return {
         {"name", entry.name}, {"path", entry.path}, {"isDir", entry.isDir},
         {"size", entry.unread ? QVariant() : entry.size}, {"modified", entry.unread ? QVariant() : entry.modified},
-        {"kind", entry.kind}, {"mime", entry.mime},
-        {"extension", entry.extension}, {"itemCount", entry.itemCount}, {"icon", entry.icon},
-        {"details", entry.details},
+        {"kind", more.kind}, {"mime", more.mime},
+        {"extension", more.extension}, {"itemCount", entry.itemCount}, {"icon", more.icon},
+        {"details", more.details},
     };
 }
 

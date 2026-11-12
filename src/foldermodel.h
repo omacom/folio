@@ -10,6 +10,7 @@
 #include <QTimer>
 #include <QVariantList>
 #include <QSet>
+#include <QSharedDataPointer>
 #include <QVector>
 #include <atomic>
 #include <memory>
@@ -55,19 +56,26 @@ public:
         bool isDir = false;
         // Listed by name, with the size and date left for when a view asks for them.
         bool unread = false;
+        int itemCount = -1;
         qint64 size = 0;
         QDateTime modified;
-        // Null for a file or folder the model listed: typed() reads them from its name when they're asked for.
-        QString kind;
-        QString mime;
-        // A file's extension; a plugin item's subtitle.
-        QString extension;
-        // A plugin item's glyph and its rows for the details pane.
-        QString icon;
-        QVariantList details;
-        int itemCount = -1;
-        // The first pictures in a folder, for the preview window.
-        QStringList peek;
+        // What few rows have, kept aside: a large folder's listing is mostly rows, and each stays small.
+        struct More : QSharedData {
+            // Null for a file or folder the model listed: typed() reads them from its name when they're asked for.
+            QString kind;
+            QString mime;
+            // A file's extension; a plugin item's subtitle.
+            QString extension;
+            // A plugin item's glyph and its rows for the details pane.
+            QString icon;
+            QVariantList details;
+            // The first pictures in a folder, for the preview window.
+            QStringList peek;
+        };
+        // Null for a row with none of it; rows of one type in a listing share one, and a write gives a row its own.
+        QSharedDataPointer<More> aside;
+        const More &more() const;
+        More &toSet();
     };
 
     explicit FolderModel(QObject *parent = nullptr);

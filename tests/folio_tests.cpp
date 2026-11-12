@@ -525,10 +525,10 @@ private slots:
         for (const auto &e : entries) names << e.name;
         // Folders first, then natural order, so photo9 comes before photo10.
         QCOMPARE(names, QStringList({"zeta", "alpha.md", "photo9.jpg", "photo10.jpg"}));
-        QCOMPARE(entries.at(0).kind, QString("folder"));
-        QCOMPARE(entries.at(1).kind, QString("text"));
-        QCOMPARE(entries.at(2).kind, QString("image"));
-        QCOMPARE(entries.at(2).extension, QString("JPG"));
+        QCOMPARE(entries.at(0).more().kind, QString("folder"));
+        QCOMPARE(entries.at(1).more().kind, QString("text"));
+        QCOMPARE(entries.at(2).more().kind, QString("image"));
+        QCOMPARE(entries.at(2).more().extension, QString("JPG"));
 
         QCOMPARE(FolderModel::list(dir.path(), true, "name", &error).size(), 5);
     }
@@ -562,18 +562,69 @@ private slots:
         QCOMPARE(entries.capacity(), entries.size());
         QHash<QString, const FolderModel::Entry *> first;
         for (const auto &e : entries) {
-            const auto *seen = first.value(e.extension + '\n' + e.mime);
+            const auto *seen = first.value(e.more().extension + '\n' + e.more().mime);
             if (!seen) {
-                first.insert(e.extension + '\n' + e.mime, &e);
+                first.insert(e.more().extension + '\n' + e.more().mime, &e);
                 continue;
             }
-            QVERIFY2(e.mime.constData() == seen->mime.constData(), qPrintable(e.name));
-            QVERIFY2(e.kind.constData() == seen->kind.constData(), qPrintable(e.name));
-            QVERIFY2(e.extension.isEmpty() || e.extension.constData() == seen->extension.constData(), qPrintable(e.name));
+            QVERIFY2(e.more().mime.constData() == seen->more().mime.constData(), qPrintable(e.name));
+            QVERIFY2(e.more().kind.constData() == seen->more().kind.constData(), qPrintable(e.name));
+            QVERIFY2(e.more().extension.isEmpty() || e.more().extension.constData() == seen->more().extension.constData(), qPrintable(e.name));
         }
-        QVERIFY(entries.at(1).mime.constData() == entries.at(3).mime.constData());
-        QCOMPARE(entries.at(0).extension, QString());
-        QCOMPARE(entries.at(3).extension, QString("TXT"));
+        QVERIFY(entries.at(1).more().mime.constData() == entries.at(3).more().mime.constData());
+        QCOMPARE(entries.at(0).more().extension, QString());
+        QCOMPARE(entries.at(3).more().extension, QString("TXT"));
+    }
+
+    void folderKeepsWhatFewRowsHaveAside()
+    {
+        QTemporaryDir dir;
+        for (const char *name : {"a.txt", "b.txt", "c.png", "sub/p.png"}) {
+            QDir(dir.path()).mkpath(QFileInfo(name).path());
+            write(dir.filePath(name), "x");
+        }
+        QDir(dir.path()).mkdir("none");
+        // Two strings, two flags and a count, a size, a date and one pointer: a type, a glyph or a folder's pictures aren't in the row.
+        QCOMPARE(sizeof(FolderModel::Entry), 2 * sizeof(QString) + 4 * sizeof(qint64));
+        // Listed by name for a model, a row whose type can wait keeps nothing aside.
+        QString error;
+        auto plain = FolderModel::list(dir.path(), false, "name", &error, {}, QLocale(), false);
+        QCOMPARE(plain.size(), 5);
+        for (const auto &e : std::as_const(plain))
+            QVERIFY2(!e.aside, qPrintable(e.name));
+        // Typed, the rows of one type share one block, and a row of another type has another.
+        auto typed = FolderModel::list(dir.path(), false, "name", &error);
+        QCOMPARE(typed.at(2).name, QString("a.txt"));
+        QVERIFY(typed.at(2).aside && typed.at(2).aside.constData() == typed.at(3).aside.constData());
+        QVERIFY(typed.at(0).aside && typed.at(0).aside.constData() == typed.at(1).aside.constData());
+        QVERIFY(typed.at(4).aside && typed.at(4).aside.constData() != typed.at(2).aside.constData());
+        // What is written to one row is its own: the row it shared with keeps what it had.
+        typed[2].toSet().peek = {"mine"};
+        QCOMPARE(typed.at(2).more().peek, QStringList{"mine"});
+        QCOMPARE(typed.at(2).more().mime, QString("text/plain"));
+        QCOMPARE(typed.at(3).more().peek, QStringList());
+        QCOMPARE(typed.at(3).more().mime, QString("text/plain"));
+        // A folder's first pictures are kept with it once counted, and a folder without any stays as small as it was.
+        FolderModel::summarize(plain[0], false);
+        FolderModel::summarize(plain[1], false);
+        QCOMPARE(plain.at(0).itemCount, 0);
+        QVERIFY(!plain.at(0).aside);
+        QCOMPARE(plain.at(1).more().peek, QStringList{dir.filePath("sub/p.png")});
+        // Counted again with its picture gone, it has none left.
+        QVERIFY(QFile::remove(dir.filePath("sub/p.png")));
+        FolderModel::summarize(plain[1], false);
+        QCOMPARE(plain.at(1).more().peek, QStringList());
+        // Two names of one type, one with no extension and one with an empty one, share no block: each row says what its own name does.
+        QTemporaryDir dots;
+        write(dots.filePath("dot."), "x");
+        write(dots.filePath("plain"), "x");
+        const auto dotted = FolderModel::list(dots.path(), false, "name", &error);
+        const auto undotted = FolderModel::list(dots.path(), false, "name", &error, {}, QLocale(), false);
+        QCOMPARE(dotted.size(), 2);
+        QCOMPARE(dotted.at(0).more().mime, dotted.at(1).more().mime);
+        QVERIFY(dotted.at(0).more().extension.isNull() != dotted.at(1).more().extension.isNull());
+        for (int i = 0; i < dotted.size(); ++i)
+            QCOMPARE(dotted.at(i).more().extension.isNull(), FolderModel::typed(undotted.at(i)).more().extension.isNull());
     }
 
     void folderTypesOnlyWhatsAskedFor()
@@ -591,7 +642,7 @@ private slots:
             const auto untyped = FolderModel::list(dir.path(), true, sort, &error, {}, QLocale(), false);
             const auto whole = FolderModel::list(dir.path(), true, sort, &error);
             QCOMPARE(untyped.size(), all);
-            const auto typedCount = std::count_if(untyped.cbegin(), untyped.cend(), [](const auto &e) { return !e.mime.isNull(); });
+            const auto typedCount = std::count_if(untyped.cbegin(), untyped.cend(), [](const auto &e) { return !e.more().mime.isNull(); });
             QCOMPARE(typedCount, sort == "kind" ? untyped.size() : lookedUp);
             for (int i = 0; i < whole.size(); ++i) {
                 QCOMPARE(untyped.at(i).path, whole.at(i).path);
@@ -601,10 +652,10 @@ private slots:
                     QCOMPARE(untyped.at(i).modified, whole.at(i).modified);
                 }
                 const auto asked = FolderModel::typed(untyped.at(i));
-                QCOMPARE(asked.kind, whole.at(i).kind);
-                QCOMPARE(asked.mime, whole.at(i).mime);
-                QCOMPARE(asked.extension, whole.at(i).extension);
-                QCOMPARE(asked.extension.isNull(), whole.at(i).extension.isNull());
+                QCOMPARE(asked.more().kind, whole.at(i).more().kind);
+                QCOMPARE(asked.more().mime, whole.at(i).more().mime);
+                QCOMPARE(asked.more().extension, whole.at(i).more().extension);
+                QCOMPARE(asked.more().extension.isNull(), whole.at(i).more().extension.isNull());
             }
         }
 
@@ -621,14 +672,14 @@ private slots:
             const auto whole = FolderModel::entryFor(QFileInfo(at.data(FolderModel::PathRole).toString()), mimes);
             QCOMPARE(at.data(FolderModel::NameRole).toString(), whole.name);
             QCOMPARE(at.data(FolderModel::IsDirRole).toBool(), whole.isDir);
-            QCOMPARE(at.data(FolderModel::KindRole).toString(), whole.kind);
-            QCOMPARE(at.data(FolderModel::MimeRole).toString(), whole.mime);
-            QCOMPARE(at.data(FolderModel::ExtensionRole).toString(), whole.extension);
-            QCOMPARE(at.data(FolderModel::ExtensionRole).toString().isNull(), whole.extension.isNull());
+            QCOMPARE(at.data(FolderModel::KindRole).toString(), whole.more().kind);
+            QCOMPARE(at.data(FolderModel::MimeRole).toString(), whole.more().mime);
+            QCOMPARE(at.data(FolderModel::ExtensionRole).toString(), whole.more().extension);
+            QCOMPARE(at.data(FolderModel::ExtensionRole).toString().isNull(), whole.more().extension.isNull());
             const QVariantMap map = model.get(row);
-            QCOMPARE(map.value("kind").toString(), whole.kind);
-            QCOMPARE(map.value("mime").toString(), whole.mime);
-            QCOMPARE(map.value("extension").toString(), whole.extension);
+            QCOMPARE(map.value("kind").toString(), whole.more().kind);
+            QCOMPARE(map.value("mime").toString(), whole.more().mime);
+            QCOMPARE(map.value("extension").toString(), whole.more().extension);
         }
     }
 
@@ -1081,10 +1132,10 @@ private slots:
                 QCOMPARE(at.data(FolderModel::IsDirRole).toBool(), e.isDir);
                 QCOMPARE(at.data(FolderModel::SizeRole).toLongLong(), e.size);
                 QCOMPARE(at.data(FolderModel::ModifiedRole).toDateTime(), e.modified);
-                QCOMPARE(at.data(FolderModel::KindRole).toString(), e.kind);
-                QCOMPARE(at.data(FolderModel::MimeRole).toString(), e.mime);
-                QCOMPARE(at.data(FolderModel::ExtensionRole).toString(), e.extension);
-                QCOMPARE(at.data(FolderModel::ExtensionRole).toString().isNull(), e.extension.isNull());
+                QCOMPARE(at.data(FolderModel::KindRole).toString(), e.more().kind);
+                QCOMPARE(at.data(FolderModel::MimeRole).toString(), e.more().mime);
+                QCOMPARE(at.data(FolderModel::ExtensionRole).toString(), e.more().extension);
+                QCOMPARE(at.data(FolderModel::ExtensionRole).toString().isNull(), e.more().extension.isNull());
                 QCOMPARE(model.get(row).value("size").toLongLong(), e.size);
                 QCOMPARE(model.get(row).value("modified").toDateTime(), e.modified);
             }
@@ -1170,7 +1221,7 @@ private slots:
         QVERIFY(QFile::link("/dev/null", dir.filePath("device.txt")));
 
         const QMimeDatabase mimes;
-        const auto mime = [&](const char *name) { return FolderModel::entryFor(QFileInfo(dir.filePath(name)), mimes).mime; };
+        const auto mime = [&](const char *name) { return FolderModel::entryFor(QFileInfo(dir.filePath(name)), mimes).more().mime; };
         QCOMPARE(mime("CMakeLists.txt"), QString("text/x-cmake"));
         QCOMPARE(mime("notes.txt"), QString("text/plain"));
         QCOMPARE(mime("link.md"), QString("text/markdown"));
@@ -1188,7 +1239,7 @@ private slots:
         QVERIFY(info.isFile());
         QVERIFY(QFile::remove(dir.filePath("notes.txt")));
         QCOMPARE(::mkfifo(QFile::encodeName(dir.filePath("notes.txt")).constData(), 0600), 0);
-        QCOMPARE(FolderModel::entryFor(info, QMimeDatabase()).mime, QString("text/plain"));
+        QCOMPARE(FolderModel::entryFor(info, QMimeDatabase()).more().mime, QString("text/plain"));
     }
 
     void folderSummaryCountsAndPeeks()
@@ -1203,7 +1254,7 @@ private slots:
         entry.path = dir.path();
         FolderModel::summarize(entry, false);
         QCOMPARE(entry.itemCount, 4);
-        QCOMPARE(entry.peek.size(), 2);
+        QCOMPARE(entry.more().peek.size(), 2);
         // The folder counts just count, the hidden only when they show.
         QCOMPARE(FolderModel::itemCount(dir.path(), false), 4);
         QCOMPARE(FolderModel::itemCount(dir.path(), true), 5);
@@ -1226,11 +1277,11 @@ private slots:
         entry.path = dir.path();
         FolderModel::summarize(entry, false);
         QCOMPARE(entry.itemCount, 26);
-        QCOMPARE(entry.peek, QStringList({dir.filePath("Photo9.JPG"), dir.filePath("photo10.jpg")}));
+        QCOMPARE(entry.more().peek, QStringList({dir.filePath("Photo9.JPG"), dir.filePath("photo10.jpg")}));
         // A folder named like a picture peeks like one.
         FolderModel::summarize(entry, true);
         QCOMPARE(entry.itemCount, 27);
-        QCOMPARE(entry.peek, QStringList({dir.filePath(".shots.png"), dir.filePath("Photo9.JPG")}));
+        QCOMPARE(entry.more().peek, QStringList({dir.filePath(".shots.png"), dir.filePath("Photo9.JPG")}));
 
         // A big folder is counted without holding every name at once.
         constexpr int files = 20000;
@@ -2253,7 +2304,7 @@ private slots:
         QCOMPARE(entries.size(), 2);
         QCOMPARE(entries.at(0).name, QString("new.pdf"));
         QCOMPARE(entries.at(1).name, QString("old.txt"));
-        QCOMPARE(entries.at(0).kind, QString("pdf"));
+        QCOMPARE(entries.at(0).more().kind, QString("pdf"));
         // Left before it's done, it stops checking what's on the list.
         int checks = 0;
         QVERIFY(FolderModel::listRecent(dir.filePath("recently-used.xbel"), false, 200, [&] { return ++checks > 3; }).size() == 1);
@@ -2262,9 +2313,9 @@ private slots:
     void folderSortsFiveWays()
     {
         QVector<FolderModel::Entry> e(4);
-        e[0].name = "b.txt"; e[0].kind = "text"; e[0].extension = "TXT"; e[0].size = 10; e[0].modified = QDateTime::fromSecsSinceEpoch(300);
-        e[1].name = "a.png"; e[1].kind = "image"; e[1].extension = "PNG"; e[1].size = 500; e[1].modified = QDateTime::fromSecsSinceEpoch(100);
-        e[2].name = "c.txt"; e[2].kind = "text"; e[2].extension = "TXT"; e[2].size = 99; e[2].modified = QDateTime::fromSecsSinceEpoch(200);
+        e[0].name = "b.txt"; e[0].toSet().kind = "text"; e[0].toSet().extension = "TXT"; e[0].size = 10; e[0].modified = QDateTime::fromSecsSinceEpoch(300);
+        e[1].name = "a.png"; e[1].toSet().kind = "image"; e[1].toSet().extension = "PNG"; e[1].size = 500; e[1].modified = QDateTime::fromSecsSinceEpoch(100);
+        e[2].name = "c.txt"; e[2].toSet().kind = "text"; e[2].toSet().extension = "TXT"; e[2].size = 99; e[2].modified = QDateTime::fromSecsSinceEpoch(200);
         e[3].name = "Zeta"; e[3].isDir = true; e[3].modified = QDateTime::fromSecsSinceEpoch(50);
         auto order = [&](const QString &sort) {
             auto copy = e;
@@ -7487,9 +7538,9 @@ private:
             e = FolderModel::typed(e);
             if (i % 13 == 0) {
                 e.isDir = true;
-                e.mime = "inode/directory";
-                e.kind = FolderModel::kindForMime(e.mime);
-                e.extension = QString();
+                e.toSet().mime = "inode/directory";
+                e.toSet().kind = FolderModel::kindForMime(e.more().mime);
+                e.toSet().extension = QString();
             } else {
                 e.size = (i % 5) * 10;
             }
@@ -7518,10 +7569,10 @@ private:
         if (sort == "size" && !a.isDir && a.size != b.size)
             return a.size > b.size;
         if (sort == "kind" && !a.isDir) {
-            if (a.kind != b.kind)
-                return a.kind < b.kind;
-            if (a.extension != b.extension)
-                return collator.compare(a.extension, b.extension) < 0;
+            if (a.more().kind != b.more().kind)
+                return a.more().kind < b.more().kind;
+            if (a.more().extension != b.more().extension)
+                return collator.compare(a.more().extension, b.more().extension) < 0;
         }
         return collator.compare(a.name, b.name) < 0;
     }

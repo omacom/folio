@@ -169,7 +169,7 @@ QVariantMap Previewer::item() const {
     // only its items carry them; the folder model's would always be empty.
     const FolderModel::Entry &e = m_entries.at(m_index);
     QVariantMap map = FolderModel::toMap(e);
-    map.insert("peek", e.peek);
+    map.insert("peek", e.more().peek);
     return map;
 }
 
@@ -182,7 +182,7 @@ QString Previewer::url() const {
 QString Previewer::type() const {
     if (m_index < 0 || m_index >= m_entries.size())
         return {};
-    return QMimeDatabase().mimeTypeForName(m_entries.at(m_index).mime).comment();
+    return QMimeDatabase().mimeTypeForName(m_entries.at(m_index).more().mime).comment();
 }
 
 void Previewer::next() {
@@ -206,7 +206,7 @@ void Previewer::open() {
 void Previewer::setIndex(int index, bool report) {
     m_index = index;
     const FolderModel::Entry e = m_entries.at(index);
-    m_viewer = viewerFor(e.mime, e.isDir);
+    m_viewer = viewerFor(e.more().mime, e.isDir);
     m_text.clear();
 
     // A folder's count and first pictures, and a text's opening part, are
