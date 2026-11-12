@@ -1392,10 +1392,9 @@ private slots:
         QCOMPARE(nearest.first().name, QString("beach.txt"));
     }
 
-    void searchReadsTheFoldersOnceWhileItsOpen()
+    void searchAnswersALaterKeyBeforeItsFoldersAreReadAgain()
     {
-        // The first letter reads the folders below; every letter after is
-        // answered from what was read. Ending the search lets all of it go.
+        // The first letter reads the folders below; every letter after is answered from what was read, and the folders are read again behind it.
         QTemporaryDir dir;
         QDir(dir.path()).mkpath("Photos/2024");
         write(dir.filePath("Photos/2024/beach.jpg"), "x");
@@ -1407,19 +1406,44 @@ private slots:
         QVERIFY(loaded.wait(3000));
         QVERIFY(!model.searchIndex());
         model.setQuery("b");
-        QVERIFY(loaded.wait(3000));
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QVERIFY(QThreadPool::globalInstance()->waitForDone(5000));
         const std::weak_ptr<const SearchIndex> held = model.searchIndex();
-        for (const char *query : {"be", "bea"}) {
-            model.setQuery(query);
-            QVERIFY(loaded.wait(3000));
-        }
-        QCOMPARE(model.count(), 2);
-        QVERIFY(model.searchIndex() == held.lock());
         QCOMPARE(held.lock()->counts.walks, 1);
-        QVERIFY(held.lock()->bytes() > 0);
+        {
+            // The second read of the folders is held at its first: the key's answer has landed all the same, from the first read.
+            WalksHeld walks;
+            loaded.clear();
+            model.setQuery("be");
+            QVERIFY(loaded.wait(3000));
+            QVERIFY(walks.reached.tryAcquire(1, 3000));
+            QCOMPARE(model.count(), 2);
+            QVERIFY(model.searchIndex() == held.lock());
+            QCOMPARE(walks.walks.load(), 1);
+            // Keys typed while that read is held are answered too, and start no read beside it: one more follows it.
+            for (const auto &[query, matches] : {std::pair{"bea", 2}, std::pair{"beaco", 1}}) {
+                loaded.clear();
+                model.setQuery(query);
+                QVERIFY(loaded.wait(3000));
+                QCOMPARE(model.count(), matches);
+            }
+            QCOMPARE(walks.walks.load(), 1);
+            // Let go, the held read lands with the answer to the last key, and one read more follows for the two keys.
+            loaded.clear();
+            walks.letGo();
+            QVERIFY(loaded.wait(3000));
+            QCOMPARE(model.count(), 1);
+            QTRY_COMPARE(loaded.size(), 2);
+            QVERIFY(QThreadPool::globalInstance()->waitForDone(5000));
+            QCOMPARE(walks.walks.load(), 2);
+        }
+        QTRY_VERIFY(held.expired());
+        QCOMPARE(model.count(), 1);
+        QVERIFY(model.searchIndex()->bytes() > 0);
+        const std::weak_ptr<const SearchIndex> second = model.searchIndex();
         model.setQuery("");
         QVERIFY(!model.searchIndex());
-        QTRY_VERIFY(held.expired());
+        QTRY_VERIFY(second.expired());
 
         // The next search reads again, so it finds what's new; showing
         // hidden files reads again too.
@@ -1431,6 +1455,27 @@ private slots:
         QVERIFY(loaded.wait(3000));
         QCOMPARE(model.count(), 3);
         QCOMPARE(model.searchIndex()->counts.walks, 1);
+    }
+
+    void searchFindsAtTheNextKeyAFileMadeSinceItsFoldersWereRead()
+    {
+        // Only the open folder is watched: a file made in a folder below it is found at the next key, with no refresh.
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("src");
+        write(dir.filePath("src/notes.txt"), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        model.setQuery("b");
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QVERIFY(QThreadPool::globalInstance()->waitForDone(5000));
+        QVERIFY(model.searchIndex());
+        QCOMPARE(model.count(), 0);
+        write(dir.filePath("src/budget.txt"), "x");
+        model.setQuery("bu");
+        QTRY_COMPARE(model.count(), 1);
+        QCOMPARE(model.get(0).value("name").toString(), QString("src/budget.txt"));
     }
 
     void searchListsTheBestMatchesFirst()

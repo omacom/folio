@@ -305,6 +305,7 @@ void FolderModel::setSortMode(const QString &sort) {
 void FolderModel::setQuery(const QString &query) {
     if (query == m_query)
         return;
+    const bool searching = m_search && !query.isEmpty();
     m_query = query;
     m_shownRows = 0;
     emit queryChanged();
@@ -318,6 +319,9 @@ void FolderModel::setQuery(const QString &query) {
         }
     }
     read();
+    // A later key is answered from what was read, and the folders are read again behind the answer: a file made since is found.
+    if (searching)
+        reload();
 }
 
 void FolderModel::setItems(const QVariantList &items) {
