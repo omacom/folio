@@ -574,6 +574,45 @@ private slots:
         QTRY_COMPARE(third.get(0).value("size").toLongLong(), 5);
     }
 
+    void folderReadAheadIsLeftWhenItsPathLeadsElsewhere()
+    {
+        if (!inotifyInstanceFree())
+            QSKIP("No inotify instance is free.");
+        // A link switched from one folder to another changes nothing in either: no watch of the folder read reports it.
+        QTemporaryDir dir;
+        QVERIFY(QDir(dir.path()).mkpath("first") && QDir(dir.path()).mkpath("second"));
+        write(dir.filePath("first/a.txt"), "a");
+        write(dir.filePath("first/b.txt"), "b");
+        write(dir.filePath("second/c.txt"), "c");
+        const QString link = dir.filePath("link");
+        QVERIFY(QFile::link(dir.filePath("first"), link));
+        FolderModel::readAhead(link);
+        QVERIFY(QThreadPool::globalInstance()->waitForDone(5000));
+        QVERIFY(QFile::remove(link));
+        QVERIFY(QFile::link(dir.filePath("second"), link));
+        FolderModel model;
+        model.setPath(link);
+        QTRY_VERIFY(!model.loading());
+        QCOMPARE(model.count(), 1);
+        QCOMPARE(model.get(0).value("name").toString(), QString("c.txt"));
+
+        // Left as it was, the link's folder is taken as read ahead: the size a hard link grew elsewhere stays the one read.
+        QTemporaryDir kept, elsewhere;
+        write(kept.filePath("d.txt"), "dd");
+        QCOMPARE(::link(QFile::encodeName(kept.filePath("d.txt")).constData(), QFile::encodeName(elsewhere.filePath("d.txt")).constData()), 0);
+        const QString steady = dir.filePath("steady");
+        QVERIFY(QFile::link(kept.path(), steady));
+        FolderModel::readAhead(steady);
+        QVERIFY(QThreadPool::globalInstance()->waitForDone(5000));
+        QFile grown(elsewhere.filePath("d.txt"));
+        QVERIFY(grown.open(QIODevice::Append) && grown.write("ddd") == 3);
+        grown.close();
+        FolderModel second;
+        second.setPath(steady);
+        QTRY_VERIFY(!second.loading());
+        QCOMPARE(second.get(0).value("size").toLongLong(), 2);
+    }
+
     void folderReadAheadNobodyWantsOpensNothing()
     {
         QTemporaryDir untaken, left, other;

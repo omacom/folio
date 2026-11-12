@@ -70,11 +70,13 @@ QString FolderModel::cacheKey(const QString &path, bool showHidden, const QStrin
 
 namespace {
 
-// A folder read before its window exists, and whether it was watched from before the reading began.
+// A folder read before its window exists: whether it was watched from before the reading began, and which folder its path led to then.
 struct Read {
     QVector<FolderModel::Entry> entries;
     QString error;
     bool watched = false;
+    dev_t device = 0;
+    ino_t inode = 0;
 };
 
 // Asked by a reading made ahead, before it begins and at each name: it stops once it's dropped untaken, or once the reload that took it is overtaken.
@@ -98,7 +100,7 @@ Ahead &ahead() {
 }
 
 // The reading made ahead, waited for here on the pool, when nothing in the folder changed since it began.
-std::optional<QVector<FolderModel::Entry>> taken(Ahead &early, QString *error, const std::function<bool()> &overtaken) {
+std::optional<QVector<FolderModel::Entry>> taken(Ahead &early, const QString &path, QString *error, const std::function<bool()> &overtaken) {
     if (!early.changes)
         return std::nullopt;
     // Taken out of the future, not copied: the reload that took the reading is its one owner, and reading a size into a row copies nothing.
@@ -107,7 +109,10 @@ std::optional<QVector<FolderModel::Entry>> taken(Ahead &early, QString *error, c
     if (overtaken())
         return QVector<FolderModel::Entry>();
     char event[sizeof(inotify_event) + NAME_MAX + 1];
-    if (!read.watched || ::read(*early.changes, event, sizeof event) >= 0 || errno != EAGAIN)
+    struct stat now;
+    // A link on the way may lead elsewhere since, which no watch of the folder read reports; one switched there and back within the reading isn't seen.
+    const bool sameFolder = ::stat(QFile::encodeName(path).constData(), &now) == 0 && now.st_dev == read.device && now.st_ino == read.inode;
+    if (!read.watched || !sameFolder || ::read(*early.changes, event, sizeof event) >= 0 || errno != EAGAIN)
         return std::nullopt;
     *error = read.error;
     return std::move(read.entries);
@@ -131,11 +136,15 @@ void FolderModel::readAhead(const QString &path) {
                    constexpr uint32_t anyChange = IN_ATTRIB | IN_CREATE | IN_DELETE | IN_DELETE_SELF | IN_MODIFY
                                                   | IN_MOVE | IN_MOVE_SELF | IN_CLOSE_WRITE;
                    Read read;
+                   struct stat began;
+                   const QByteArray name = QFile::encodeName(clean);
                    // Asked before the folder is touched: a reading nobody wants any more opens nothing.
-                   if (wanted->over())
+                   if (wanted->over() || ::stat(name.constData(), &began) != 0)
                        return read;
+                   read.device = began.st_dev;
+                   read.inode = began.st_ino;
                    // Watched before the reading begins, so no change is missed; added on this thread, since the kernel marks every name it holds.
-                   read.watched = inotify_add_watch(*changes, QFile::encodeName(clean).constData(), anyChange) >= 0;
+                   read.watched = inotify_add_watch(*changes, name.constData(), anyChange) >= 0;
                    if (read.watched)
                        read.entries = list(clean, false, "name", &read.error, [&] { return wanted->over(); }, locale, false);
                    return read;
@@ -864,7 +873,7 @@ void FolderModel::reload() {
     watcher->setFuture(QtConcurrent::run([path, showHidden, sort, query, items, latest, generation, locale, read, early = std::move(early)]() mutable {
         QString error;
         const auto overtaken = [&] { return *latest != generation; };
-        std::optional<QVector<Entry>> before = taken(early, &error, overtaken);
+        std::optional<QVector<Entry>> before = taken(early, path, &error, overtaken);
         auto entries = before ? std::move(*before)
                      : isPluginView(path) ? listItems(items, query)
                      : query.isEmpty() || path == recentPath() ? list(path, showHidden, sort, &error, overtaken, locale, false)
