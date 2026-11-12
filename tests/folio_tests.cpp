@@ -1068,6 +1068,163 @@ private slots:
         QVERIFY(!cut);
     }
 
+    void fileOpsCopyNamesUrisAndQuotedPaths()
+    {
+        // Copy as Text gives one line an item, and the quoted path comes back from a shell byte for byte, whatever the name holds.
+        QTemporaryDir dir;
+        // The name holds what a shell reads inside double quotes too: a dollar, a backtick, a backslash and the quote itself.
+        const QString stem = "-it's a\n\"$HOME\" `id` \\name";
+        const QString odd = dir.filePath(stem + ".tar.gz"), folder = dir.filePath("v1.2");
+        write(odd, "x");
+        QDir(dir.path()).mkdir("v1.2");
+        FileOps ops;
+        const auto yanked = [&](const QStringList &paths, const QString &as) {
+            ops.yank(paths, as);
+            return QGuiApplication::clipboard()->text();
+        };
+        QCOMPARE(yanked({odd, folder}, "path"), odd + "\n" + folder);
+        QCOMPARE(yanked({odd, folder}, "name"), stem + ".tar.gz\nv1.2");
+        // A folder has no extension, whatever dot its name has.
+        QCOMPARE(yanked({odd, folder}, "stem"), stem + "\nv1.2");
+        const QString uri = yanked({odd}, "uri");
+        QVERIFY(!uri.contains('\n') && !uri.contains(' '));
+        QCOMPARE(QUrl::fromEncoded(uri.toLatin1()).toLocalFile(), odd);
+
+        // The quoted text is the script's own source: anything short of whole quoting is a syntax error or another count.
+        QProcess sh;
+        sh.start("/bin/sh", {"-c", "set -- " + yanked({odd}, "quoted") + "; printf '%s|%s' \"$#\" \"$1\""});
+        QVERIFY(sh.waitForFinished(5000));
+        QCOMPARE(sh.exitCode(), 0);
+        QCOMPARE(sh.readAllStandardOutput(), "1|" + QFile::encodeName(odd));
+        QCOMPARE(yanked({odd, folder}, "quoted").count('\n'), 2);
+    }
+
+    void fileOpsForgetTheCutWhenTheClipboardMovesOn()
+    {
+        // Cut items stay cut, in every pane, until the paste lands or something else takes the clipboard.
+        QTemporaryDir from, to;
+        write(from.filePath("a.txt"), "a");
+        write(from.filePath("b.txt"), "b");
+        FileOps ops, other;
+        QSignalSpy done(&ops, &FileOps::done);
+        ops.cut({from.filePath("a.txt")});
+        QTRY_VERIFY(other.isCut(from.filePath("a.txt")));
+        QVERIFY(ops.isCut(from.filePath("a.txt")) && !ops.isCut(from.filePath("b.txt")));
+        ops.copy({from.filePath("a.txt")});
+        QTRY_COMPARE(ops.cutCount(), 0);
+        ops.cut({from.filePath("b.txt")});
+        QTRY_VERIFY(ops.isCut(from.filePath("b.txt")));
+        ops.cut({from.filePath("a.txt")});
+        QTRY_VERIFY(!ops.isCut(from.filePath("b.txt")));
+
+        QGuiApplication::clipboard()->setText("from another app");
+        QTRY_COMPARE(other.cutCount(), 0);
+        QTRY_COMPARE(ops.cutCount(), 0);
+        ops.cut({from.filePath("a.txt"), from.filePath("b.txt")});
+        QTRY_COMPARE(ops.cutCount(), 2);
+        QTRY_COMPARE(other.cutCount(), 2);
+        ops.paste(to.path());
+        QVERIFY(done.wait(3000));
+        QTRY_COMPARE(ops.cutCount(), 0);
+        QCOMPARE(other.cutCount(), 0);
+    }
+
+    void cutItemsDrawDimmerInEveryView()
+    {
+        QTemporaryDir home;
+        write(home.filePath("cut.txt"), "x");
+        write(home.filePath("kept.txt"), "x");
+        Backend backend(home.path());
+        backend.navigate(home.path());
+        QTRY_COMPARE(backend.folder()->rowCount(), 2);
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("plugins", QVariantMap{{"views", QVariantMap()}});
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window { width: 1000; height: 600; visible: true\n"
+                          "    property string view\n"
+                          "    Loader { id: loader; anchors.fill: parent; source: view + '.qml' }\n"
+                          "    function dim(name) {\n"
+                          "        const find = item => {\n"
+                          "            if (item instanceof Text && item.text === name) return item\n"
+                          "            for (const child of Array.from(item.children).concat(item.contentItem ? [item.contentItem] : [])) {\n"
+                          "                const found = find(child); if (found) return found }\n"
+                          "            return null }\n"
+                          "        const text = find(loader.item)\n"
+                          "        return text ? '' + text.color === '' + theme.secondaryForeground : 'not shown'\n"
+                          "    }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/CutViewsTest.qml"));
+        // The columns make a model for each folder on the way, as main() lets them.
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        const auto dim = [](QObject *window, const QString &name) {
+            QVariant result;
+            QMetaObject::invokeMethod(window, "dim", Q_RETURN_ARG(QVariant, result), Q_ARG(QVariant, name));
+            return result.toString();
+        };
+        // Drawn dimmer at once in each view, and bright again once a copy takes the clipboard.
+        fileOps.cut({home.filePath("cut.txt")});
+        std::vector<std::unique_ptr<QObject>> windows;
+        for (const char *view : {"FolderGrid", "FolderList", "FolderColumns"}) {
+            windows.emplace_back(component.createWithInitialProperties({{"view", view}}));
+            QVERIFY2(windows.back(), qPrintable(component.errorString()));
+            QTRY_COMPARE(dim(windows.back().get(), "cut.txt"), QString("true"));
+            QTRY_COMPARE(dim(windows.back().get(), "kept.txt"), QString("false"));
+        }
+        fileOps.copy({home.filePath("cut.txt")});
+        for (const auto &window : windows)
+            QTRY_COMPARE(dim(window.get(), "cut.txt"), QString("false"));
+    }
+
+    void pasteAsLinkTakesNoNameAndNeverWalksIn()
+    {
+        // Each link gets a free name and leads to the clipboard's absolute path, a folder is never walked, and undo takes them.
+        QTemporaryDir data, from, to;
+        const auto restore = dataHomeAt(data.path());
+        FileOps::forgetHistory();
+        write(from.filePath("a.txt"), "a");
+        QDir(from.path()).mkpath("box/inner");
+        write(to.filePath("a.txt"), "kept");
+        FileOps ops;
+        QSignalSpy done(&ops, &FileOps::done), failed(&ops, &FileOps::failed);
+        ops.copy({from.filePath("a.txt"), from.filePath("box")});
+        ops.pasteLinks(to.path());
+        QVERIFY(done.wait(3000));
+        QCOMPARE(QFileInfo(to.filePath("a (copy).txt")).readSymLink(), from.filePath("a.txt"));
+        QCOMPARE(contents(to.filePath("a.txt")), QByteArray("kept"));
+        QCOMPARE(QFileInfo(to.filePath("box")).readSymLink(), from.filePath("box"));
+        QCOMPARE(ops.undoName(), QString("Undo Paste as Link"));
+
+        ops.copy({from.filePath("box")});
+        ops.pasteLinks(from.filePath("box"));
+        QVERIFY(done.wait(3000));
+        QCOMPARE(QDir(from.filePath("box")).entryList(QDir::AllEntries | QDir::NoDotAndDotDot), QStringList({"box", "inner"}));
+        QCOMPARE(QFileInfo(from.filePath("box/box")).readSymLink(), from.filePath("box"));
+
+        for (int i = 0; i < 2; ++i) {
+            ops.undo();
+            QTRY_VERIFY(ops.busy().isEmpty());
+        }
+        QCOMPARE(QDir(to.path()).entryList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::System), QStringList({"a.txt"}));
+        QCOMPARE(QDir(from.filePath("box")).entryList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::System), QStringList({"inner"}));
+        QCOMPARE(contents(from.filePath("a.txt")), QByteArray("a"));
+        QVERIFY(failed.isEmpty());
+
+        if (geteuid() != 0) {
+            QVERIFY(QFile::setPermissions(to.path(), QFile::ReadOwner | QFile::ExeOwner));
+            ops.pasteLinks(to.path());
+            QTRY_COMPARE(failed.count(), 1);
+            QCOMPARE(failed.first().first().toString(), QString("Couldn't create box."));
+            QVERIFY(QFile::setPermissions(to.path(), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+        }
+    }
+
     void fileOpsCompressAcrossFolders()
     {
         // Search results and Recents can hold items from different folders:
@@ -1466,6 +1623,44 @@ private slots:
         QCOMPARE(done.count(), 2);
         QCOMPARE(done.takeFirst().at(1).toString(), QString("Untitled Folder"));
         QCOMPARE(done.takeFirst().at(1).toString(), QString("Untitled Folder 2"));
+    }
+
+    void newFileTakesNoNameAndUndoLeavesWhatsWritten()
+    {
+        // A new file never opens what's there, not even a link that leads nowhere, and undo takes it only while it's empty.
+        QTemporaryDir data, dir;
+        const auto restore = dataHomeAt(data.path());
+        FileOps::forgetHistory();
+        write(dir.filePath("Untitled File"), "kept");
+        QVERIFY(QFile::link(dir.filePath("gone"), dir.filePath("Untitled File 2")));
+        FileOps ops;
+        QSignalSpy done(&ops, &FileOps::done), failed(&ops, &FileOps::failed), notice(&ops, &FileOps::notice);
+        const QString made = ops.newFile(dir.path());
+        QCOMPARE(made, dir.filePath("Untitled File 3"));
+        QCOMPARE(done.takeFirst().at(1).toString(), QString("Untitled File 3"));
+        QCOMPARE(contents(dir.filePath("Untitled File")), QByteArray("kept"));
+        QVERIFY(!QFileInfo::exists(dir.filePath("gone")));
+        QCOMPARE(QFileInfo(made).size(), 0);
+        QCOMPARE(ops.undoName(), QString("Undo New File"));
+
+        write(made, "draft");
+        ops.undo();
+        QVERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.takeFirst().at(0).toString(), QString("Can't undo that: Untitled File 3 has been written to since it was made."));
+        QCOMPARE(contents(made), QByteArray("draft"));
+        write(made, "");
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QVERIFY(!QFileInfo::exists(made));
+        QCOMPARE(notice.last().first().toString(), QString("Undid making Untitled File 3."));
+
+        if (geteuid() != 0) {
+            QDir(dir.path()).mkdir("locked");
+            QVERIFY(QFile::setPermissions(dir.filePath("locked"), QFile::ReadOwner | QFile::ExeOwner));
+            QCOMPARE(ops.newFile(dir.filePath("locked")), QString());
+            QCOMPARE(failed.takeFirst().at(0).toString(), QString("Couldn't create a file here."));
+            QVERIFY(QFile::setPermissions(dir.filePath("locked"), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+        }
     }
 
     void recentsReadGtkRecentFiles()
@@ -4816,6 +5011,352 @@ private slots:
         fake->missing = {"vfat", "ext4"};
         QVERIFY(shown().contains("exFAT"));
         QVERIFY(!shown().contains("exFAT  ▾"));
+    }
+
+    void renameTabsOnToTheNextItem()
+    {
+        // Tab renames and opens on the next item, Shift+Tab the one before; past either end it closes, and a failed rename stays.
+        QTemporaryDir home;
+        for (const char *name : {"a.txt", "b.txt", "c.txt"})
+            write(home.filePath(name), name);
+        Backend backend(home.path());
+        backend.navigate(home.path());
+        QTRY_COMPARE(backend.folder()->rowCount(), 3);
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window {\n"
+                          "    width: 800; height: 600; visible: true\n"
+                          "    RenameDialog { id: dialog; anchors.fill: parent }\n"
+                          "    function openOn(row) { dialog.open(backend.folder.get(row)) }\n"
+                          "    readonly property string on: dialog.item ? dialog.item.path : ''\n"
+                          "    readonly property string problem: dialog.problem\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/RenameDialogTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowFocused(window));
+        QMetaObject::invokeMethod(window, "openOn", Q_ARG(QVariant, 1));
+        QTest::keyClick(window, 'x');
+        QTest::keyClick(window, Qt::Key_Backtab, Qt::ShiftModifier);
+        QVERIFY(QFile::exists(home.filePath("x.txt")));
+        QCOMPARE(window->property("on").toString(), home.filePath("a.txt"));
+
+        QTest::keyClick(window, 'c');
+        QTest::keyClick(window, Qt::Key_Tab);
+        QCOMPARE(window->property("problem").toString(), QString("c.txt already exists here."));
+        QCOMPARE(window->property("on").toString(), home.filePath("a.txt"));
+
+        // Listed again as a, c, x: Tab goes on to c.
+        backend.folder()->reload();
+        QTRY_COMPARE(backend.folder()->indexOfPath(home.filePath("x.txt")), 2);
+        QTest::keyClick(window, Qt::Key_Backspace);
+        QTest::keyClick(window, 'y');
+        QTest::keyClick(window, Qt::Key_Tab);
+        QVERIFY(QFile::exists(home.filePath("y.txt")));
+        QCOMPARE(window->property("on").toString(), home.filePath("c.txt"));
+
+        // Listed again as c, x, y: before c there's nothing, so it closes.
+        backend.folder()->reload();
+        QTRY_COMPARE(backend.folder()->indexOfPath(home.filePath("y.txt")), 2);
+        QTest::keyClick(window, 'w');
+        QTest::keyClick(window, Qt::Key_Backtab, Qt::ShiftModifier);
+        QVERIFY(QFile::exists(home.filePath("w.txt")));
+        QCOMPARE(window->property("on").toString(), QString());
+
+        // Listed again as w, x, y: after y there's nothing either.
+        backend.folder()->reload();
+        QTRY_COMPARE(backend.folder()->indexOfPath(home.filePath("w.txt")), 0);
+        QMetaObject::invokeMethod(window, "openOn", Q_ARG(QVariant, 2));
+        QTest::keyClick(window, 'z');
+        QTest::keyClick(window, Qt::Key_Tab);
+        QVERIFY(QFile::exists(home.filePath("z.txt")));
+        QCOMPARE(window->property("on").toString(), QString());
+    }
+
+    void renameTabFollowsTheListItsItemIsIn()
+    {
+        // In the columns view an item of another column is a row of that column's list: Tab goes on along it, item after item, not along the open folder's.
+        QTemporaryDir home;
+        QDir(home.path()).mkdir("inside");
+        for (const char *name : {"a.txt", "b.txt", "c.txt"})
+            write(home.filePath(QString("inside/%1").arg(name)), name);
+        Backend backend(home.path());
+        backend.navigate(home.path());
+        QTRY_COMPARE(backend.folder()->rowCount(), 1);
+        auto column = std::make_unique<FolderModel>();
+        column->setPath(home.filePath("inside"));
+        QTRY_COMPARE(column->rowCount(), 3);
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("column", column.get());
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window {\n"
+                          "    width: 800; height: 600; visible: true\n"
+                          "    RenameDialog { id: dialog; anchors.fill: parent }\n"
+                          "    function openOn(row) { dialog.open(column.get(row), column) }\n"
+                          "    readonly property string on: dialog.item ? dialog.item.path : ''\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/RenameDialogTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowFocused(window));
+        QMetaObject::invokeMethod(window, "openOn", Q_ARG(QVariant, 0));
+        QTest::keyClick(window, 'x');
+        QTest::keyClick(window, Qt::Key_Tab);
+        QVERIFY(QFile::exists(home.filePath("inside/x.txt")));
+        QCOMPARE(window->property("on").toString(), home.filePath("inside/b.txt"));
+        QTest::keyClick(window, 'y');
+        QTest::keyClick(window, Qt::Key_Tab);
+        QVERIFY(QFile::exists(home.filePath("inside/y.txt")));
+        QCOMPARE(window->property("on").toString(), home.filePath("inside/c.txt"));
+
+        // The column closes while its item is renamed: Tab still renames, and with no list to go along it closes.
+        engine.rootContext()->setContextProperty("column", QVariant());
+        column.reset();
+        QTest::keyClick(window, 'z');
+        QTest::keyClick(window, Qt::Key_Tab);
+        QVERIFY(QFile::exists(home.filePath("inside/z.txt")));
+        QCOMPARE(window->property("on").toString(), QString());
+    }
+
+    void renameTabFollowsAnItemInsideTheFolderRenamed()
+    {
+        // A search lists a folder and then a file in it: Tab from the folder opens on the file where it is now, and on from there.
+        QTemporaryDir home;
+        QDir(home.path()).mkdir("notes");
+        write(home.filePath("notes/draft.txt"), "x");
+        write(home.filePath("other.txt"), "x");
+        Backend backend(home.path());
+        backend.navigate(home.path());
+        QTRY_COMPARE(backend.folder()->rowCount(), 2);
+        // Every name here has a t, and so has the folder's new one.
+        backend.folder()->setQuery("t");
+        QTRY_COMPARE(backend.folder()->rowCount(), 3);
+        QCOMPARE(backend.folder()->indexOfPath(home.filePath("notes/draft.txt")), 1);
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window {\n"
+                          "    width: 800; height: 600; visible: true\n"
+                          "    RenameDialog { id: dialog; anchors.fill: parent }\n"
+                          "    function openOn(row) { dialog.open(backend.folder.get(row)) }\n"
+                          "    readonly property string on: dialog.item ? dialog.item.path : ''\n"
+                          "    readonly property string problem: dialog.problem\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/RenameDialogTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowFocused(window));
+        QMetaObject::invokeMethod(window, "openOn", Q_ARG(QVariant, 0));
+        QTest::keyClick(window, 'a');
+        QTest::keyClick(window, 't');
+        QTest::keyClick(window, Qt::Key_Tab);
+        QVERIFY(QFile::exists(home.filePath("at/draft.txt")));
+        // The row was read under the folder's old name: only the path carried over leads to the file.
+        QCOMPARE(window->property("on").toString(), home.filePath("at/draft.txt"));
+
+        // Read again, as a pane does after every change, the search lists at, at/draft.txt and other.txt.
+        backend.folder()->reload();
+        QTRY_COMPARE(backend.folder()->indexOfPath(home.filePath("at/draft.txt")), 1);
+        QTest::keyClick(window, 'y');
+        QTest::keyClick(window, Qt::Key_Tab);
+        QCOMPARE(window->property("problem").toString(), QString());
+        QVERIFY(QFile::exists(home.filePath("at/y.txt")));
+        QCOMPARE(window->property("on").toString(), home.filePath("other.txt"));
+    }
+
+    void renameFromAColumnsMenuTabsAlongThatColumn()
+    {
+        // The whole way in a pane: a right click in a column to the left, Rename from its menu, and Tab goes on along that column.
+        QTemporaryDir home, none;
+        QDir(home.path()).mkdir("sub");
+        write(home.filePath("one.txt"), "x");
+        write(home.filePath("two.txt"), "x");
+        write(home.filePath("sub/deep.txt"), "x");
+        Backend backend(home.path());
+        backend.navigate(home.filePath("sub"));
+        QTRY_COMPARE(backend.folder()->rowCount(), 1);
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        Places places(home.path());
+        // The menu asks the plugins for an item's actions: none are installed here.
+        Plugins plugins("en", {none.filePath("plugins")}, none.filePath("folio.conf"));
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("places", &places);
+        engine.rootContext()->setContextProperty("plugins", &plugins);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        // Before the pane is read: its columns import the model's type by name.
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window { width: 1000; height: 600; visible: true\n"
+                          "    FolderPane { id: pane; anchors.fill: parent; focus: true }\n"
+                          "    function find(item, wanted) {\n"
+                          "        if (wanted(item)) return item\n"
+                          "        for (const child of Array.from(item.children).concat(item.contentItem ? [item.contentItem] : [])) {\n"
+                          "            const found = find(child, wanted); if (found) return found }\n"
+                          "        return null }\n"
+                          "    function where(name) {\n"
+                          "        const text = find(pane, item => item instanceof Text && item.text === name)\n"
+                          "        return text ? text.mapToItem(null, text.width / 2, text.height / 2) : Qt.point(-1, -1) }\n"
+                          "    function renaming() {\n"
+                          "        const dialog = find(pane, item => typeof item.submit === 'function' && 'rows' in item)\n"
+                          "        return dialog && dialog.item ? dialog.item.path : '' }\n"
+                          "    readonly property var menu: Array.from(pane.resources).find(entry => entry.renameRequested)\n"
+                          "    function menuShown() { return menu.visible }\n"
+                          "    function choose(label) {\n"
+                          "        for (let i = 0; i < menu.count; ++i) {\n"
+                          "            const entry = menu.itemAt(i)\n"
+                          "            if (entry && entry.text === label) { entry.triggered(); return true } }\n"
+                          "        return false }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/PaneRenameTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowFocused(window));
+        const auto asked = [window](const char *method, const QVariantList &with = {}) {
+            QVariant result;
+            if (with.isEmpty())
+                QMetaObject::invokeMethod(window, method, Q_RETURN_ARG(QVariant, result));
+            else
+                QMetaObject::invokeMethod(window, method, Q_RETURN_ARG(QVariant, result), Q_ARG(QVariant, with.first()));
+            return result;
+        };
+        // Clicked once the name stays where it is, as a column is laid out a moment after its rows are made.
+        const int layoutPollMs = 50;
+        QPointF at(-1, -1);
+        QVERIFY(QTest::qWaitFor([&] {
+            const QPointF now = asked("where", {"one.txt"}).toPointF();
+            const bool settled = now.x() >= 0 && now == at;
+            at = now;
+            if (!settled)
+                QTest::qWait(layoutPollMs);
+            return settled;
+        }));
+        QTest::mouseClick(window, Qt::RightButton, Qt::NoModifier, at.toPoint());
+        QTRY_VERIFY(asked("menuShown").toBool());
+        // Asked once: choosing closes the menu, and a QTRY reads its condition again.
+        QVERIFY(asked("choose", {QString::fromUtf8("Rename…")}).toBool());
+        QCOMPARE(asked("renaming").toString(), home.filePath("one.txt"));
+
+        // The home lists sub, one.txt and two.txt; the open folder has neither file, so only the column's own list leads on to two.txt.
+        QTest::keyClick(window, 'x');
+        QTest::keyClick(window, Qt::Key_Tab);
+        QVERIFY(QFile::exists(home.filePath("x.txt")));
+        QCOMPARE(asked("renaming").toString(), home.filePath("two.txt"));
+    }
+
+    void rightClickAsksForTheMenuInEveryView()
+    {
+        // Each place a view asks for the menu from: the open folder's rows give no list, a side column of the columns view gives its own.
+        QTemporaryDir home;
+        QDir(home.path()).mkpath("sub/inner");
+        write(home.filePath("kept.txt"), "x");
+        write(home.filePath("other.txt"), "x");
+        write(home.filePath("sub/deep.txt"), "x");
+        write(home.filePath("sub/inner/leaf.txt"), "x");
+        Backend backend(home.path());
+        backend.navigate(home.filePath("sub"));
+        QTRY_COMPARE(backend.folder()->rowCount(), 2);
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("plugins", QVariantMap{{"views", QVariantMap()}});
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window { width: 1000; height: 600; visible: true\n"
+                          "    property string view\n"
+                          "    property int asked: 0\n"
+                          "    property string askedOn\n"
+                          "    property string askedIn\n"
+                          "    property int listed: -1\n"
+                          "    Loader { id: loader; anchors.fill: parent; source: view + '.qml' }\n"
+                          "    Connections { target: loader.item\n"
+                          "        function onContextMenu(item, folder, at, rows) {\n"
+                          "            asked += 1; askedOn = item ? item.path : ''; askedIn = folder; listed = rows ? rows.count : -1 } }\n"
+                          "    function cursor(row) { loader.item.currentIndex = row }\n"
+                          "    function where(name) {\n"
+                          "        const find = item => {\n"
+                          "            if (item instanceof Text && item.text === name) return item\n"
+                          "            for (const child of Array.from(item.children).concat(item.contentItem ? [item.contentItem] : [])) {\n"
+                          "                const found = find(child); if (found) return found }\n"
+                          "            return null }\n"
+                          "        const text = find(loader.item)\n"
+                          "        return text ? text.mapToItem(null, text.width / 2, text.height / 2) : Qt.point(-1, -1)\n"
+                          "    }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/MenuViewsTest.qml"));
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        const int layoutPollMs = 50;
+        // A right click on the name asks once, for that item, in `folder`, with a list of `rows` rows (-1 for none).
+        const auto asks = [layoutPollMs](QQuickWindow *window, const QString &name, const QString &folder, int rows) {
+            const int before = window->property("asked").toInt();
+            // Clicked once the name stays where it is: a column just shown is laid out a moment after its rows are made.
+            QPointF at(-1, -1);
+            if (!QTest::qWaitFor([&] {
+                    QVariant now;
+                    QMetaObject::invokeMethod(window, "where", Q_RETURN_ARG(QVariant, now), Q_ARG(QVariant, name));
+                    const bool settled = now.toPointF().x() >= 0 && now.toPointF() == at;
+                    at = now.toPointF();
+                    if (!settled)
+                        QTest::qWait(layoutPollMs);
+                    return settled;
+                }))
+                return QString("%1 is not shown").arg(name);
+            QTest::mouseClick(window, Qt::RightButton, Qt::NoModifier, at.toPoint());
+            if (!QTest::qWaitFor([&] { return window->property("asked").toInt() == before + 1; }))
+                return QString("%1: asked %2 times").arg(name).arg(window->property("asked").toInt() - before);
+            return window->property("askedOn").toString() == folder + '/' + name && window->property("askedIn").toString() == folder
+                       && window->property("listed").toInt() == rows
+                ? QString()
+                : QString("%1: on %2 in %3 with %4 rows")
+                      .arg(name, window->property("askedOn").toString(), window->property("askedIn").toString())
+                      .arg(window->property("listed").toInt());
+        };
+        for (const char *view : {"FolderGrid", "FolderList", "FolderColumns"}) {
+            std::unique_ptr<QObject> root(component.createWithInitialProperties({{"view", view}}));
+            QVERIFY2(root, qPrintable(component.errorString()));
+            auto *window = qobject_cast<QQuickWindow *>(root.get());
+            QVERIFY(QTest::qWaitForWindowExposed(window));
+            QCOMPARE(asks(window, "deep.txt", home.filePath("sub"), -1), QString());
+            if (view != QByteArray("FolderColumns"))
+                continue;
+            // Each list has its own number of rows: the home to the left three, the open folder two, the folder under the cursor one.
+            QCOMPARE(asks(window, "kept.txt", home.path(), 3), QString());
+            QMetaObject::invokeMethod(window, "cursor", Q_ARG(QVariant, 0));
+            QCOMPARE(asks(window, "leaf.txt", home.filePath("sub/inner"), 1), QString());
+        }
     }
 
     void dialogsKeepTheKeyboard()

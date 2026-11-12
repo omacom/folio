@@ -2,6 +2,7 @@
 
 #include <QDateTime>
 #include <QObject>
+#include <QSet>
 #include <QStringList>
 #include <QUrl>
 #include <QVariantList>
@@ -24,6 +25,7 @@ class FileOps : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(bool canPaste READ canPaste NOTIFY clipboardChanged)
+    Q_PROPERTY(int cutCount READ cutCount NOTIFY clipboardChanged)
     Q_PROPERTY(QVariantMap clash READ clash NOTIFY clashChanged)
     Q_PROPERTY(QString undoName READ undoName NOTIFY historyChanged)
 
@@ -33,6 +35,9 @@ public:
 
     QString busy() const { return m_busy; }
     bool canPaste() const;
+    // How many items the clipboard holds cut, and whether `path` is one, which the views draw dimmer.
+    int cutCount() const { return int(m_cut.size()); }
+    Q_INVOKABLE bool isCut(const QString &path) const;
 
     // How far a piece of work has got, and whether it's been asked to stop:
     // the worker counts and checks, the UI thread shows and asks.
@@ -74,9 +79,13 @@ public:
         // What an undo or redo stopped partway had moved of an item, put
         // back (`back`) before the item goes again, and never redone.
         bool back = false;
+        // A file made empty (`empty`), which undo takes only while it still is.
+        bool empty = false;
     };
     // What undo names: the kind of change, and the item or how many.
-    enum Kind { Renaming, Moving, Copying, Duplicating, MakingFolder, Compressing, Extracting, Trashing };
+    enum Kind {
+        Renaming, Moving, Copying, Duplicating, MakingFolder, MakingFile, Linking, Compressing, Extracting, Trashing
+    };
     struct Change {
         Kind kind;
         QString name;
@@ -91,8 +100,11 @@ public:
     Q_INVOKABLE static bool shiftHeld();
     Q_INVOKABLE void copy(const QStringList &paths);
     Q_INVOKABLE void cut(const QStringList &paths);
-    Q_INVOKABLE void yank(const QStringList &paths);
+    // The paths as text, one line each, `as` "path", "name", "stem" (no extension), "uri" or "quoted" (for a shell).
+    Q_INVOKABLE void yank(const QStringList &paths, const QString &as = QStringLiteral("path"));
     Q_INVOKABLE void paste(const QString &folder);
+    // Links each file on the clipboard into `folder` under its name (a "(copy)" one when that's taken), never over anything.
+    Q_INVOKABLE void pasteLinks(const QString &folder);
     // Files dropped on a folder: moved when they're on the same drive,
     // copied from another drive. Dropping something where it already is
     // does nothing.
@@ -141,6 +153,8 @@ public:
     Q_INVOKABLE static int extensionStart(const QString &name, bool isDir);
     // Makes "New Folder" (or "New Folder 2"...); done() names it.
     Q_INVOKABLE void newFolder(const QString &folder);
+    // Makes an empty "Untitled File" (or "Untitled File 2"...) over nothing, names it in done(), and returns its path.
+    Q_INVOKABLE QString newFile(const QString &folder);
 
     // The apps that can open a file, from the desktop's MIME database:
     // {id, name, isDefault}, the default first.
@@ -325,6 +339,8 @@ private:
                       const QString &stopped, const std::function<void(QProcess *, int)> &finished);
 
     QString m_busy;
+    // The clipboard's cut items, read once each time it changes.
+    QSet<QString> m_cut;
     std::shared_ptr<Job> m_job;
     // The lane this pane's work under way is counted in.
     std::optional<Lane> m_lane;

@@ -25,6 +25,8 @@ Item {
     required property bool selected
 
     property bool current: false
+    // Cut and not yet pasted: drawn in the colour of a disabled menu entry.
+    readonly property bool cut: fileOps.cutCount > 0 && fileOps.isCut(path)
 
     signal clicked(int modifiers)
     signal activated()
@@ -74,7 +76,7 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         width: parent.width - 28
         text: tile.name
-        color: tile.current ? theme.accent : theme.foreground
+        color: tile.cut ? theme.secondaryForeground : tile.current ? theme.accent : theme.foreground
         font.pixelSize: 12
         horizontalAlignment: Text.AlignHCenter
         wrapMode: Text.WrapAtWordBoundaryOrAnywhere

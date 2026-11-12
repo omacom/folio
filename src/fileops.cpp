@@ -52,8 +52,21 @@ static void tellEveryone() {
 }
 
 FileOps::FileOps(QObject *parent) : QObject(parent) {
-    if (auto *clipboard = QGuiApplication::clipboard())
-        connect(clipboard, &QClipboard::dataChanged, this, &FileOps::clipboardChanged);
+    if (auto *clipboard = QGuiApplication::clipboard()) {
+        const auto readCut = [this, clipboard] {
+            bool cut = false;
+            const QMimeData *data = clipboard->mimeData();
+            const QStringList paths =
+                data && data->hasFormat("x-special/gnome-copied-files") ? pathsFrom(data, &cut) : QStringList();
+            m_cut.clear();
+            if (cut)
+                for (const QString &path : paths)
+                    m_cut.insert(QDir::cleanPath(path));
+            emit clipboardChanged();
+        };
+        readCut();
+        connect(clipboard, &QClipboard::dataChanged, this, readCut);
+    }
     s_everyone << this;
 }
 
@@ -144,6 +157,10 @@ bool FileOps::canPaste() const {
     return clipboard && !pathsFrom(clipboard->mimeData(), nullptr).isEmpty();
 }
 
+bool FileOps::isCut(const QString &path) const {
+    return m_cut.contains(QDir::cleanPath(path));
+}
+
 bool FileOps::shiftHeld() {
     return QGuiApplication::queryKeyboardModifiers() & Qt::ShiftModifier;
 }
@@ -158,9 +175,25 @@ void FileOps::cut(const QStringList &paths) {
         QGuiApplication::clipboard()->setMimeData(mimeDataFor(paths, true));
 }
 
-void FileOps::yank(const QStringList &paths) {
-    if (!paths.isEmpty())
-        QGuiApplication::clipboard()->setText(paths.join('\n'));
+// /a/it's here becomes '/a/it'\''s here': inside single quotes only a quote needs ending, escaping and reopening.
+static QString shellQuoted(const QString &path) {
+    return '\'' + QString(path).replace('\'', "'\\''") + '\'';
+}
+
+void FileOps::yank(const QStringList &paths, const QString &as) {
+    if (paths.isEmpty())
+        return;
+    QStringList lines;
+    for (const QString &path : paths) {
+        const QFileInfo info(path);
+        const int dot = as == "stem" ? extensionStart(info.fileName(), info.isDir()) : -1;
+        lines << (as == "name"     ? info.fileName()
+                  : as == "stem"   ? info.fileName().left(dot)
+                  : as == "uri"    ? QString::fromLatin1(QUrl::fromLocalFile(path).toEncoded())
+                  : as == "quoted" ? shellQuoted(path)
+                                   : path);
+    }
+    QGuiApplication::clipboard()->setText(lines.join('\n'));
 }
 
 int FileOps::extensionStart(const QString &name, bool isDir) {
@@ -936,6 +969,56 @@ void FileOps::startTransfer(const QStringList &paths, const QString &folder, Mod
         });
 }
 
+void FileOps::pasteLinks(const QString &folder) {
+    const QStringList paths = pathsFrom(QGuiApplication::clipboard()->mimeData(), nullptr);
+    if (paths.isEmpty() || !idle())
+        return;
+    if (!QFileInfo(folder).isDir() || inTrash(folder)) {
+        emit failed(tr("Files can't be pasted here."));
+        return;
+    }
+    const int count = paths.size();
+    inBackground(
+        [count](const Job &job) {
+            return counting(job, tr("Linking %L1 of %Ln items…", "", job.total), tr("Linking %Ln items…", "", count));
+        },
+        [paths, folder](Job &job) {
+            Outcome result;
+            job.total = paths.size();
+            for (const QString &path : paths) {
+                if (job.cancelled)
+                    break;
+                // The clipboard's absolute path, as written, as a link is copied; symlink() never replaces, nor reads what it leads to.
+                QString name;
+                int why = EEXIST;
+                while (why == EEXIST) {
+                    name = freeName(folder, QFileInfo(path).fileName());
+                    const QByteArray link = QFile::encodeName(QDir(folder).filePath(name));
+                    why = ::symlink(QFile::encodeName(path).constData(), link.constData()) == 0 ? 0 : errno;
+                }
+                if (why != 0) {
+                    const bool unlinkable = why == EPERM || why == EOPNOTSUPP || why == ENOSYS;
+                    result.error = unlinkable ? tr("This drive can't hold links.") : tr("Couldn't create %1.").arg(name);
+                    break;
+                }
+                result.made << name;
+                result.steps << identified({true, QDir(folder).filePath(name), {}});
+                ++job.done;
+            }
+            return result;
+        },
+        [this, folder](const Outcome &result, const Job &job) {
+            if (!result.steps.isEmpty())
+                remember({Linking, result.made.first(), int(result.made.size()), result.steps});
+            if (!result.error.isEmpty())
+                emit failed(result.error);
+            else if (job.cancelled)
+                sayStopped(job);
+            if (!result.made.isEmpty())
+                emit done(folder, result.made.first());
+        });
+}
+
 void FileOps::duplicate(const QString &path) {
     if (!idle())
         return;
@@ -1630,6 +1713,37 @@ void FileOps::newFolder(const QString &folder) {
     emit done(folder, name);
 }
 
+QString FileOps::newFile(const QString &folder) {
+    if (!canStart(Lane::Files)) {
+        emit failed(tr("Try again once the work under way is done."));
+        return {};
+    }
+    if (!QFileInfo(folder).isDir()) {
+        emit failed(tr("Files can't be made here."));
+        return {};
+    }
+    // Readable and writable by all, less the umask, as touch makes one.
+    constexpr mode_t newFileMode = 0666;
+    // O_EXCL never opens what's there, not even a link that leads nowhere, so a taken name goes on to the next.
+    QString name = tr("Untitled File");
+    int fd;
+    for (int n = 2; (fd = ::open(QFile::encodeName(QDir(folder).filePath(name)).constData(),
+                                 O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, newFileMode)) < 0
+                    && errno == EEXIST;
+         ++n)
+        name = tr("Untitled File %1").arg(n);
+    if (fd < 0) {
+        emit failed(tr("Couldn't create a file here."));
+        return {};
+    }
+    ::close(fd);
+    Step made = identified({true, QDir(folder).filePath(name), {}});
+    made.empty = true;
+    remember({MakingFile, name, 1, {made}});
+    emit done(folder, name);
+    return QDir(folder).filePath(name);
+}
+
 // Undo and redo.
 
 // Adds a change to the undos or redos, letting go of the oldest past the
@@ -1683,6 +1797,8 @@ QString FileOps::undoName() const {
     case Copying: return tr("Undo Copy");
     case Duplicating: return tr("Undo Duplicate");
     case MakingFolder: return tr("Undo New Folder");
+    case MakingFile: return tr("Undo New File");
+    case Linking: return tr("Undo Paste as Link");
     case Compressing: return tr("Undo Compress");
     case Extracting: return tr("Undo Extract");
     case Trashing: return tr("Undo Delete");
@@ -1704,7 +1820,11 @@ static QString didMessage(const FileOps::Change &change, bool undoing) {
     case FileOps::Duplicating:
         return undoing ? FileOps::tr("Undid duplicating %1.").arg(name) : FileOps::tr("Redid duplicating %1.").arg(name);
     case FileOps::MakingFolder:
+    case FileOps::MakingFile:
         return undoing ? FileOps::tr("Undid making %1.").arg(name) : FileOps::tr("Redid making %1.").arg(name);
+    case FileOps::Linking:
+        return undoing ? FileOps::tr("Undid linking %Ln items.", "", n)
+                       : FileOps::tr("Redid linking %Ln items.", "", n);
     case FileOps::Compressing:
         return undoing ? FileOps::tr("Undid compressing into %1.").arg(name)
                        : FileOps::tr("Redid compressing into %1.").arg(name);
@@ -1744,6 +1864,11 @@ static QString unchanged(const QList<FileOps::Step> &steps, bool undoing) {
             return undoing ? FileOps::tr("Can't undo that: %1 isn't where it was left.").arg(name)
                            : FileOps::tr("Can't redo that: %1 isn't where it was left.").arg(name);
         }
+        struct stat made;
+        if (step->empty && step->other.isEmpty() && !after.contains(now)
+            && (::lstat(QFile::encodeName(now).constData(), &made) != 0 || made.st_size != 0))
+            return FileOps::tr("Can't undo that: %1 has been written to since it was made.")
+                .arg(QFileInfo(now).fileName());
         if (!next.isEmpty() && there(next)) {
             const QFileInfo blocked(next);
             const QString folder = QFileInfo(blocked.absolutePath()).fileName();

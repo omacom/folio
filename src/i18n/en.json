@@ -60,6 +60,7 @@
   "Can't redo that: %1 already exists in %2.": "Can't redo that: %1 already exists in %2.",
   "Can't redo that: %1 isn't where it was left.": "Can't redo that: %1 isn't where it was left.",
   "Can't undo that: %1 already exists in %2.": "Can't undo that: %1 already exists in %2.",
+  "Can't undo that: %1 has been written to since it was made.": "Can't undo that: %1 has been written to since it was made.",
   "Can't undo that: %1 isn't where it was left.": "Can't undo that: %1 isn't where it was left.",
   "Cancel": "Cancel",
   "Check the server": "Check the server",
@@ -79,7 +80,7 @@
   "Connecting to %1…": "Connecting to %1…",
   "Copied %1, but couldn't remove the original.": "Copied %1, but couldn't remove the original.",
   "Copy": "Copy",
-  "Copy Path": "Copy Path",
+  "Copy as Text": "Copy as Text",
   "Copy the path as text": "Copy the path as text",
   "Copy, cut, paste files": "Copy, cut, paste files",
   "Copying %1: %2 of %3…": "Copying %1: %2 of %3…",
@@ -99,6 +100,7 @@
   "Couldn't copy %1.": "Couldn't copy %1.",
   "Couldn't copy the link %1.": "Couldn't copy the link %1.",
   "Couldn't create %1.": "Couldn't create %1.",
+  "Couldn't create a file here.": "Couldn't create a file here.",
   "Couldn't create a folder here.": "Couldn't create a folder here.",
   "Couldn't delete %Ln items.": {
     "one": "Couldn't delete %Ln item.",
@@ -186,6 +188,7 @@
   "Extracting needs bsdtar, from the libarchive package.": "Extracting needs bsdtar, from the libarchive package.",
   "FAT32 can't have %1 in a drive's name.": "FAT32 can't have %1 in a drive's name.",
   "Files": "Files",
+  "Files can't be made here.": "Files can't be made here.",
   "Files can't be pasted here.": "Files can't be pasted here.",
   "Fit to the window": "Fit to the window",
   "Folder": "Folder",
@@ -214,6 +217,14 @@
   "Keep Both": "Keep Both",
   "Keyboard shortcuts": "Keyboard shortcuts",
   "Kind": "Kind",
+  "Linking %L1 of %Ln items…": {
+    "one": "Linking %L1 of %Ln item…",
+    "other": "Linking %L1 of %Ln items…"
+  },
+  "Linking %Ln items…": {
+    "one": "Linking %Ln item…",
+    "other": "Linking %Ln items…"
+  },
   "Making a preview…": "Making a preview…",
   "Merge": "Merge",
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.",
@@ -241,6 +252,8 @@
     "other": "Moving %Ln items…"
   },
   "Name": "Name",
+  "Name Without Extension": "Name Without Extension",
+  "New File": "New File",
   "New Folder": "New Folder",
   "New folder": "New folder",
   "New window": "New window",
@@ -273,6 +286,8 @@
   "Password": "Password",
   "Paste": "Paste",
   "Paste Into Folder": "Paste Into Folder",
+  "Paste as Link": "Paste as Link",
+  "Path": "Path",
   "Pause (K)": "Pause (K)",
   "Permission was refused.": "Permission was refused.",
   "Pin": "Pin",
@@ -297,6 +312,10 @@
   "Redid extracting %Ln archives.": {
     "one": "Redid extracting %Ln archive.",
     "other": "Redid extracting %Ln archives."
+  },
+  "Redid linking %Ln items.": {
+    "one": "Redid linking %Ln item.",
+    "other": "Redid linking %Ln items."
   },
   "Redid making %1.": "Redid making %1.",
   "Redid moving %Ln items to the trash.": {
@@ -351,6 +370,7 @@
   "Select everything": "Select everything",
   "Select with a rectangle (Alt adds)": "Select with a rectangle (Alt adds)",
   "Share": "Share",
+  "Shell-Quoted Path": "Shell-Quoted Path",
   "Shift+click / Shift+arrows": "Shift+click / Shift+arrows",
   "Show Hidden Files": "Show Hidden Files",
   "Show as columns": "Show as columns",
@@ -391,11 +411,13 @@
   "There's nothing to redo.": "There's nothing to redo.",
   "There's nothing to undo.": "There's nothing to undo.",
   "This computer can't make %1 drives.": "This computer can't make %1 drives.",
+  "This drive can't hold links.": "This drive can't hold links.",
   "This folder is empty": "This folder is empty",
   "This folder no longer exists.": "This folder no longer exists.",
   "Trash": "Trash",
   "Try again once the work under way is done.": "Try again once the work under way is done.",
   "Type a path, or a server's address like sftp://host/ (Tab completes)": "Type a path, or a server's address like sftp://host/ (Tab completes)",
+  "URI": "URI",
   "Undid compressing into %1.": "Undid compressing into %1.",
   "Undid copying %Ln items.": {
     "one": "Undid copying %Ln item.",
@@ -406,6 +428,10 @@
   "Undid extracting %Ln archives.": {
     "one": "Undid extracting %Ln archive.",
     "other": "Undid extracting %Ln archives."
+  },
+  "Undid linking %Ln items.": {
+    "one": "Undid linking %Ln item.",
+    "other": "Undid linking %Ln items."
   },
   "Undid making %1.": "Undid making %1.",
   "Undid moving %Ln items to the trash.": {
@@ -425,7 +451,9 @@
   "Undo Duplicate": "Undo Duplicate",
   "Undo Extract": "Undo Extract",
   "Undo Move": "Undo Move",
+  "Undo New File": "Undo New File",
   "Undo New Folder": "Undo New Folder",
+  "Undo Paste as Link": "Undo Paste as Link",
   "Undo Rename": "Undo Rename",
   "Undoing %L1 of %Ln items…": {
     "one": "Undoing %L1 of %Ln item…",
@@ -435,6 +463,8 @@
   "Unmount": "Unmount",
   "Unpin": "Unpin",
   "Unpin the folder, or take the item off the sidebar": "Unpin the folder, or take the item off the sidebar",
+  "Untitled File": "Untitled File",
+  "Untitled File %1": "Untitled File %1",
   "Untitled Folder": "Untitled Folder",
   "Untitled Folder %1": "Untitled Folder %1",
   "User": "User",
