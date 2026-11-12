@@ -413,7 +413,7 @@ static QStringList namesOf(const QVariantList &list)
 static QString binWith(const QString &folder, const QHash<QString, QByteArray> &scripts)
 {
     QDir().mkpath(folder);
-    for (const char *tool : {"jq", "tr", "sed", "tail", "basename", "cat"})
+    for (const char *tool : {"jq", "tr", "sed", "tail", "basename", "cat", "awk"})
         QFile::link(QStandardPaths::findExecutable(tool), folder + "/" + tool);
     for (auto it = scripts.begin(); it != scripts.end(); ++it) {
         QFile file(folder + "/" + it.key());
@@ -4331,6 +4331,70 @@ private slots:
         QCOMPARE(names(), QStringList({"new"}));
         // What the plugins show changed, so the place's names may have too.
         QVERIFY(place.count() > 0);
+    }
+
+    void phonesPluginListsPhonesAndCamerasGvfsSees()
+    {
+        // What `gio mount -li` prints: a disk's volume (left out), a phone
+        // already mounted, and a camera whose name needs escaping.
+        const QByteArray gio = R"(#!/bin/sh
+cat <<'LIST'
+Drive(0): Samsung SSD 980 1TB
+  Type: GProxyDrive (GProxyVolumeMonitorUDisks2)
+  Volume(0): 999 GB Volume
+    Type: GProxyVolume (GProxyVolumeMonitorUDisks2)
+    ids:
+     unix-device: '/dev/nvme1n1p2'
+    activation_root=file:///run/media/me/999
+Volume(0): OnePlus 13
+  Type: GProxyVolume (GProxyVolumeMonitorMTP)
+  ids:
+   unix-device: '/dev/bus/usb/001/012'
+  activation_root=mtp://OnePlus_OnePlus_13_9a935fbf/
+  can_mount=1
+  Mount(0): OnePlus 13 -> mtp://OnePlus_OnePlus_13_9a935fbf/
+    Type: GProxyShadowMount (GProxyVolumeMonitorMTP)
+    default_location=mtp://OnePlus_OnePlus_13_9a935fbf/
+Volume(1): Canon "EOS" R\6
+  Type: GProxyVolume (GProxyVolumeMonitorGPhoto2)
+  activation_root=gphoto2://Canon_EOS_R6/
+Mount(1): mtp -> mtp://OnePlus_OnePlus_13_9a935fbf/
+  Type: GDaemonMount
+  default_location=mtp://OnePlus_OnePlus_13_9a935fbf/
+LIST
+)";
+        QTemporaryDir dir;
+        const QString bin = binWith(dir.filePath("bin"), {{"gio", gio}});
+        const auto path = pathAt(bin);
+        const auto plugin = bundledPlugin("phones");
+        QCOMPARE(plugin.id, QString("phones"));
+        const Plugins::Run run = runBundled(plugin, plugin.poll, bin, dir.path());
+        QVERIFY2(run.ok(), qPrintable(run.lastError));
+        const auto output = Plugins::parseOutput(run.out);
+        QVERIFY(output);
+        QCOMPARE(output->items.size(), 2);
+        const auto &phone = output->items.at(0);
+        QCOMPARE(phone.name, QString("OnePlus 13"));
+        QCOMPARE(phone.id, QString("mtp://OnePlus_OnePlus_13_9a935fbf/"));
+        QCOMPARE(phone.subtitle.toString(), QString("Phone"));
+        QCOMPARE(phone.open.value("mount").toString(), QString("mtp://OnePlus_OnePlus_13_9a935fbf/"));
+        QVERIFY(phone.open.value("verified").toBool());
+        const auto &camera = output->items.at(1);
+        QCOMPARE(camera.name, QString(R"(Canon "EOS" R\6)"));
+        QCOMPARE(camera.subtitle.toString(), QString("Camera"));
+        QCOMPARE(camera.open.value("mount").toString(), QString("gphoto2://Canon_EOS_R6/"));
+
+        // Nothing plugged in: an empty list.
+        binWith(bin, {{"gio", "#!/bin/sh\nexit 0\n"}});
+        const Plugins::Run empty = runBundled(plugin, plugin.poll, bin, dir.path());
+        QVERIFY2(empty.ok(), qPrintable(empty.lastError));
+        QVERIFY(Plugins::parseOutput(empty.out)->items.isEmpty());
+
+        // gio failing is an error, with gio's own words, not an empty list.
+        binWith(bin, {{"gio", "#!/bin/sh\necho 'gio: no volume monitor' >&2\nexit 2\n"}});
+        const Plugins::Run failed = runBundled(plugin, plugin.poll, bin, dir.path());
+        QVERIFY(!failed.ok());
+        QVERIFY2(failed.lastError.contains("no volume monitor"), qPrintable(failed.lastError));
     }
 
     void tailscalePluginListsOnlineDesktopsByName()

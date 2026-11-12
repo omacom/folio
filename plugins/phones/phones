@@ -4,10 +4,14 @@
 # unlocked and set to file transfer.
 quote() { printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"; }
 
+# gio's own error goes to the journal through Folio, and failing says the
+# list is unknown rather than empty.
+volumes=$(gio mount -li) || exit 1
+
 printf '{"items":['
-gio mount -li 2>/dev/null | awk '
-  /^Volume\([0-9]+\): / { sub(/^Volume\([0-9]+\): /, ""); name = $0; next }
-  /activation_root=(mtp|gphoto2):\/\// { sub(/.*activation_root=/, ""); print $0 "\t" name; name = "" }
+printf '%s\n' "$volumes" | awk '
+  /^ *Volume\([0-9]+\): / { sub(/^ *Volume\([0-9]+\): /, ""); name = $0; next }
+  /^ *activation_root=(mtp|gphoto2):\/\// { sub(/.*activation_root=/, ""); print $0 "\t" name; name = "" }
 ' | {
   separator=
   while IFS="$(printf '\t')" read -r url name; do
