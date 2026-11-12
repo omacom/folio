@@ -12,6 +12,8 @@ AbstractButton {
 
     implicitWidth: Math.max(88, label.implicitWidth + 32)
     implicitHeight: 36
+    // A text cut for room keeps this much of the button on each side of it; one that fits is centered in all of it, as before.
+    horizontalPadding: width < label.implicitWidth ? 8 : 0
     hoverEnabled: true
     Accessible.name: text
     // Tab reaches it, a click doesn't take the keyboard: clicking acts, and
@@ -50,5 +52,7 @@ AbstractButton {
         font.weight: button.filled ? Font.DemiBold : Font.Normal
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
+        // In a button given less room than its text needs, both ends of the text stay: the last of a menu button's is its arrow.
+        elide: Text.ElideMiddle
     }
 }

@@ -53,15 +53,41 @@ Rectangle {
 
     Rectangle { anchors.left: parent.left; width: 1; height: parent.height; color: Qt.alpha(theme.foreground, 0.12) }
 
+    // An A4 page's height over its width: the room held for a PDF until its page is read and gives its own.
+    readonly property real pageShape: 1.414
+
     ColumnLayout {
+        id: column
         anchors.fill: parent
         anchors.margins: 28
         spacing: 22
         visible: pane.hasItem
 
         Item {
+            id: look
+            // Four by three for every item, as it has been; a text or a PDF's page gets the height it can use of what the window leaves.
+            readonly property int least: Math.round(width * 0.75)
+            // Under it come the names, the facts, the stretch and the button, a gap before each.
+            readonly property real room: column.height - names.implicitHeight - facts.implicitHeight - openButton.implicitHeight - 4 * column.spacing
+            // What the text last read needs, kept while the next text is read, so the box changes once and not twice.
+            property real textNeed: 0
+            // Asked from both ends: of the details and the text's own height, either can be the last to change.
+            function keepTextNeed() {
+                if (pane.info.text !== undefined)
+                    textNeed = opening.implicitHeight + 2 * opening.anchors.margins
+                // Forgotten once another kind of item is described: one a re-read leaves on the row for a moment never is.
+                else if (pane.item.kind !== "text")
+                    textNeed = 0
+            }
+            Connections { target: pane; function onInfoChanged() { look.keepTextNeed() } }
+            Connections { target: opening; function onImplicitHeightChanged() { look.keepTextNeed() } }
+            readonly property real wanted: !pane.hasItem ? 0
+                : pane.item.kind === "text" ? textNeed
+                : pane.item.kind !== "pdf" ? 0
+                : big.status === Image.Ready ? width * big.implicitHeight / big.implicitWidth
+                : big.status === Image.Loading ? width * pane.pageShape : 0
             Layout.fillWidth: true
-            Layout.preferredHeight: Math.round(width * 0.75)
+            Layout.preferredHeight: Math.round(Math.max(least, Math.min(wanted, room)))
 
             Image {
                 id: big
@@ -81,6 +107,7 @@ Rectangle {
                 border.color: Qt.alpha(theme.foreground, 0.12)
                 clip: true
                 Text {
+                    id: opening
                     anchors.fill: parent
                     anchors.margins: 14
                     text: pane.info.text || ""
@@ -103,6 +130,7 @@ Rectangle {
         }
 
         ColumnLayout {
+            id: names
             spacing: 4
             Layout.fillWidth: true
             // Aligned explicitly, so that they're mirrored: left as they
@@ -132,6 +160,7 @@ Rectangle {
         }
 
         GridLayout {
+            id: facts
             Layout.fillWidth: true
             columns: 2
             rowSpacing: 12
@@ -187,6 +216,9 @@ Rectangle {
                 readonly property var current: apps.find(app => app.isDefault)
                 visible: apps.length > 1
                 Layout.alignment: Qt.AlignRight
+                // As wide as its text while that fits beside the label, and no wider than the room there when it doesn't.
+                Layout.fillWidth: true
+                Layout.maximumWidth: implicitWidth
                 implicitHeight: 28
                 text: (current ? current.name : qsTr("Choose")) + "  ▾"
                 onClicked: appsMenu.popup(opensWith, 0, opensWith.height + 4)
