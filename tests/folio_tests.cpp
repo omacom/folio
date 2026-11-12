@@ -632,6 +632,78 @@ private slots:
         }
     }
 
+    void aRowsTypeIsReadFromItsNameOnce()
+    {
+        // Asked again, a row's type roles give the type kept from the first ask: read from the name again, its extension would be another string.
+        QTemporaryDir files, folder, pipe;
+        write(files.filePath("photo.jpg"), "x");
+        for (int i = 0; i < FolderModel::typesKept; ++i)
+            write(files.filePath(QString("z%1.txt").arg(i)), "x");
+        QVERIFY(QDir(folder.path()).mkdir("photo.jpg"));
+        QCOMPARE(::mkfifo(QFile::encodeName(pipe.filePath("photo.jpg")).constData(), 0600), 0);
+        const QString plugin = "plugin:types";
+
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        const auto type = [&](int role, int row = 0) { return model.index(row).data(role).toString(); };
+        // Seen once, a folder, a pipe and a plugin's item of the file's name are remembered, to be shown later while the file's type is kept.
+        model.setItems({QVariantMap{{"name", "photo.jpg"}, {"path", "plugin:types/a"}, {"subtitle", "Windows"}}});
+        for (const QString &path : {folder.path(), pipe.path(), plugin}) {
+            model.setPath(path);
+            QVERIFY(loaded.wait(5000));
+            QCOMPARE(model.count(), 1);
+        }
+        model.setPath(files.path());
+        QVERIFY(loaded.wait(5000));
+        QCOMPARE(model.count(), FolderModel::typesKept + 1);
+        QCOMPARE(type(FolderModel::NameRole), QString("photo.jpg"));
+        const QString first = type(FolderModel::ExtensionRole);
+        QCOMPARE(first, QString("JPG"));
+        QCOMPARE(type(FolderModel::MimeRole), QString("image/jpeg"));
+        QCOMPARE(type(FolderModel::KindRole), QString("image"));
+        QVERIFY(type(FolderModel::ExtensionRole).constData() == first.constData());
+
+        // With one name fewer than a model keeps asked after it, it is still the one kept; one more, and it is read again, the same.
+        for (int row = 1; row < FolderModel::typesKept; ++row)
+            QCOMPARE(type(FolderModel::ExtensionRole, row), QString("TXT"));
+        QVERIFY(type(FolderModel::ExtensionRole).constData() == first.constData());
+        QCOMPARE(type(FolderModel::ExtensionRole, FolderModel::typesKept), QString("TXT"));
+        const QString again = type(FolderModel::ExtensionRole);
+        QVERIFY(again.constData() != first.constData());
+        QCOMPARE(again, first);
+        QCOMPARE(type(FolderModel::MimeRole), QString("image/jpeg"));
+
+        // The remembered rows of that name, shown before anything is read again, are not given the file's type.
+        model.setPath(folder.path());
+        QCOMPARE(model.count(), 1);
+        QCOMPARE(type(FolderModel::NameRole), QString("photo.jpg"));
+        QCOMPARE(type(FolderModel::MimeRole), QString("inode/directory"));
+        QCOMPARE(type(FolderModel::KindRole), QString("folder"));
+        QCOMPARE(type(FolderModel::ExtensionRole), QString());
+        model.setPath(pipe.path());
+        QCOMPARE(model.count(), 1);
+        QCOMPARE(type(FolderModel::NameRole), QString("photo.jpg"));
+        QCOMPARE(type(FolderModel::MimeRole), QString("inode/fifo"));
+        QCOMPARE(type(FolderModel::ExtensionRole), QString("JPG"));
+        model.setPath(plugin);
+        QCOMPARE(model.count(), 1);
+        QCOMPARE(type(FolderModel::NameRole), QString("photo.jpg"));
+        QCOMPARE(type(FolderModel::KindRole), QString("item"));
+        QCOMPARE(type(FolderModel::ExtensionRole), QString("Windows"));
+
+        // Back in the folder, and after it is read again and found as it was, the type is the one kept; found changed, it is read again.
+        model.setPath(files.path());
+        QVERIFY(type(FolderModel::ExtensionRole).constData() == again.constData());
+        QVERIFY(loaded.wait(5000));
+        QVERIFY(type(FolderModel::ExtensionRole).constData() == again.constData());
+        write(files.filePath("zz.txt"), "x");
+        model.reload();
+        QTRY_COMPARE_WITH_TIMEOUT(model.count(), FolderModel::typesKept + 2, 5000);
+        const QString anew = type(FolderModel::ExtensionRole);
+        QVERIFY(anew.constData() != again.constData());
+        QCOMPARE(anew, again);
+    }
+
     void folderReadsSizesAndDatesOfTheFirstRowsOnly()
     {
         // Listed for the model, a big folder reads the sizes and dates of its first window, by date or size every one.

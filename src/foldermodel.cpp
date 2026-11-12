@@ -154,9 +154,9 @@ QVariant FolderModel::data(const QModelIndex &index, int role) const {
     case IsDirRole: return e.isDir;
     case SizeRole: return e.size;
     case ModifiedRole: return e.modified;
-    case KindRole: return typed(e).kind;
-    case MimeRole: return typed(e).mime;
-    case ExtensionRole: return typed(e).extension;
+    case KindRole: return typeOf(e).kind;
+    case MimeRole: return typeOf(e).mime;
+    case ExtensionRole: return typeOf(e).extension;
     case ItemCountRole: return e.itemCount;
     case SelectedRole: return m_selected.contains(e.path);
     case IconRole: return e.icon;
@@ -189,6 +189,21 @@ static void readSizeAndDate(FolderModel::Entry &entry) {
     const QFileInfo info(entry.path);
     if (info.exists())
         setSizeAndDate(entry, info);
+}
+
+FolderModel::Type FolderModel::typeOf(const Entry &entry) const {
+    // A folder's type takes no reading, and an entry that has its own keeps it whatever its name.
+    if (entry.isDir || !entry.mime.isNull() || !entry.kind.isNull()) {
+        const Entry e = typed(entry);
+        return {e.kind, e.mime, e.extension};
+    }
+    const auto kept = m_types.constFind(entry.name);
+    if (kept != m_types.constEnd())
+        return *kept;
+    if (m_types.size() >= typesKept)
+        m_types.clear();
+    const Entry e = typed(entry);
+    return *m_types.insert(entry.name, {e.kind, e.mime, e.extension});
 }
 
 void FolderModel::ask(int row) const {
@@ -720,10 +735,13 @@ void FolderModel::reload() {
         // Unchanged (the usual case after showing a remembered listing):
         // leave the items alone, and only fill in folder counts still missing.
         const bool same = error == m_error && !m_entries.isEmpty() && sameListing(m_entries, entries);
-        if (!same)
+        if (!same) {
+            // A folder found changed has its rows' types read again, as its sizes and dates are.
+            m_types.clear();
             setEntries(entries);
-        else
+        } else {
             takeSizesAndDates(std::move(entries));
+        }
         if (!m_selected.isEmpty()) {
             QSet<QString> still;
             for (const Entry &e : std::as_const(m_entries))

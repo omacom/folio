@@ -4,6 +4,7 @@
 #include <functional>
 #include <QDateTime>
 #include <QFileSystemWatcher>
+#include <QHash>
 #include <QLocale>
 #include <QStringList>
 #include <QTimer>
@@ -111,6 +112,8 @@ public:
 
     // Rows a listing reads sizes and dates for: 13 rows of 22 smallest tiles fill a 4K screen and what a view builds ahead.
     static constexpr int firstRows = 320;
+    // How many names' types a model keeps: the rows in sight and many folders back, never all of a large folder scrolled through.
+    static constexpr int typesKept = 4096;
 
     // Synchronous building blocks, used by the background passes and tests.
     // A listing stops, empty, as soon as `stop` returns true. Names sort
@@ -174,6 +177,11 @@ private:
     void remember();
     static bool sameListing(const QVector<Entry> &a, const QVector<Entry> &b);
     void takeSizesAndDates(QVector<Entry> entries);
+    // A row's kind, MIME type and extension as its roles give them.
+    struct Type {
+        QString kind, mime, extension;
+    };
+    Type typeOf(const Entry &entry) const;
     void ask(int row) const;
     void readAsked();
     void setError(const QString &error);
@@ -194,6 +202,8 @@ private:
     // search and folder counts, so work that's been overtaken (more typing,
     // another folder, the model gone) stops early.
     std::shared_ptr<std::atomic<quint64>> m_latest = std::make_shared<std::atomic<quint64>>(0);
+    // What typed() read from a file's name, kept by that name until a folder is found changed: a view asks for a row's type three times each time it makes the row.
+    mutable QHash<QString, Type> m_types;
     // Rows a view asked for a size or date this turn, read together, and every row asked for and not back yet.
     mutable QList<int> m_asked;
     mutable QSet<int> m_reading;
