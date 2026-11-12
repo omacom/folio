@@ -19,6 +19,7 @@
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQmlPropertyMap>
+#include <QQuickImageProvider>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QSettings>
@@ -472,6 +473,27 @@ static Plugins::Run runBundled(const Plugins::Manifest &plugin, const QStringLis
         env.insert(it.key(), it.value());
     return Plugins::execute(plugin, command, env, 5000);
 }
+
+// Stands in for the thumbnails: a page for a PDF, a tall picture for anything else, and nothing for a name that says broken.
+class ShapeProvider : public QQuickImageProvider {
+public:
+    ShapeProvider() : QQuickImageProvider(QQuickImageProvider::Image) {}
+    // Set, a page isn't handed over until it's cleared: the time a slow drive takes to draw one.
+    static inline std::atomic<bool> held = false;
+    // A page that isn't A4, so that its own shape shows, and a picture three times as tall as it's wide.
+    static constexpr QSize page{300, 400}, picture{100, 300};
+    QImage requestImage(const QString &id, QSize *size, const QSize &) override {
+        while (held)
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        if (id.contains("broken"))
+            return {};
+        QImage image(id.contains("pdf") ? page : picture, QImage::Format_RGB32);
+        image.fill(Qt::gray);
+        if (size)
+            *size = image.size();
+        return image;
+    }
+};
 
 class FolioTests : public QObject {
     Q_OBJECT
@@ -3208,6 +3230,166 @@ private slots:
         backend.showItem(home.filePath("report.pdf"));
         QCOMPARE(backend.path(), home.path());
         QCOMPARE(backend.takeSelection(), QString("report.pdf"));
+    }
+
+    void detailsGiveATextOrAPageTheRoomTheyCanUse()
+    {
+        // The look at an item is four by three; a text or a PDF's page is as tall as it can use of what the window leaves under it.
+        QTemporaryDir home;
+        QByteArray lines;
+        for (int i = 0; i < 60; ++i)
+            lines += "line " + QByteArray::number(i) + "\n";
+        write(home.filePath("long.txt"), lines);
+        write(home.filePath("short.txt"), "one line");
+        write(home.filePath("wide.txt"), QByteArray("a line of text that runs on past the edge of a narrow pane\n").repeated(12));
+        write(home.filePath("paper.pdf"), "x");
+        write(home.filePath("broken.pdf"), "x");
+        QVERIFY(QImage(ShapeProvider::picture, QImage::Format_RGB32).save(home.filePath("tall.png")));
+        Backend backend(home.path());
+        backend.navigate(home.path());
+        QTRY_COMPARE(backend.folder()->rowCount(), 6);
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        Places places(home.path());
+        QQmlEngine engine;
+        engine.addImageProvider("thumb", new ShapeProvider);
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("places", &places);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        // A window with room to spare under a long text's lines, and one too short for them.
+        const int roomy = 1400, tight = 500;
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window { width: 300; height: " + QByteArray::number(roomy) + "; visible: true\n"
+                          "    QtObject { id: files; property var current: ({}); readonly property bool inTrash: false\n"
+                          "        readonly property var paneBackend: backend; readonly property var paneFileOps: fileOps }\n"
+                          "    PreviewPane { id: pane; anchors.fill: parent; folderPane: files }\n"
+                          "    function show(name) { files.current = backend.folder.get(backend.folder.indexOfPath(backend.path + '/' + name)) }\n"
+                          "    function passBy(other, name) { show(other); show(name) }\n"
+                          "    function find(item, wanted) {\n"
+                          "        if (wanted(item)) return item\n"
+                          "        for (const child of item.children) { const found = find(child, wanted); if (found) return found }\n"
+                          "        return null }\n"
+                          "    function picture() { return find(pane, item => item instanceof Image && item.fillMode === Image.PreserveAspectFit) }\n"
+                          "    function pictureIs(status) { return picture().status === (status === 'ready' ? Image.Ready : Image.Error) }\n"
+                          "    function laidOut() { const column = picture().parent.parent; column.ensurePolished(); return column }\n"
+                          "    function boxHeight() { laidOut(); return picture().parent.height }\n"
+                          "    function opening() { laidOut(); return find(picture().parent, item => item instanceof Text) }\n"
+                          "    function textCut() { return opening().truncated }\n"
+                          "    function textLines() { return opening().lineCount }\n"
+                          "    function textNeeds() { const text = opening(); return Math.round(text.implicitHeight + 2 * text.anchors.margins) }\n"
+                          "    function spare() { const all = laidOut().children; return all[all.length - 2].height }\n"
+                          "    function squeezed() { const column = laidOut(), all = column.children, last = all[all.length - 1]\n"
+                          "        return all[1].height < all[1].implicitHeight || all[2].height < all[2].implicitHeight\n"
+                          "            || last.height < last.implicitHeight || last.y + last.height > column.height }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/DetailsRoomTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        const auto asked = [window](const char *method, const QVariantList &with = {}) {
+            QVariant result;
+            if (with.isEmpty())
+                QMetaObject::invokeMethod(window, method, Q_RETURN_ARG(QVariant, result));
+            else
+                QMetaObject::invokeMethod(window, method, Q_RETURN_ARG(QVariant, result), Q_ARG(QVariant, with.first()));
+            return result;
+        };
+        // The pane is 300 wide with 28 at each side: 244 across, by three quarters; a page is held an A4 sheet's shape.
+        const int sides = 56, across = 300 - sides, fourByThree = qRound(across * 0.75);
+        const double a4 = 1.414;
+
+        // A picture keeps the box it has had, however tall it is itself, and so does a text of one line.
+        QMetaObject::invokeMethod(window, "show", Q_ARG(QVariant, "tall.png"));
+        QTRY_VERIFY(asked("pictureIs", {"ready"}).toBool());
+        QCOMPARE(asked("boxHeight").toInt(), fourByThree);
+        QMetaObject::invokeMethod(window, "show", Q_ARG(QVariant, "short.txt"));
+        QTRY_COMPARE(backend.details().value("text").toString(), QString("one line"));
+        QCOMPARE(asked("boxHeight").toInt(), fourByThree);
+
+        // A long text gets what its opening lines need, to the last of them, and room is left over in a window this tall.
+        QMetaObject::invokeMethod(window, "show", Q_ARG(QVariant, "long.txt"));
+        QTRY_VERIFY(backend.details().value("text").toString().endsWith("line 40"));
+        QTRY_VERIFY(asked("boxHeight").toInt() > fourByThree);
+        QVERIFY(!asked("textCut").toBool());
+        QVERIFY(asked("spare").toInt() > 0);
+        // In a shorter window it gets the room there is and no more: nothing under it is squeezed.
+        window->setHeight(tight);
+        QTRY_COMPARE(asked("spare").toInt(), 0);
+        QVERIFY(asked("boxHeight").toInt() > fourByThree);
+        QVERIFY(asked("textCut").toBool());
+        QVERIFY(!asked("squeezed").toBool());
+
+        // The next text keeps the box while it's read and gets its own once it is: the pane changes once.
+        QThreadPool *pool = QThreadPool::globalInstance();
+        std::atomic<bool> hold = true;
+        // The pool is waited for: a case that fails here returns, and the holder would go on reading a hold that's gone.
+        const auto restore = qScopeGuard([&, threads = pool->maxThreadCount()] {
+            hold = false;
+            pool->waitForDone();
+            pool->setMaxThreadCount(threads);
+        });
+        pool->setMaxThreadCount(1);
+        const auto holder = [&] {
+            while (hold)
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        };
+        pool->start(holder);
+        const int tall = asked("boxHeight").toInt();
+        // A re-read leaves another item on the text's row for a moment: the box stays, though the text isn't read again yet.
+        QMetaObject::invokeMethod(window, "passBy", Q_ARG(QVariant, "tall.png"), Q_ARG(QVariant, "long.txt"));
+        QCOMPARE(asked("boxHeight").toInt(), tall);
+        QMetaObject::invokeMethod(window, "show", Q_ARG(QVariant, "short.txt"));
+        QTRY_VERIFY(!backend.details().contains("text"));
+        QCOMPARE(asked("boxHeight").toInt(), tall);
+        hold = false;
+        QTRY_COMPARE(asked("boxHeight").toInt(), fourByThree);
+
+        // A picture looked at in between forgets the text before it: the text after it starts from the box the picture had.
+        QMetaObject::invokeMethod(window, "show", Q_ARG(QVariant, "long.txt"));
+        QTRY_VERIFY(asked("boxHeight").toInt() > fourByThree);
+        QMetaObject::invokeMethod(window, "show", Q_ARG(QVariant, "tall.png"));
+        QTRY_VERIFY(asked("pictureIs", {"ready"}).toBool());
+        QTRY_VERIFY(backend.details().contains("width"));
+        QCOMPARE(asked("boxHeight").toInt(), fourByThree);
+        hold = true;
+        pool->start(holder);
+        QMetaObject::invokeMethod(window, "show", Q_ARG(QVariant, "short.txt"));
+        QTRY_VERIFY(!backend.details().contains("width"));
+        QCOMPARE(asked("boxHeight").toInt(), fourByThree);
+        hold = false;
+        QTRY_COMPARE(backend.details().value("text").toString(), QString("one line"));
+        QCOMPARE(asked("boxHeight").toInt(), fourByThree);
+
+        // A PDF's page is held the room of an A4 sheet while it's drawn, then shown across the pane at its own shape.
+        window->setHeight(roomy);
+        const auto release = qScopeGuard([] { ShapeProvider::held = false; });
+        ShapeProvider::held = true;
+        QMetaObject::invokeMethod(window, "show", Q_ARG(QVariant, "paper.pdf"));
+        QTRY_COMPARE(asked("boxHeight").toInt(), qRound(across * a4));
+        QVERIFY(!asked("pictureIs", {"ready"}).toBool());
+        ShapeProvider::held = false;
+        QTRY_VERIFY(asked("pictureIs", {"ready"}).toBool());
+        QTRY_COMPARE(asked("boxHeight").toInt(), qRound(across * double(ShapeProvider::page.height()) / ShapeProvider::page.width()));
+        // One that can't be drawn keeps the box.
+        QMetaObject::invokeMethod(window, "show", Q_ARG(QVariant, "broken.pdf"));
+        QTRY_VERIFY(asked("pictureIs", {"failed"}).toBool());
+        QTRY_COMPARE(asked("boxHeight").toInt(), fourByThree);
+
+        // A text read in a wide pane wraps into more lines in a narrow one, and the box follows them.
+        const int wide = 500;
+        window->setWidth(wide);
+        QMetaObject::invokeMethod(window, "show", Q_ARG(QVariant, "wide.txt"));
+        QTRY_VERIFY(backend.details().value("text").toString().startsWith("a line"));
+        QCOMPARE(asked("boxHeight").toInt(), qRound((wide - sides) * 0.75));
+        const int unwrapped = asked("textLines").toInt();
+        window->setWidth(300);
+        QTRY_VERIFY(asked("textLines").toInt() > unwrapped);
+        QVERIFY(asked("boxHeight").toInt() > fourByThree);
+        QCOMPARE(asked("boxHeight").toInt(), asked("textNeeds").toInt());
     }
 
     void backendReadsDetailsOffTheUiThread()
