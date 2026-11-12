@@ -801,6 +801,135 @@ private slots:
         QCOMPARE(model.count(), all);
     }
 
+    void folderLetsARowBeAskedAgainAfterAReReadCouldNotReadIt()
+    {
+        if (geteuid() == 0)
+            QSKIP("Root can read every file.");
+        // A folder that may be listed and not searched gives its names and no sizes: a re-read lists the same rows and reads none.
+        QTemporaryDir dir;
+        const QString folder = dir.filePath("folder");
+        QVERIFY(QDir().mkpath(folder));
+        constexpr int files = 3, row = 1;
+        for (int i = 0; i < files; ++i)
+            write(folder + QString("/f%1.txt").arg(i), "x");
+        const auto whole = QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner;
+        QVERIFY(QFile::setPermissions(folder, QFile::ReadOwner));
+        const auto restore = qScopeGuard([&] { QFile::setPermissions(folder, whole); });
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded), resets(&model, &FolderModel::modelReset);
+        model.setPath(folder);
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), files);
+        QTRY_COMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+        resets.clear();
+
+        // The row is asked for, and a re-read takes the asking over and can't read it either.
+        QVERIFY(!model.index(row).data(FolderModel::SizeRole).isValid());
+        model.reload();
+        QVERIFY(loaded.wait(3000));
+        QTRY_COMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+        // The same rows were kept: a reset would have let every asking go by itself.
+        QCOMPARE(resets.count(), 0);
+        QVERIFY(!model.index(row).data(FolderModel::SizeRole).isValid());
+
+        // Asked for again, it is read: its answer lands with no turn of the event loop, where a re-read for the folder's own change could stand in.
+        QVERIFY(QFile::setPermissions(folder, whole));
+        QCoreApplication::sendPostedEvents(&model, QEvent::MetaCall);
+        const auto watchers = model.findChildren<QFutureWatcherBase *>();
+        QCOMPARE(watchers.size(), 1);
+        QThreadPool::globalInstance()->waitForDone();
+        QCoreApplication::sendPostedEvents(watchers.constFirst());
+        QVERIFY(model.index(row).data(FolderModel::SizeRole).isValid());
+    }
+
+    void folderTellsAViewOfARowAnotherViewReadBehindItsReRead()
+    {
+        if (geteuid() == 0)
+            QSKIP("Root can read every file.");
+        QTemporaryDir dir;
+        const QString folder = dir.filePath("folder");
+        QVERIFY(QDir().mkpath(folder));
+        constexpr int files = 3, row = 1;
+        for (int i = 0; i < files; ++i)
+            write(folder + QString("/f%1.txt").arg(i), "x");
+        const auto whole = QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner;
+        QVERIFY(QFile::setPermissions(folder, QFile::ReadOwner));
+        const auto restore = qScopeGuard([&] { QFile::setPermissions(folder, whole); });
+        QThreadPool *pool = QThreadPool::globalInstance();
+        FolderModel first, second;
+        QSignalSpy loaded(&first, &FolderModel::loaded);
+        first.setPath(folder);
+        QVERIFY(loaded.wait(3000));
+        QTRY_COMPARE(first.findChildren<QFutureWatcherBase *>().size(), 0);
+        // A second view shares the listing the first one left.
+        second.setPath(folder);
+        QCOMPARE(second.count(), files);
+        QTRY_COMPARE(second.findChildren<QFutureWatcherBase *>().size(), 0);
+
+        // The first view asks for a row, and its re-read owes the row and can't read it: the answer waits, not landed.
+        QSignalSpy told(&first, &FolderModel::dataChanged), resets(&first, &FolderModel::modelReset);
+        QVERIFY(!first.index(row).data(FolderModel::SizeRole).isValid());
+        first.reload();
+        pool->waitForDone();
+        // Meanwhile the second view reads the row, in place in the listing both show.
+        QVERIFY(QFile::setPermissions(folder, whole));
+        QVERIFY(!second.index(row).data(FolderModel::SizeRole).isValid());
+        QCoreApplication::sendPostedEvents(&second, QEvent::MetaCall);
+        QCOMPARE(second.findChildren<QFutureWatcherBase *>().size(), 1);
+        pool->waitForDone();
+        QCoreApplication::sendPostedEvents(second.findChildren<QFutureWatcherBase *>().constFirst());
+        QVERIFY(second.index(row).data(FolderModel::SizeRole).isValid());
+        QCOMPARE(told.count(), 0);
+
+        // The re-read lands with the row unread: the first view is told of the row it is owed, once, and keeps its rows.
+        QCOMPARE(first.findChildren<QFutureWatcherBase *>().size(), 1);
+        QCoreApplication::sendPostedEvents(first.findChildren<QFutureWatcherBase *>().constFirst());
+        QCOMPARE(resets.count(), 0);
+        QCOMPARE(told.count(), 1);
+        QCOMPARE(told.at(0).at(0).toModelIndex().row(), row);
+        QVERIFY(first.index(row).data(FolderModel::SizeRole).isValid());
+    }
+
+    void folderReadsARowAskedForAndNotReadAtItsNextReRead()
+    {
+        if (geteuid() == 0)
+            QSKIP("Root can read every file.");
+        // The row is past the ones every listing reads: only having been asked for gets it read again.
+        QTemporaryDir dir;
+        const QString folder = dir.filePath("folder");
+        QVERIFY(QDir().mkpath(folder));
+        const int files = FolderModel::firstRows + 10, row = FolderModel::firstRows + 5;
+        for (int i = 0; i < files; ++i)
+            write(folder + QString("/f%1.txt").arg(i, 4, 10, QChar('0')), "x");
+        const auto whole = QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner;
+        QVERIFY(QFile::setPermissions(folder, QFile::ReadOwner));
+        const auto restore = qScopeGuard([&] { QFile::setPermissions(folder, whole); });
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded), told(&model, &FolderModel::dataChanged);
+        model.setPath(folder);
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), files);
+        QTRY_COMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+
+        // Asked for while nothing in the folder can be looked up: the read finds nothing, and no row is told.
+        QVERIFY(!model.index(row).data(FolderModel::SizeRole).isValid());
+        QCoreApplication::sendPostedEvents(&model, QEvent::MetaCall);
+        QCOMPARE(model.findChildren<QFutureWatcherBase *>().size(), 1);
+        QTRY_COMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+        QCOMPARE(told.count(), 0);
+
+        // The folder is read again once it can be looked into: the row is read with it and told, with no view asking.
+        QVERIFY(QFile::setPermissions(folder, whole));
+        model.reload();
+        QVERIFY(loaded.wait(3000));
+        QTRY_COMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+        int tellings = 0;
+        for (const auto &call : told)
+            tellings += call.at(0).toModelIndex().row() == row;
+        QCOMPARE(tellings, 1);
+        QVERIFY(model.index(row).data(FolderModel::SizeRole).isValid());
+    }
+
     void folderShowsAFileThatGrewAfterItsRowWasRead()
     {
         QTemporaryDir dir;

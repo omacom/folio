@@ -92,7 +92,10 @@ void FolderModel::takeSizesAndDates(QVector<Entry> entries) {
             next.unread = false;
             next.size = now.size;
             next.modified = now.modified;
-        } else if (!next.unread && (now.unread || m_reading.contains(row) || next.size != now.size
+            // Read by another view of the listing while this one is owed the row: this one is told too.
+            if (m_owed.contains(row))
+                changed << row;
+        } else if (!next.unread && (now.unread || m_owed.contains(row) || next.size != now.size
                                     || next.modified != now.modified)) {
             // A row this view asked for may have been read in place by another view of the listing.
             changed << row;
@@ -107,6 +110,7 @@ void FolderModel::takeSizesAndDates(QVector<Entry> entries) {
     m_entries = std::move(entries);
     for (int row : std::as_const(changed)) {
         m_reading.remove(row);
+        m_owed.remove(row);
         const QModelIndex at = index(row);
         emit dataChanged(at, at, m_entries.at(row).isDir ? QList<int>{SizeRole, ModifiedRole, ItemCountRole} : QList<int>{SizeRole, ModifiedRole});
     }
@@ -120,6 +124,7 @@ void FolderModel::setEntries(const QVector<Entry> &entries) {
     // What was asked for was of the rows before; the views ask again for what they show.
     m_asked.clear();
     m_reading.clear();
+    m_owed.clear();
     endResetModel();
     emit countChanged();
 }
@@ -213,8 +218,14 @@ void FolderModel::readAsked() {
         bool updated = false;
         for (const auto &[row, read] : watcher->result()) {
             m_reading.remove(row);
-            if (read.unread || row >= m_entries.size() || m_entries.at(row).path != read.path)
+            if (row >= m_entries.size() || m_entries.at(row).path != read.path)
                 continue;
+            // Asked for and not read: the row is owed, so the folder's next re-read tries it again.
+            if (read.unread) {
+                m_owed.insert(row);
+                continue;
+            }
+            m_owed.remove(row);
             // In place, without a copy: the remembered listing and every view sharing it keep what's read.
             Entry &e = const_cast<Entry &>(m_entries.at(row));
             // A folder counted since it was asked for keeps the date its count was made with.
@@ -691,8 +702,11 @@ void FolderModel::reload() {
     QSet<QString> read;
     if (query.isEmpty() && !sortsByDateOrSize(sort))
         for (int row = 0; row < m_entries.size(); ++row)
-            if (!m_entries.at(row).unread || m_reading.contains(row))
+            if (!m_entries.at(row).unread || m_reading.contains(row) || m_owed.contains(row))
                 read.insert(m_entries.at(row).path);
+    // The answers on their way are dropped with the generation: this re-read owes their rows now, and a view may ask again.
+    m_owed.unite(m_reading);
+    m_reading.clear();
     m_asked.clear();
     *m_latest = generation;
     const auto latest = m_latest;

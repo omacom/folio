@@ -197,6 +197,8 @@ private:
     // Rows a view asked for a size or date this turn, read together, and every row asked for and not back yet.
     mutable QList<int> m_asked;
     mutable QSet<int> m_reading;
+    // Rows asked for and not read by the try that followed: a view may ask again, and the folder's next re-read reads them.
+    mutable QSet<int> m_owed;
     // A get() answered without a size or date, so QML takes its snapshots again (on countChanged) once they're in.
     mutable bool m_snapshotWaiting = false;
     QFileSystemWatcher m_watcher;
