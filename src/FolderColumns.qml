@@ -11,6 +11,8 @@ Item {
 
     property alias currentIndex: here.currentIndex
     readonly property int columnWidth: 260
+    // How far past its edges a column makes rows: as far as Qt's default cache buffer reached.
+    readonly property int rowsPastEdges: 320
 
     function select(row, keep) { selecting.select(row, keep) }
     signal cursorLetGo()
@@ -100,6 +102,10 @@ Item {
                         clip: true
                         acceptedButtons: Qt.NoButton
                         boundsBehavior: Flickable.StopAtBounds
+                        // Rows just past the edges are made with the ones shown, not later by Qt's cache buffer: its 16 ms timer can leave an idle window drawing every refresh.
+                        cacheBuffer: 0
+                        displayMarginBeginning: view.rowsPastEdges
+                        displayMarginEnd: view.rowsPastEdges
                         ScrollBar.vertical: FolioScrollBar { }
                         model: FolderModel {
                             id: folder
@@ -152,6 +158,10 @@ Item {
                 currentIndex: -1
                 acceptedButtons: Qt.NoButton
                 boundsBehavior: Flickable.StopAtBounds
+                // Rows just past the edges are made with the ones shown, not later by Qt's cache buffer: its 16 ms timer can leave an idle window drawing every refresh.
+                cacheBuffer: 0
+                displayMarginBeginning: view.rowsPastEdges
+                displayMarginEnd: view.rowsPastEdges
                 highlightFollowsCurrentItem: false
                 model: backend.folder
                 ScrollBar.vertical: FolioScrollBar { }
@@ -197,6 +207,10 @@ Item {
                 clip: true
                 acceptedButtons: Qt.NoButton
                 boundsBehavior: Flickable.StopAtBounds
+                // Rows just past the edges are made with the ones shown, not later by Qt's cache buffer: its 16 ms timer can leave an idle window drawing every refresh.
+                cacheBuffer: 0
+                displayMarginBeginning: view.rowsPastEdges
+                displayMarginEnd: view.rowsPastEdges
                 ScrollBar.vertical: FolioScrollBar { }
                 TapHandler {
                     acceptedButtons: Qt.RightButton

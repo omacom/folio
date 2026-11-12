@@ -49,6 +49,12 @@ ListView {
     currentIndex: -1
     acceptedButtons: Qt.NoButton
     boundsBehavior: Flickable.StopAtBounds
+    // Rows just past the edges are made with the ones shown, not later by Qt's cache buffer: its 16 ms timer can leave an idle window drawing every refresh.
+    cacheBuffer: 0
+    // As far as Qt's default cache buffer reached.
+    readonly property int rowsPastEdges: 320
+    displayMarginBeginning: rowsPastEdges
+    displayMarginEnd: rowsPastEdges
     highlightFollowsCurrentItem: false
     model: backend.folder
     ScrollBar.vertical: FolioScrollBar { }
