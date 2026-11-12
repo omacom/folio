@@ -83,11 +83,14 @@ Rectangle {
                 Text {
                     anchors.fill: parent
                     anchors.margins: 14
-                    text: pane.info.text || ""
+                    // A source file's lines in the theme's colors, which follow a change of theme.
+                    readonly property bool colored: pane.info.colors !== undefined
+                    text: colored ? Format.colored(pane.info.text, pane.info.colors, theme.codeInks)
+                                  : pane.info.text || ""
                     color: theme.foreground
                     font.pixelSize: 10
                     wrapMode: Text.WrapAnywhere
-                    textFormat: Text.PlainText
+                    textFormat: colored ? Text.StyledText : Text.PlainText
                     elide: Text.ElideRight
                 }
             }

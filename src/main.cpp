@@ -107,6 +107,7 @@ static int preview(QGuiApplication &app) {
     engine.rootContext()->setContextProperty("translator", &translator);
     engine.rootContext()->setContextProperty("theme", &theme);
     engine.rootContext()->setContextProperty("previewer", &previewer);
+    qmlRegisterType<CodeColors>("Folio", 1, 0, "CodeColors");
     engine.load(QUrl("qrc:/PreviewWindow.qml"));
     if (engine.rootObjects().isEmpty())
         return 1;

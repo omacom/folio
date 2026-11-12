@@ -65,6 +65,20 @@ function page(path, px, modified, paper, ink) {
     return "image://thumb/page/" + px + "/" + changed + "/" + hex(paper) + "/" + hex(ink) + "/" + encodeURIComponent(path)
 }
 
+// A source text for a Text that reads StyledText: every run in its ink, every space and tab kept and every line end a break.
+// Sample input: "int a;" with [[[0, 3, 5]]] and six inks, the fifth "#ff00ff", gives '<font color="#ff00ff">int</font>&nbsp;a;'.
+function colored(text, runs, inks) {
+    const kept = (part) => part.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/ /g, "&nbsp;").replace(/\t/g, "&#9;").replace(/\r/g, "")
+    return text.split("\n").map((line, number) => {
+        let out = "", at = 0
+        for (const [start, length, ink] of runs[number] || []) {
+            out += kept(line.slice(at, start)) + '<font color="' + inks[ink - 1] + '">' + kept(line.slice(start, start + length)) + "</font>"
+            at = start + length
+        }
+        return out + kept(line.slice(at))
+    }).join("<br>")
+}
+
 // A key combination as people read it: "Ctrl + C", not "Ctrl+C".
 function keys(text) {
     return text.replace(/(\S)\+(?=\S)/g, "$1 + ")

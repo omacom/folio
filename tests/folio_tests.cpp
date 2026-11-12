@@ -1,3 +1,4 @@
+#include <QAbstractTextDocumentLayout>
 #include <QClipboard>
 #include <QDir>
 #include <QEventLoopLocker>
@@ -6,6 +7,7 @@
 #include <QPainter>
 #include <QPdfWriter>
 #include <QPointer>
+#include <cmath>
 #include <memory>
 #include <functional>
 #include <thread>
@@ -36,6 +38,7 @@
 #include <unistd.h>
 
 #include "backend.h"
+#include "codecolors.h"
 #include "disks.h"
 #include "fileops.h"
 #include "foldermodel.h"
@@ -3305,6 +3308,182 @@ private slots:
         QVERIFY(!backend.details().contains("width"));
     }
 
+    void detailsColorTheOpeningLinesOfCode()
+    {
+        // The details show a source file's opening lines in the theme's colors: read with the text, and laid out as the plain text is.
+        QTemporaryDir home;
+        const QString ran = home.filePath("ran");
+        // Stands in for bat: the first word of every line in magenta, noting that it ran.
+        const QString bin = binWith(home.filePath("bin"), {{"bat", "#!/bin/sh\n: > '" + QFile::encodeName(ran) + "'\n"
+                                                                    "while IFS= read -r line || [ -n \"$line\" ]; do\n"
+                                                                    "  first=${line%% *}\n"
+                                                                    "  printf '\\033[35m%s\\033[0m%s\\n' \"$first\" \"${line#\"$first\"}\"\n"
+                                                                    "done\n"}});
+        const QString stuck = binWith(home.filePath("stuck"), {{"bat", "#!/bin/sh\nexec tail -f /dev/null\n"}});
+        // A bat that never answers is given up on well inside the second of these, and the first is all a slow machine is waited for.
+        const int longMs = 15000, soonMs = 2000;
+        QDir(home.path()).mkdir("none");
+        QDir(home.path()).mkdir("src");
+        const QString src = home.filePath("src");
+        // Two spaces, a tab, what HTML would read as a tag, an empty line and a line that wraps: all of which must stay as they are.
+        const QByteArray text = "int  main() {\n\treturn 0; // a <b> & c\n}\n\nlast line that is long enough to wrap around the narrow pane twice over, surely\n";
+        write(src + "/press.c", text);
+        write(src + "/notes.txt", text);
+        // Tabs at the start of a line and inside one, in a colored word and outside.
+        const QByteArray tabs = "\tx\n \ty\nz\tw q\n";
+        write(src + "/tabs.c", tabs);
+        write(src + "/tabs.txt", tabs);
+        // Windows line ends, after a plain word and after a colored one.
+        const QByteArray ends = "ab cd\r\nef\r\n";
+        write(src + "/ends.c", ends);
+        write(src + "/ends.txt", ends);
+        const QVariantMap code{{"path", src + "/press.c"}, {"kind", "text"}, {"mime", "text/x-csrc"}};
+        const QVariantMap notes{{"path", src + "/notes.txt"}, {"kind", "text"}, {"mime", "text/plain"}};
+        write(src + "/readme.md", "# int main\n");
+        const QVariantMap readme{{"path", src + "/readme.md"}, {"kind", "text"}, {"mime", "text/markdown"}};
+
+        Backend backend(home.path());
+        // Whether the colors were there each time a text arrived.
+        QVector<bool> arrived;
+        connect(&backend, &Backend::detailsChanged, &backend, [&] {
+            if (backend.details().contains("text"))
+                arrived << backend.details().contains("colors");
+        });
+        {
+            const auto path = pathAt(bin);
+            backend.describe(code);
+            QTRY_VERIFY(backend.details().contains("text"));
+            // The text and its colors in one change, not one after the other.
+            QCOMPARE(arrived, QVector<bool>{true});
+            QCOMPARE(backend.details().value("text").toString(), QString::fromUtf8(text));
+            const QVariantList colors = backend.details().value("colors").toList();
+            QCOMPARE(colors.size(), 5);
+            QCOMPARE(colors.at(0).toList(), (QVariantList{QVariantList{0, 3, 5}}));
+            QCOMPARE(colors.at(1).toList(), (QVariantList{QVariantList{0, 7, 5}}));
+            QVERIFY(colors.at(3).toList().isEmpty());
+        }
+        {
+            // The same file read again without bat: its lines are shown as they always were, and the colors it had are gone.
+            const auto path = pathAt(home.filePath("none"));
+            backend.describe(code);
+            QTRY_COMPARE(arrived, (QVector<bool>{true, false}));
+            QVERIFY(!backend.details().contains("colors"));
+            QCOMPARE(backend.details().value("text").toString(), QString::fromUtf8(text));
+        }
+        for (const QVariantMap &plain : {notes, readme}) {
+            // A plain text has no colors to ask bat for, and Markdown's lines stay as they were: neither waits for it.
+            const auto path = pathAt(bin);
+            QFile::remove(ran);
+            const int before = arrived.size();
+            backend.describe(plain);
+            QTRY_COMPARE(arrived.size(), before + 1);
+            QThreadPool::globalInstance()->waitForDone();
+            QVERIFY(!backend.details().contains("colors"));
+            QVERIFY(!QFile::exists(ran));
+        }
+        {
+            // A bat that never answers holds the lines back half a second, not the seconds a whole text is given.
+            const auto path = pathAt(stuck);
+            QElapsedTimer waited;
+            waited.start();
+            backend.describe(code);
+            QTRY_COMPARE_WITH_TIMEOUT(arrived.size(), 5, longMs);
+            QVERIFY(waited.elapsed() < soonMs);
+            QVERIFY(!arrived.last());
+        }
+        // Colors for another text than the one read are no colors.
+        const CodeColors::Lines lines{{"int a;", {{0, 3, 5}}}, {"b", {}}};
+        QCOMPARE(CodeColors::runsOf(lines, "int a;\nb\n").size(), 2);
+        QCOMPARE(CodeColors::runsOf(lines, "int a;\nb").size(), 2);
+        QVERIFY(CodeColors::runsOf(lines, "int a;\nc\n").isEmpty());
+        QVERIFY(CodeColors::runsOf(lines, "int a;\nb\nc\n").isEmpty());
+        QVERIFY(CodeColors::runsOf({{"int a;", {}}}, "int a;").isEmpty());
+
+        // In the pane: the same lines, the same height and the same wraps as the plain text, with the colored words in the theme's inks.
+        backend.navigate(src);
+        QTRY_COMPARE(backend.folder()->rowCount(), 7);
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        Places places(home.path());
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("places", &places);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window { width: 300; height: 700; visible: true\n"
+                          "    QtObject { id: files; property var current: ({}); readonly property bool inTrash: false\n"
+                          "        readonly property var paneBackend: backend; readonly property var paneFileOps: fileOps }\n"
+                          "    PreviewPane { id: pane; anchors.fill: parent; folderPane: files }\n"
+                          "    function show(name) { files.current = backend.folder.get(backend.folder.indexOfPath(backend.path + '/' + name)) }\n"
+                          "    function find(item, wanted) {\n"
+                          "        if (wanted(item)) return item\n"
+                          "        for (const child of item.children) { const found = find(child, wanted); if (found) return found }\n"
+                          "        return null }\n"
+                          "    function opening() { return find(pane, item => item instanceof Text && item.wrapMode === Text.WrapAnywhere) }\n"
+                          "    function styled() { return opening().textFormat === Text.StyledText }\n"
+                          "    function shown() { return opening().text }\n"
+                          "    function laidOut() { const text = opening(); return [text.lineCount, text.implicitWidth, text.implicitHeight, text.contentHeight].join(' ') }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/DetailsCodeTest.qml"));
+        const auto path = pathAt(bin);
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        const auto asked = [window](const char *method) {
+            QVariant result;
+            QMetaObject::invokeMethod(window, method, Q_RETURN_ARG(QVariant, result));
+            return result;
+        };
+        QMetaObject::invokeMethod(window, "show", Q_ARG(QVariant, "notes.txt"));
+        QTRY_COMPARE(asked("shown").toString(), QString::fromUtf8(text));
+        QVERIFY(!asked("styled").toBool());
+        const QString plain = asked("laidOut").toString();
+        QVERIFY(plain.startsWith("9 "));
+
+        QMetaObject::invokeMethod(window, "show", Q_ARG(QVariant, "press.c"));
+        QTRY_VERIFY(asked("styled").toBool());
+        const QString ink = theme.codeInks().at(4).value<QColor>().name();
+        QCOMPARE(asked("shown").toString(),
+                 "<font color=\"" + ink + "\">int</font>&nbsp;&nbsp;main()&nbsp;{<br>"
+                 "<font color=\"" + ink + "\">&#9;return</font>&nbsp;0;&nbsp;//&nbsp;a&nbsp;&lt;b&gt;&nbsp;&amp;&nbsp;c<br>"
+                 "<font color=\"" + ink + "\">}</font><br><br>"
+                 "<font color=\"" + ink + "\">last</font>&nbsp;line&nbsp;that&nbsp;is&nbsp;long&nbsp;enough&nbsp;to&nbsp;wrap&nbsp;around&nbsp;the&nbsp;narrow&nbsp;pane&nbsp;twice&nbsp;over,&nbsp;surely<br>");
+        QCOMPARE(asked("laidOut").toString(), plain);
+
+        // A tab is as wide as in the plain text, where a Text that reads StyledText would draw it as one space or none.
+        QMetaObject::invokeMethod(window, "show", Q_ARG(QVariant, "tabs.txt"));
+        QTRY_COMPARE(asked("shown").toString(), QString::fromUtf8(tabs));
+        const QString plainTabs = asked("laidOut").toString();
+        QMetaObject::invokeMethod(window, "show", Q_ARG(QVariant, "tabs.c"));
+        QTRY_COMPARE(asked("shown").toString(), "<font color=\"" + ink + "\">&#9;x</font><br>&nbsp;&#9;y<br><font color=\"" + ink + "\">z&#9;w</font>&nbsp;q<br>");
+        QCOMPARE(asked("laidOut").toString(), plainTabs);
+
+        // A Windows line end is one break, as in the plain text: its \r is left out, where a Text that reads StyledText would draw it as a space.
+        QMetaObject::invokeMethod(window, "show", Q_ARG(QVariant, "ends.txt"));
+        QTRY_COMPARE(asked("shown").toString(), QString::fromUtf8(ends));
+        const QString plainEnds = asked("laidOut").toString();
+        QMetaObject::invokeMethod(window, "show", Q_ARG(QVariant, "ends.c"));
+        QTRY_COMPARE(asked("shown").toString(), "<font color=\"" + ink + "\">ab</font>&nbsp;cd<br><font color=\"" + ink + "\">ef</font><br>");
+        QCOMPARE(asked("laidOut").toString(), plainEnds);
+        QMetaObject::invokeMethod(window, "show", Q_ARG(QVariant, "press.c"));
+        QTRY_VERIFY(asked("shown").toString().startsWith("<font color=\"" + ink + "\">int</font>"));
+
+        // Another theme is picked while the file is selected: its lines are redrawn in that theme's colors, laid out as before.
+        QDir(home.path()).mkpath("theme/theme");
+        write(home.filePath("theme/theme/colors.toml"), "magenta = \"#ffaaff\"\n");
+        QTRY_VERIFY(asked("shown").toString().startsWith("<font color=\"#ffaaff\">int</font>"));
+        QCOMPARE(asked("laidOut").toString(), plain);
+
+        // Back on a plain text the Text reads it plainly again: a "<" in it is a "<".
+        QMetaObject::invokeMethod(window, "show", Q_ARG(QVariant, "notes.txt"));
+        QTRY_VERIFY(!asked("styled").toBool());
+        QTRY_COMPARE(asked("shown").toString(), QString::fromUtf8(text));
+    }
+
     void backendReadsTrashNotesOffTheUiThread()
     {
         // Finding a trashed item's note looks over every mounted drive, so
@@ -5714,6 +5893,489 @@ private slots:
         QCOMPARE(previewer.text(), QString());
     }
 
+    void codeColorsReadWhatBatPrints()
+    {
+        // bat's escapes become runs of one of six inks, line by line, and the text is what is left without them.
+        using Runs = QVector<CodeColors::Run>;
+        const CodeColors::Lines one = CodeColors::parse("\x1b[35mint\x1b[0m \x1b[34mmain\x1b[0m() {}\n");
+        QCOMPARE(one.size(), 1);
+        QCOMPARE(one.at(0).text, QString("int main() {}"));
+        QCOMPARE(one.at(0).runs, (Runs{{0, 3, 5}, {4, 4, 4}}));
+
+        // A color left on where a line ends goes on in the next; 39 and a bare m end it, and the bright six are the six.
+        const CodeColors::Lines two = CodeColors::parse("\x1b[32m/* a\nb */\x1b[39m c \x1b[93md\x1b[m e");
+        QCOMPARE(two.size(), 2);
+        QCOMPARE(two.at(0).text, QString("/* a"));
+        QCOMPARE(two.at(0).runs, (Runs{{0, 4, 2}}));
+        QCOMPARE(two.at(1).text, QString("b */ c d e"));
+        QCOMPARE(two.at(1).runs, (Runs{{0, 4, 2}, {7, 1, 3}}));
+
+        // Bold, a color by number and a cleared line set no ink and leave no text; a line's \r stays its last character.
+        const CodeColors::Lines three = CodeColors::parse("\x1b[1ma\x1b[38;5;31mb\x1b[2Kc\x1b[1;31md\x1b[0m\r\n\nplain\n");
+        QCOMPARE(three.size(), 3);
+        QCOMPARE(three.at(0).text, QString("abcd\r"));
+        QCOMPARE(three.at(0).runs, (Runs{{3, 1, 1}}));
+        QCOMPARE(three.at(1).text, QString());
+        QVERIFY(three.at(1).runs.isEmpty());
+        QCOMPARE(three.at(2).text, QString("plain"));
+        QVERIFY(three.at(2).runs.isEmpty());
+        // A sequence that isn't colors, an erase to the line's end here, is passed over whatever number it carries.
+        const CodeColors::Lines erased = CodeColors::parse("a\x1b[31Kb\n");
+        QCOMPARE(erased.at(0).text, QString("ab"));
+        QVERIFY(erased.at(0).runs.isEmpty());
+        // The ends of the six and of the bright six, the four that are the text's own, and a background by number, which is no ink.
+        const CodeColors::Lines ends = CodeColors::parse("\x1b[36ma\x1b[91mb\x1b[96mc\x1b[30md\x1b[31me\x1b[37mf\x1b[31mg\x1b[90mh\x1b[31mi\x1b[97mj\x1b[48;5;32mk");
+        QCOMPARE(ends.at(0).text, QString("abcdefghijk"));
+        QCOMPARE(ends.at(0).runs, (Runs{{0, 1, 6}, {1, 1, 1}, {2, 1, 6}, {4, 1, 1}, {6, 1, 1}, {8, 1, 1}}));
+        QVERIFY(CodeColors::parse("").isEmpty());
+    }
+
+    void codeColorsPaintTheLinesTheyWereReadFrom()
+    {
+        // The colors are drawn over a text's own lines: a line that isn't the one bat read stays plain.
+        qmlRegisterType<CodeColors>("Folio", 1, 0, "CodeColors");
+        QQmlEngine engine;
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\nimport Folio\n"
+                          "TextEdit { id: body; property alias colors: colors; text: 'int main() {}\\nreturn 0;'\n"
+                          "    CodeColors { id: colors; textDocument: body.textDocument } }\n", QUrl());
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *colors = root->property("colors").value<CodeColors *>();
+        QVERIFY(colors);
+        const QColor red("#ff0000"), green("#00ff00"), yellow("#ffff00"), blue("#0000ff"), magenta("#ff00ff"), cyan("#00ffff");
+        // The ink a character of a line is drawn in, or no color for the text's own.
+        const auto inkAt = [colors](int line, int column) {
+            const auto formats = colors->document()->findBlockByNumber(line).layout()->formats();
+            for (const QTextLayout::FormatRange &range : formats)
+                if (range.start <= column && column < range.start + range.length)
+                    return range.format.foreground().color();
+            return QColor();
+        };
+        const CodeColors::Lines lines{{"int main() {}", {{0, 3, 5}, {4, 4, 4}, {11, 2, 6}}}, {"return 0;", {{0, 6, 5}, {7, 1, 3}}}};
+
+        // Colors without inks to draw them in draw nothing.
+        colors->setLines(QVariant::fromValue(lines));
+        QCOMPARE(inkAt(0, 0), QColor());
+        colors->setInks({red, green, yellow, blue, magenta, cyan});
+        QCOMPARE(inkAt(0, 0), magenta);
+        QCOMPARE(inkAt(0, 2), magenta);
+        QCOMPARE(inkAt(0, 3), QColor());
+        QCOMPARE(inkAt(0, 4), blue);
+        QCOMPARE(inkAt(0, 8), QColor());
+        QCOMPARE(inkAt(0, 12), cyan);
+        QCOMPARE(inkAt(1, 0), magenta);
+        QCOMPARE(inkAt(1, 7), yellow);
+
+        // Another theme's inks are drawn at once.
+        colors->setInks({red, green, cyan, blue, yellow, magenta});
+        QCOMPARE(inkAt(0, 0), yellow);
+        QCOMPARE(inkAt(0, 12), magenta);
+        QCOMPARE(inkAt(1, 7), cyan);
+
+        // The text moves on before its colors do: the line that changed is plain, the one that didn't keeps its colors.
+        root->setProperty("text", "int x;\nreturn 0;");
+        QCOMPARE(inkAt(0, 0), QColor());
+        QCOMPARE(inkAt(1, 0), yellow);
+        // More lines than were read, and fewer.
+        root->setProperty("text", "int main() {}\nreturn 0;\nreturn 0;");
+        QCOMPARE(inkAt(0, 0), yellow);
+        QCOMPARE(inkAt(2, 0), QColor());
+        root->setProperty("text", "int main() {}");
+        QCOMPARE(inkAt(0, 4), blue);
+
+        // A file with Windows line ends: bat keeps the \r in its line and the document doesn't.
+        root->setProperty("text", "int a;\r\nint b;\r\n");
+        colors->setLines(QVariant::fromValue(CodeColors::Lines{{"int a;\r", {{0, 3, 5}}}, {"int b;\r", {{0, 3, 5}}}}));
+        QCOMPARE(inkAt(0, 0), yellow);
+        QCOMPARE(inkAt(1, 0), yellow);
+        // A run that took in the \r stops where the document's line does.
+        colors->setLines(QVariant::fromValue(CodeColors::Lines{{"int a;\r", {{0, 3, 5}, {6, 1, 5}}}, {"int b;\r", {{4, 3, 5}}}}));
+        QCOMPARE(colors->document()->findBlockByNumber(0).layout()->formats().size(), 1);
+        const auto ended = colors->document()->findBlockByNumber(1).layout()->formats();
+        QCOMPARE(ended.size(), 1);
+        QCOMPARE(ended.at(0).start, 4);
+        QCOMPARE(ended.at(0).length, 2);
+        // Colors that come for a text already shown are told to its layout once, not line by line, which held the window half a second for a long text.
+        QSignalSpy told(colors->document()->documentLayout(), &QAbstractTextDocumentLayout::update);
+        colors->setLines(QVariant::fromValue(CodeColors::Lines{{"int a;\r", {{0, 3, 4}}}, {"int b;\r", {{0, 3, 4}}}}));
+        QCOMPARE(inkAt(1, 0), blue);
+        QCOMPARE(told.count(), 1);
+        colors->setInks({red, green, yellow, blue, magenta, cyan});
+        QCOMPARE(told.count(), 2);
+        // No colors again, as for a plain text.
+        colors->setLines(QVariant::fromValue(CodeColors::Lines()));
+        QCOMPARE(inkAt(0, 0), QColor());
+    }
+
+    void previewerColorsCode()
+    {
+        // A source file comes with its colors, from bat: the first lines with the text, a long text's others after it; a plain text asks for none.
+        QTemporaryDir dir;
+        const QString ran = dir.filePath("ran"), hold = dir.filePath("hold");
+        QVERIFY(mkfifo(QFile::encodeName(hold).constData(), 0600) == 0);
+        // Stands in for bat: every line in magenta, noting that it ran, and waiting at the hold itself before a 401st line, so that one stopped leaves nothing there.
+        const QByteArray magenta = "#!/bin/sh\necho ran >> '" + QFile::encodeName(ran) + "'\nn=0\n"
+                                   "while IFS= read -r line || [ -n \"$line\" ]; do\n"
+                                   "  n=$((n + 1))\n"
+                                   "  [ $n -eq 401 ] && read -r held < '" + QFile::encodeName(hold) + "'\n"
+                                   "  printf '\\033[35m%s\\033[0m\\n' \"$line\"\n"
+                                   "done\n";
+        const QString bin = binWith(dir.filePath("bin"), {{"bat", magenta}});
+        const QString failing = binWith(dir.filePath("failing"), {{"bat", "#!/bin/sh\necho ran >> '" + QFile::encodeName(ran) + "'\nprintf '\\033[35mint\\033[0m\\n'\nexit 1\n"}});
+        // One that colors the first text it is given and fails on every one after, noting those runs too.
+        const QString tiring = binWith(dir.filePath("tiring"), {{"bat", "#!/bin/sh\n[ -e '" + QFile::encodeName(ran) + "' ] && echo ran >> '" + QFile::encodeName(ran) + "' && exit 1\n" + magenta.mid(10)}});
+        const QString stuck = binWith(dir.filePath("stuck"), {{"bat", "#!/bin/sh\nexec cat '" + QFile::encodeName(hold) + "'\n"}});
+        const QString endless = binWith(dir.filePath("endless"), {{"bat", "#!/bin/sh\nwhile :; do printf '\\033[35m%s\\033[0m\\n' endless; done\n"}});
+        // Two that print "ab" in magenta and end at once, saying so four times over before each letter, and one that says it only three times before the second.
+        const QByteArray said = "\\033[35m", four = said.repeated(4), unsaid = "\\033[0m";
+        const QString wordy = binWith(dir.filePath("wordy"), {{"bat", "#!/bin/sh\nprintf '" + four + "a" + unsaid + four + "b" + unsaid + "\\n'\n"}});
+        const QString terse = binWith(dir.filePath("terse"), {{"bat", "#!/bin/sh\nprintf '" + four + "a" + unsaid + said.repeated(3) + "b" + unsaid + "\\n'\n"}});
+        // One that colors only when what it prints beside its colors goes nowhere.
+        const QString unheard = binWith(dir.filePath("unheard"), {{"bat", "#!/bin/sh\n[ /proc/self/fd/2 -ef /dev/null ] || exit 1\n" + magenta.mid(10)}});
+        QDir(dir.path()).mkdir("none");
+        QDir(dir.path()).mkdir("src");
+        const QString src = dir.filePath("src");
+        write(src + "/main.c", "int main() {}\n");
+        write(src + "/notes.txt", "int main() {}\n");
+        write(src + "/readme.md", "# int main\n");
+        const int many = 1000;
+        QByteArray longText;
+        for (int i = 0; i < many; ++i)
+            longText += "line " + QByteArray::number(i) + "\n";
+        write(src + "/long.py", longText);
+        // 400 lines that end, which the first lines hold whole, and 401 of which the last has no end.
+        const QByteArray fullText = longText.left(longText.indexOf("line 400\n"));
+        write(src + "/full.py", fullText);
+        write(src + "/edge.py", fullText + "x");
+        // Lines so long that an opening holds 32 of them, and a first line that no opening holds.
+        const int wideLines = 100, wideLine = 500;
+        write(src + "/wide.py", (QByteArray(wideLine, 'w') + "\n").repeated(wideLines));
+        write(src + "/min.py", QByteArray(Previewer::firstColoredSize + 1, 'm') + "\nvar = 1\n");
+        // The same in a letter of three bytes: fewer lines to an opening, and a first line too long for one with half the letters an opening has bytes.
+        const QByteArray letter = "\xe6\x96\x87";
+        const int letterLines = 40;
+        write(src + "/wide3.py", (letter.repeated(wideLine) + "\n").repeated(letterLines));
+        write(src + "/min3.py", letter.repeated(Previewer::firstColoredSize / 2) + "\nvar = 1\n");
+        // A second line that would fit an opening but for the line end ahead of it.
+        const QByteArray second = "var = 1";
+        write(src + "/brim.py", QByteArray(Previewer::firstColoredSize - second.size(), 'b') + "\n" + second + "\nx = 2\n");
+        // The other end of the hold, kept from when a stand-in is found waiting there until it is let go, and never handed to a stand-in started meanwhile.
+        int grip = -1;
+        const auto held = [&hold, &grip] {
+            if (grip < 0)
+                grip = ::open(QFile::encodeName(hold).constData(), O_WRONLY | O_NONBLOCK | O_CLOEXEC);
+            return grip >= 0;
+        };
+        // Lets the stand-in past its hold; false while none has waited there. Asked once: a check that waits reads its condition again after it holds, and nobody waits there then.
+        const auto release = [&held, &grip] {
+            if (!held())
+                return false;
+            ::close(grip);
+            grip = -1;
+            return true;
+        };
+        using Runs = QVector<CodeColors::Run>;
+        // A stopped bat is gone well inside this, where one left alone has five seconds for a whole text.
+        const int stoppedMs = 2000;
+        const auto colorsOf = [](const Previewer &previewer) { return previewer.colors().value<CodeColors::Lines>(); };
+        // How many times a stand-in has run, once the readings under way are through.
+        const auto runs = [&ran] {
+            QThreadPool::globalInstance()->waitForDone();
+            QCoreApplication::processEvents();
+            QThreadPool::globalInstance()->waitForDone();
+            QFile file(ran);
+            return file.open(QIODevice::ReadOnly) ? int(file.readAll().count('\n')) : 0;
+        };
+
+        {
+            const auto path = pathAt(bin);
+            Previewer previewer;
+            // How many lines had their colors each time a text was shown.
+            QVector<int> shown;
+            connect(&previewer, &Previewer::changed, &previewer, [&] {
+                if (!previewer.text().isEmpty())
+                    shown << colorsOf(previewer).size();
+            });
+            previewer.start(src + "/main.c", false, "name");
+            QTRY_COMPARE(previewer.text(), QString("int main() {}\n"));
+            // The text and its colors in one change, not one after the other.
+            QCOMPARE(shown, QVector<int>{1});
+            QCOMPARE(colorsOf(previewer).at(0).text, QString("int main() {}"));
+            QCOMPARE(colorsOf(previewer).at(0).runs, (Runs{{0, 13, 5}}));
+            // A text this short is whole in its first lines: bat isn't run on it again.
+            QCOMPARE(runs(), 1);
+
+            // A plain text and a Markdown one: bat isn't run for them, and the colors of the file before are gone.
+            for (const char *name : {"/notes.txt", "/readme.md"}) {
+                QVERIFY(QFile::remove(ran));
+                QSignalSpy told(&previewer, &Previewer::colored);
+                previewer.show(src + name);
+                QVERIFY(colorsOf(previewer).isEmpty());
+                QVERIFY(!told.isEmpty());
+                QTRY_VERIFY(!previewer.text().isEmpty());
+                QThreadPool::globalInstance()->waitForDone();
+                QVERIFY(colorsOf(previewer).isEmpty());
+                QVERIFY(!QFile::exists(ran));
+                previewer.show(src + "/main.c");
+                QTRY_COMPARE(colorsOf(previewer).size(), 1);
+            }
+
+            // A long text is shown with its first lines colored while bat is still on the whole of it.
+            QSignalSpy colored(&previewer, &Previewer::colored);
+            previewer.show(src + "/long.py");
+            QTRY_VERIFY(!previewer.text().isEmpty());
+            QCOMPARE(shown.last(), Previewer::firstColored);
+            QCOMPARE(colorsOf(previewer).size(), Previewer::firstColored);
+            QCOMPARE(colorsOf(previewer).last().text, QString("line 399"));
+            // The rest come once it is through, and nothing but the colors changes then.
+            const int texts = shown.size(), before = colored.count();
+            QTRY_VERIFY(held());
+            QVERIFY(release());
+            QTRY_COMPARE(colorsOf(previewer).size(), many);
+            QCOMPARE(colored.count(), before + 1);
+            QCOMPARE(shown.size(), texts);
+            QCOMPARE(colorsOf(previewer).last().runs, (Runs{{0, 8, 5}}));
+
+            // 400 lines are whole in the first lines, so bat isn't run again; a 401st with no end is one more to color.
+            QVERIFY(QFile::remove(ran));
+            previewer.show(src + "/full.py");
+            QTRY_COMPARE(colorsOf(previewer).size(), Previewer::firstColored);
+            QCOMPARE(runs(), 1);
+            previewer.show(src + "/edge.py");
+            QTRY_COMPARE(colorsOf(previewer).size(), Previewer::firstColored);
+            QTRY_VERIFY(held());
+            QVERIFY(release());
+            QTRY_COMPARE(colorsOf(previewer).size(), Previewer::firstColored + 1);
+            QCOMPARE(colorsOf(previewer).last().runs, (Runs{{0, 1, 5}}));
+
+            // Lines too long for 400 of them to be an opening: the whole lines that fit come with the text, the others after it.
+            previewer.show(src + "/wide.py");
+            QTRY_VERIFY(!previewer.text().isEmpty());
+            QCOMPARE(shown.last(), (Previewer::firstColoredSize + 1) / (wideLine + 1));
+            QTRY_COMPARE(colorsOf(previewer).size(), wideLines);
+            // A first line too long for an opening: the text isn't kept waiting for bat, which colors all of it in its one run.
+            QCOMPARE(runs(), 5);
+            QVERIFY(QFile::remove(ran));
+            previewer.show(src + "/min.py");
+            QTRY_VERIFY(!previewer.text().isEmpty());
+            QCOMPARE(shown.last(), 0);
+            QTRY_COMPARE(colorsOf(previewer).size(), 2);
+            QCOMPARE(runs(), 1);
+            // The size is of the bytes bat is sent, not of the letters: fewer lines of a letter of three bytes fit, and a line end counts.
+            previewer.show(src + "/wide3.py");
+            QTRY_VERIFY(!previewer.text().isEmpty());
+            QCOMPARE(shown.last(), (Previewer::firstColoredSize + 1) / (wideLine * int(letter.size()) + 1));
+            QTRY_COMPARE(colorsOf(previewer).size(), letterLines);
+            previewer.show(src + "/min3.py");
+            QTRY_VERIFY(!previewer.text().isEmpty());
+            QCOMPARE(shown.last(), 0);
+            QTRY_COMPARE(colorsOf(previewer).size(), 2);
+            previewer.show(src + "/brim.py");
+            QTRY_VERIFY(!previewer.text().isEmpty());
+            QCOMPARE(shown.last(), 1);
+            QTRY_COMPARE(colorsOf(previewer).size(), 3);
+            QCOMPARE(runs(), 6);
+
+            // Stepped past before its reading began: bat isn't run for a file nobody waited for.
+            {
+                QThreadPool *pool = QThreadPool::globalInstance();
+                const int threads = pool->maxThreadCount();
+                std::atomic<bool> busy = true;
+                const auto restore = qScopeGuard([&] {
+                    busy = false;
+                    pool->waitForDone();
+                    pool->setMaxThreadCount(threads);
+                });
+                pool->setMaxThreadCount(1);
+                pool->start([&busy] {
+                    while (busy)
+                        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                });
+                QVERIFY(QFile::remove(ran));
+                previewer.show(src + "/full.py");
+                previewer.show(src + "/main.c");
+                busy = false;
+                QTRY_COMPARE(colorsOf(previewer).size(), 1);
+                QCOMPARE(runs(), 1);
+            }
+
+            // Stepped on while bat is at the hold with the whole text: it is stopped, not left to finish a text nobody is looking at.
+            previewer.show(src + "/long.py");
+            QTRY_COMPARE(colorsOf(previewer).size(), Previewer::firstColored);
+            QTRY_VERIFY(held());
+            previewer.show(src + "/main.c");
+            QTRY_COMPARE(colorsOf(previewer).size(), 1);
+            QVERIFY(QThreadPool::globalInstance()->waitForDone(stoppedMs));
+
+            // Stepped on and back with the hold kept: the run for the first showing is stopped, and one goes on alone.
+            previewer.show(src + "/long.py");
+            QTRY_COMPARE(colorsOf(previewer).size(), Previewer::firstColored);
+            previewer.show(src + "/main.c");
+            previewer.show(src + "/long.py");
+            QTRY_COMPARE(colorsOf(previewer).size(), Previewer::firstColored);
+            QTRY_COMPARE_WITH_TIMEOUT(QThreadPool::globalInstance()->activeThreadCount(), 1, stoppedMs);
+            // That one is the second's: let past the hold, wherever it has got to, it colors the text shown.
+            QVERIFY(release());
+            QTRY_VERIFY(colorsOf(previewer).size() == many || held());
+            release();
+            QTRY_COMPARE(colorsOf(previewer).size(), many);
+
+            // Stepped on when bat is just through the whole text: its colors are for a file no longer shown, and are dropped.
+            previewer.show(src + "/main.c");
+            previewer.show(src + "/long.py");
+            QTRY_COMPARE(colorsOf(previewer).size(), Previewer::firstColored);
+            QVector<int> since;
+            connect(&previewer, &Previewer::colored, &previewer, [&] { since << colorsOf(previewer).size(); });
+            QTRY_VERIFY(held());
+            QVERIFY(release());
+            // Its answer is read and waits to be handed over when the next item is shown.
+            QThreadPool::globalInstance()->waitForDone();
+            previewer.show(src + "/main.c");
+            QTRY_COMPARE(colorsOf(previewer).size(), 1);
+            QCoreApplication::processEvents();
+            QVERIFY(!since.contains(many));
+
+            // Closed while bat is at the hold with the whole text: it is stopped then too.
+            previewer.show(src + "/long.py");
+            QTRY_COMPARE(colorsOf(previewer).size(), Previewer::firstColored);
+            QTRY_VERIFY(held());
+        }
+        QVERIFY(QThreadPool::globalInstance()->waitForDone(stoppedMs));
+        QVERIFY(release());
+
+        // Without bat, or with one that fails, the text is shown as it always was.
+        for (const QString &tools : {dir.filePath("none"), failing}) {
+            const auto path = pathAt(tools);
+            QFile::remove(ran);
+            Previewer previewer;
+            previewer.start(src + "/main.c", false, "name");
+            QTRY_COMPARE(previewer.text(), QString("int main() {}\n"));
+            QVERIFY(colorsOf(previewer).isEmpty());
+            QCOMPARE(previewer.viewer(), QString("text"));
+            // A long text too, and a bat that failed on its first lines isn't asked for the rest.
+            previewer.show(src + "/long.py");
+            QTRY_COMPARE(previewer.text().size(), longText.size());
+            QVERIFY(colorsOf(previewer).isEmpty());
+            QCOMPARE(runs(), tools == failing ? 2 : 0);
+            QVERIFY(colorsOf(previewer).isEmpty());
+        }
+        // When bat fails on the whole of a long text, the first lines keep the colors they have.
+        {
+            const auto path = pathAt(tiring);
+            QFile::remove(ran);
+            Previewer previewer;
+            previewer.start(src + "/long.py", false, "name");
+            QTRY_COMPARE(colorsOf(previewer).size(), Previewer::firstColored);
+            QCOMPARE(runs(), 2);
+            QCOMPARE(colorsOf(previewer).size(), Previewer::firstColored);
+        }
+        // One that never answers is given up on at the limit, and at once when its colors aren't wanted any more.
+        const int longMs = 15000, soonMs = 10000;
+        {
+            const auto path = pathAt(stuck);
+            const int limitMs = 200;
+            QVERIFY(CodeColors::of("int main() {}\n", "main.c", limitMs).isEmpty());
+            QElapsedTimer waited;
+            waited.start();
+            QVERIFY(CodeColors::of("int main() {}\n", "main.c", longMs, [] { return false; }).isEmpty());
+            QVERIFY(waited.elapsed() < soonMs);
+            // A text is held back by it no longer than its first lines are given, not the seconds the whole of it is.
+            Previewer previewer;
+            waited.start();
+            previewer.start(src + "/long.py", false, "name");
+            QTRY_COMPARE_WITH_TIMEOUT(previewer.text().size(), longText.size(), longMs);
+            QVERIFY(waited.elapsed() < stoppedMs);
+            QVERIFY(colorsOf(previewer).isEmpty());
+        }
+        // One that prints without end is stopped when it has printed more than colors take.
+        {
+            const auto path = pathAt(endless);
+            QElapsedTimer waited;
+            waited.start();
+            QVERIFY(CodeColors::of("int main() {}\n", "main.c", longMs).isEmpty());
+            QVERIFY(waited.elapsed() < soonMs);
+        }
+        // One that prints more than that and ends before it is looked at is not read either: 51 bytes for the 3 sent, where 46 are still colors.
+        {
+            const auto path = pathAt(wordy);
+            QVERIFY(CodeColors::of("ab\n", "main.c", longMs).isEmpty());
+        }
+        {
+            const auto path = pathAt(terse);
+            QCOMPARE(CodeColors::of("ab\n", "main.c", longMs).size(), 1);
+        }
+        // What bat prints beside its colors is never kept: this one colors only when it goes nowhere.
+        {
+            const auto path = pathAt(unheard);
+            QCOMPARE(CodeColors::of("int main() {}\n", "main.c", longMs).size(), 1);
+        }
+        const auto path = pathAt(bin);
+        QCOMPARE(CodeColors::of("int main() {}\n", "main.c", longMs).size(), 1);
+    }
+
+    void previewWindowDrawsCodeInTheThemesInks()
+    {
+        // The preview's own window draws what bat colored in the inks of the theme.
+        QTemporaryDir dir;
+        // Stands in for bat: the first word of every line in magenta and the rest of it in green.
+        const QString bin = binWith(dir.filePath("bin"), {{"bat", "#!/bin/sh\n"
+                                                                   "while IFS= read -r line || [ -n \"$line\" ]; do\n"
+                                                                   "  first=${line%% *}\n"
+                                                                   "  printf '\\033[35m%s\\033[32m%s\\033[0m\\n' \"$first\" \"${line#\"$first\"}\"\n"
+                                                                   "done\n"}});
+        QDir(dir.path()).mkpath("src");
+        QDir(dir.path()).mkpath("current/theme");
+        write(dir.filePath("src/main.c"), "int main() {}\n");
+        write(dir.filePath("current/theme/colors.toml"), "foreground = \"#dddddd\"\nmagenta = \"#ff66ff\"\ngreen = \"#66ff66\"\n");
+        const auto path = pathAt(bin);
+        qmlRegisterType<CodeColors>("Folio", 1, 0, "CodeColors");
+        Theme theme(dir.filePath("current"));
+        QCOMPARE(theme.green(), QColor("#66ff66"));
+        // A theme that names no green gets the one the other fallback colors go with.
+        QCOMPARE(Theme(dir.filePath("none")).green(), QColor("#9ece6a"));
+        Previewer previewer;
+        previewer.start(dir.filePath("src/main.c"), false, "name");
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("previewer", &previewer);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        QQmlComponent component(&engine, QUrl::fromLocalFile(sourceFolder() + "/PreviewWindow.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(window);
+        QTRY_COMPARE(previewer.text(), QString("int main() {}\n"));
+        // The text view, found once the window has made it for a text.
+        const std::function<QQuickItem *(QQuickItem *)> textIn = [&textIn](QQuickItem *item) -> QQuickItem * {
+            if (item->inherits("QQuickTextEdit"))
+                return item;
+            for (QQuickItem *child : item->childItems())
+                if (QQuickItem *found = textIn(child))
+                    return found;
+            return nullptr;
+        };
+        QTRY_VERIFY(textIn(window->contentItem()));
+        QTextDocument *document = textIn(window->contentItem())->property("textDocument").value<QQuickTextDocument *>()->textDocument();
+        const auto inkAt = [document](int column) {
+            const auto formats = document->firstBlock().layout()->formats();
+            for (const QTextLayout::FormatRange &range : formats)
+                if (range.start <= column && column < range.start + range.length)
+                    return range.format.foreground().color();
+            return QColor();
+        };
+        QTRY_COMPARE(document->firstBlock().text(), QString("int main() {}"));
+        QCOMPARE(inkAt(0), QColor("#ff66ff"));
+        QCOMPARE(inkAt(2), QColor("#ff66ff"));
+        QCOMPARE(inkAt(3), QColor("#66ff66"));
+        QCOMPARE(inkAt(12), QColor("#66ff66"));
+
+        // Another theme is picked while the preview is open: the code is redrawn in its colors.
+        write(dir.filePath("current/theme/colors.toml"), "foreground = \"#dddddd\"\nmagenta = \"#ffaaff\"\ngreen = \"#aaffaa\"\n");
+        QTRY_COMPARE(inkAt(0), QColor("#ffaaff"));
+        QCOMPARE(inkAt(12), QColor("#aaffaa"));
+    }
+
     void previewerCountsHiddenFilesWhenTheyShow()
     {
         QTemporaryDir dir;
@@ -5815,6 +6477,62 @@ private slots:
         // Missing derived backgrounds fall back to the base.
         QCOMPARE(theme.darkBackground(), QColor("#FFFCF0"));
         QVERIFY(theme.light());
+    }
+
+    void themeDrawsCodeInInksThatReadOnItsBackgrounds()
+    {
+        // Code is drawn in the theme's own six colors where they can be read, and in the nearest that can where they can't.
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("theme");
+        const auto inksOf = [](const Theme &theme) {
+            QVector<QColor> inks;
+            for (const QVariant &ink : theme.codeInks())
+                inks << ink.value<QColor>();
+            return inks;
+        };
+        // WCAG's contrast of two colors, from 1 to 21.
+        const auto contrast = [](const QColor &a, const QColor &b) {
+            const auto light = [](const QColor &c) {
+                const auto linear = [](double v) { return v <= .04045 ? v / 12.92 : std::pow((v + .055) / 1.055, 2.4); };
+                return .2126 * linear(c.redF()) + .7152 * linear(c.greenF()) + .0722 * linear(c.blueF());
+            };
+            return (qMax(light(a), light(b)) + .05) / (qMin(light(a), light(b)) + .05);
+        };
+        // What reads, and what is no further from the theme's color than reading takes.
+        const double reads = 4.5, near = 4.6;
+
+        // A dark theme whose colors all read on it: its own, in the order bat numbers them.
+        write(dir.filePath("theme/colors.toml"), "background = \"#1e1e2e\"\ndark_background = \"#161622\"\nforeground = \"#cdd6f4\"\n"
+                                                 "red = \"#f38ba8\"\ngreen = \"#a6e3a1\"\nyellow = \"#f9e2af\"\nblue = \"#89b4fa\"\nmagenta = \"#f5c2e7\"\ncyan = \"#94e2d5\"\n");
+        Theme theme(dir.path());
+        QCOMPARE(inksOf(theme), (QVector<QColor>{QColor("#f38ba8"), QColor("#a6e3a1"), QColor("#f9e2af"), QColor("#89b4fa"), QColor("#f5c2e7"), QColor("#94e2d5")}));
+
+        // The theme changes to a light one while it is in use: a yellow too faint for its paper is darkened until it reads, and a red that reads is left alone.
+        QSignalSpy changed(&theme, &Theme::changed);
+        write(dir.filePath("theme/colors.toml"), "mode = \"light\"\nbackground = \"#eff1f5\"\ndark_background = \"#e6e9ef\"\nforeground = \"#4c4f69\"\n"
+                                                 "red = \"#a00020\"\nyellow = \"#df8e1d\"\n");
+        QTRY_VERIFY(!changed.isEmpty());
+        const QColor paper("#eff1f5"), darkPaper("#e6e9ef"), yellow("#df8e1d");
+        QCOMPARE(inksOf(theme).at(0), QColor("#a00020"));
+        const QColor darkened = inksOf(theme).at(2);
+        QVERIFY(contrast(yellow, darkPaper) < reads);
+        QVERIFY(contrast(darkened, paper) >= reads);
+        // The dark background is the one a dark ink shows less on, so it decides, and the ink goes no darker than it asks.
+        QVERIFY(contrast(darkened, darkPaper) >= reads);
+        QVERIFY(contrast(darkened, darkPaper) < near);
+        QVERIFY(qAbs(darkened.hslHue() - yellow.hslHue()) <= 2);
+        // A color the theme doesn't name is Folio's own for it, held to the same.
+        QVERIFY(contrast(inksOf(theme).at(1), darkPaper) >= reads);
+
+        // On a dark theme a red too deep for it is lightened, and there the background decides.
+        write(dir.filePath("theme/colors.toml"), "background = \"#1f1f28\"\ndark_background = \"#16161d\"\nforeground = \"#dcd7ba\"\nred = \"#c34043\"\n");
+        const QColor night("#1f1f28"), red("#c34043");
+        QTRY_VERIFY(inksOf(theme).at(0) != QColor("#a00020"));
+        const QColor lightened = inksOf(theme).at(0);
+        QVERIFY(contrast(red, night) < reads);
+        QVERIFY(contrast(lightened, night) >= reads);
+        QVERIFY(contrast(lightened, night) < near);
+        QVERIFY(lightened.lightnessF() > red.lightnessF());
     }
 
     void themeDerivesALighterBackgroundWhenItMatches()

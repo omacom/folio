@@ -5,6 +5,7 @@
 #include <QVariantMap>
 #include <QVector>
 
+#include "codecolors.h"
 #include "foldermodel.h"
 
 // The state behind `folio preview`: the file being looked at, its siblings
@@ -26,10 +27,13 @@ class Previewer : public QObject {
     Q_PROPERTY(QString viewer READ viewer NOTIFY changed)
     Q_PROPERTY(QString url READ url NOTIFY changed)
     Q_PROPERTY(QString text READ text NOTIFY changed)
+    // A source text's colors, with a signal of their own: a long text's later lines get theirs after it is shown, and nothing else changes then.
+    Q_PROPERTY(QVariant colors READ colors NOTIFY colored)
     Q_PROPERTY(QString type READ type NOTIFY changed)
 
 public:
     explicit Previewer(QObject *parent = nullptr);
+    ~Previewer() override;
 
     // Shows the file right away, then lists its folder in the background so
     // the arrow keys can step to its neighbours.
@@ -48,6 +52,7 @@ public:
     QString viewer() const { return m_viewer; }
     QString url() const;
     QString text() const { return m_text; }
+    QVariant colors() const { return QVariant::fromValue(m_colors); }
     QString type() const;
 
     Q_INVOKABLE void next();
@@ -65,18 +70,23 @@ public:
     // `cells` cells: laid out, each costs the UI thread about as much as a
     // whole line of prose, and a long table froze the preview for seconds.
     static QString markdownOpening(const QString &text, int cells = 600);
+    // The lines colored before a text is shown and the most characters they may hold: more than a window shows at first, and bat is through them in a few hundredths of a second.
+    static constexpr int firstColored = 400, firstColoredSize = 16 * 1024;
 
 signals:
     void changed();
     void listed();
+    void colored();
 
 private:
     void setIndex(int index, bool report);
+    void colorTheRest(quint64 generation);
 
     QVector<FolderModel::Entry> m_entries;
     int m_index = -1;
     QString m_viewer;
     QString m_text;
+    CodeColors::Lines m_colors;
     bool m_showHidden = false;
     QString m_sort = "name";
     quint64 m_generation = 0;
