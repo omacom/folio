@@ -3,8 +3,8 @@
 
 // Sizes, dates, counts and thumbnail URLs as the views show them, in one
 // copy that every tile and row shares. A library can't see context
-// properties, so a binding that shows a date reads translator.language
-// itself to follow a language switch; whatever goes through qsTr here is
+// properties, so callers pass translator.dateLocale for dates to follow
+// a language switch; whatever goes through qsTr here is
 // refreshed with the rest of the strings.
 
 // Each unit is whole with its number, so a language can place and space it
@@ -24,10 +24,10 @@ function free(bytes) {
 
 // When it changed: the time for today, the date before that. A plugin's
 // items have no date.
-function when(date) {
+function when(date, localeName) {
     if (!date || isNaN(date.getTime()))
         return ""
-    const locale = Qt.locale()
+    const locale = Qt.locale(localeName)
     const now = new Date()
     const today = date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate()
     return today ? date.toLocaleTimeString(locale, QtQml.Locale.ShortFormat) : date.toLocaleDateString(locale, QtQml.Locale.ShortFormat)

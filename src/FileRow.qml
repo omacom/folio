@@ -121,6 +121,7 @@ Item {
             elide: Text.ElideMiddle
         }
         Text {
+            objectName: "sizeLabel"
             visible: row.showSize
             Layout.preferredWidth: 96
             horizontalAlignment: Text.AlignRight
@@ -129,14 +130,12 @@ Item {
             font.pixelSize: 12
         }
         Text {
+            objectName: "dateLabel"
             visible: row.showDate
             Layout.preferredWidth: 96
             Layout.leftMargin: 12
             horizontalAlignment: Text.AlignLeft
-            text: {
-                translator.language // Re-read when the language (and so the default locale) changes.
-                return Format.when(row.modified)
-            }
+            text: Format.when(row.modified, translator.dateLocale)
             color: theme.secondaryForeground
             font.pixelSize: 12
             elide: Text.ElideRight
