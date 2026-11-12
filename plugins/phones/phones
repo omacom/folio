@@ -1,0 +1,22 @@
+#!/bin/sh
+# Lists the phones and cameras GVfs sees over MTP or PTP, one item each,
+# which Folio mounts through GVfs when opened. A phone shows once it's
+# unlocked and set to file transfer.
+quote() { printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"; }
+
+printf '{"items":['
+gio mount -li 2>/dev/null | awk '
+  /^Volume\([0-9]+\): / { sub(/^Volume\([0-9]+\): /, ""); name = $0; next }
+  /activation_root=(mtp|gphoto2):\/\// { sub(/.*activation_root=/, ""); print $0 "\t" name; name = "" }
+' | {
+  separator=
+  while IFS="$(printf '\t')" read -r url name; do
+    kind=Phone
+    case $url in gphoto2:*) kind=Camera ;; esac
+    printf '%s{"id":%s,"name":%s,"icon":"phone.svg","subtitle":"%s",' \
+      "$separator" "$(quote "$url")" "$(quote "${name:-$kind}")" "$kind"
+    printf '"open":{"mount":%s,"verified":true}}' "$(quote "$url")"
+    separator=,
+  done
+}
+printf ']}\n'
