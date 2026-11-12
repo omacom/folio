@@ -116,6 +116,12 @@ public:
     // Unpacks each archive beside itself: an archive of one item gives
     // that item, one of several a folder named after the archive.
     Q_INVOKABLE void extract(const QStringList &paths);
+    // Whether these are all files of one's own that can be made to run or
+    // not: never a folder, whose x means something else, nor a link.
+    Q_INVOKABLE bool canSetExecutable(const QStringList &paths) const;
+    // Whether each of them runs as a program already.
+    Q_INVOKABLE bool executable(const QStringList &paths) const;
+    Q_INVOKABLE void setExecutable(const QStringList &paths, bool on);
 
     Q_INVOKABLE void trash(const QStringList &paths);
 
@@ -267,6 +273,8 @@ signals:
     void busyChanged();
     void clipboardChanged();
     void failed(const QString &message);
+    // Files whose permissions setExecutable changed.
+    void modesChanged(const QStringList &paths);
     void notice(const QString &notice);
     void clashChanged();
     void historyChanged();

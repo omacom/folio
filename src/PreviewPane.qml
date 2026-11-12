@@ -48,6 +48,12 @@ Rectangle {
     // and describing that would drop what's been read of this one.
     onItemChanged: Qt.callLater(describe)
     function describe() { backend.describe(item, !!folderPane && folderPane.inTrash) }
+    // Made executable or not from the menu: the item looks the same in the
+    // folder, so its permissions are read again here.
+    Connections {
+        target: pane.folderPane ? pane.folderPane.paneFileOps : null
+        function onModesChanged(paths) { if (pane.hasItem && paths.includes(pane.item.path)) pane.describe() }
+    }
 
     color: theme.darkBackground
 
@@ -157,6 +163,21 @@ Rectangle {
                     const when = pane.trashed ? pane.info.deleted : pane.noting ? null : pane.item.modified
                     return pane.hasItem && when ? when.toLocaleString(Qt.locale(), Locale.ShortFormat) : ""
                 }
+                color: theme.foreground
+                font.pixelSize: 12
+            }
+            // As ls writes them; Make Executable in the menu changes them. The
+            // row keeps its place while they're read, so moving through files
+            // doesn't shift the rows below it. Not in the trash, where nothing
+            // changes them.
+            readonly property bool permissionsShown: pane.hasItem && !(pane.folderPane && pane.folderPane.inTrash) && !pane.pluginItem
+                                                     && pane.item.path.startsWith("/")
+            Text { visible: parent.permissionsShown; text: qsTr("Permissions"); color: theme.secondaryForeground; font.pixelSize: 12 }
+            Text {
+                visible: parent.permissionsShown
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignRight
+                text: pane.info.permissions || ""
                 color: theme.foreground
                 font.pixelSize: 12
             }

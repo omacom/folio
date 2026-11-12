@@ -1,13 +1,14 @@
 import QtQuick
 
 // The right-click menu. On an item: Open, Open With (each app that can),
-// Preview, Rename, Duplicate, Copy, Cut, Paste Into, Copy Path, Compress,
-// Extract (for archives), Burn (for disk images), plugins' own actions for
-// it, Share (whatever plugins offer for it), Pin, Terminal, Trash. On empty
-// space: Undo, Paste, New Folder, Copy Path, Terminal, hidden files. In the
-// trash: Restore, Empty Trash and Delete…, without the entries that change
-// files or plugins' actions. On a plugin's item: Open, and nothing for files. Entries show their
-// keys, so the menu also teaches the shortcuts.
+// Preview, Rename, Duplicate, Make Executable (for one's own files), Copy,
+// Cut, Paste Into, Copy Path, Compress, Extract (for archives), Burn (for
+// disk images), plugins' own actions for it, Share (whatever plugins offer
+// for it), Pin, Terminal, Trash. On empty space: Undo, Paste, New Folder,
+// Copy Path, Terminal, hidden files. In the trash: Restore, Empty Trash and
+// Delete…, without the entries that change files or plugins' actions. On a
+// plugin's item: Open, and nothing for files. Entries show their keys, so
+// the menu also teaches the shortcuts.
 FolioMenu {
     id: fileMenu
 
@@ -45,6 +46,10 @@ FolioMenu {
     // as the menu opens rather than on every binding.
     property bool canBurn: false
     property var burnTargets: []
+    // Whether these are one's own files that can be made to run or not, and
+    // whether they all run now, asked as the menu opens.
+    property bool canRun: false
+    property bool runs: false
 
     // Opens at the pointer (`at`, in the window), or (from the keyboard,
     // Alt+Return) beside the item it's about. Mirrored, it opens leftward,
@@ -61,6 +66,8 @@ FolioMenu {
             return
         canBurn = forItem && forFiles && !trashView && !forSelection && fileOps.canBurn(target.path)
         burnTargets = canBurn ? fileOps.burnTargets(target.path) : []
+        canRun = forItem && forFiles && !trashView && fileOps.canSetExecutable(paths)
+        runs = canRun && fileOps.executable(paths)
         // Submenus (Open With, Share, Burn) show only when they apply.
         // Menu makes their entries itself, so they're set here rather than
         // bound where they're declared. A plugin's own submenus are made
@@ -151,6 +158,11 @@ FolioMenu {
         text: qsTr("Duplicate")
         keys: "Ctrl+Shift+D"
         onTriggered: fileOps.duplicate(fileMenu.target.path)
+    }
+    FolioMenuItem {
+        shown: fileMenu.canRun
+        text: fileMenu.runs ? qsTr("Make Not Executable") : qsTr("Make Executable")
+        onTriggered: fileOps.setExecutable(fileMenu.paths, !fileMenu.runs)
     }
     FolioMenuItem {
         shown: fileMenu.forItem && fileMenu.forFiles

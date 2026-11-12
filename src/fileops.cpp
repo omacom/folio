@@ -1023,6 +1023,55 @@ void FileOps::compress(const QStringList &selected) {
     connect(process, &QProcess::readyReadStandardError, this, [process, read] { read(process); });
 }
 
+// Only the owner may change a file's mode, so it's offered for one's own.
+static bool ownFile(const QString &path, struct stat *st) {
+    return ::lstat(QFile::encodeName(path).constData(), st) == 0 && S_ISREG(st->st_mode) && st->st_uid == ::geteuid();
+}
+
+bool FileOps::canSetExecutable(const QStringList &paths) const {
+    struct stat st;
+    return !paths.isEmpty() && std::all_of(paths.begin(), paths.end(), [&st](const QString &path) { return ownFile(path, &st); });
+}
+
+bool FileOps::executable(const QStringList &paths) const {
+    struct stat st;
+    return !paths.isEmpty() && std::all_of(paths.begin(), paths.end(), [&st](const QString &path) {
+        return ownFile(path, &st) && (st.st_mode & S_IXUSR);
+    });
+}
+
+void FileOps::setExecutable(const QStringList &paths, bool on) {
+    QStringList changed, failures;
+    for (const QString &path : paths) {
+        // Looked at and changed through one handle, so a link put anywhere
+        // in the path after the menu opened can't send the change elsewhere.
+        const int fd = ::open(QFile::encodeName(path).constData(), O_PATH | O_NOFOLLOW | O_CLOEXEC);
+        struct stat st;
+        if (fd < 0 || ::fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) || st.st_uid != ::geteuid()) {
+            if (fd >= 0)
+                ::close(fd);
+            continue;
+        }
+        // Whoever may read it may run it, so a file kept private stays so;
+        // off, no one may.
+        const mode_t read = st.st_mode & (S_IRUSR | S_IRGRP | S_IROTH);
+        const mode_t mode = on ? (st.st_mode | read >> 2) : (st.st_mode & ~(S_IXUSR | S_IXGRP | S_IXOTH));
+        // fchmod() can't take an O_PATH handle; its /proc link can be changed.
+        const bool done = ::chmod(("/proc/self/fd/" + QByteArray::number(fd)).constData(), mode & 07777) == 0;
+        const int why = errno;
+        ::close(fd);
+        if (done)
+            changed << path;
+        else
+            failures << tr("%1 (%2)").arg(QFileInfo(path).fileName(), QString::fromLocal8Bit(strerror(why)));
+    }
+    if (!changed.isEmpty())
+        emit modesChanged(changed);
+    if (!failures.isEmpty())
+        emit failed((on ? tr("Couldn't make %1 executable.") : tr("Couldn't make %1 not executable."))
+                        .arg(QLocale().createSeparatedList(failures)));
+}
+
 bool FileOps::canExtract(const QStringList &paths) const {
     // A lone compressed file (notes.txt.gz) is no archive to bsdtar, and a
     // disk image is for burning, not unpacking.
