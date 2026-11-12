@@ -1,6 +1,8 @@
 #include <QClipboard>
+#include <QDataStream>
 #include <QDir>
 #include <QEventLoopLocker>
+#include <QFontDatabase>
 #include <QMimeData>
 #include <QPageSize>
 #include <QPainter>
@@ -22,6 +24,7 @@
 #include <QQmlPropertyMap>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QRawFont>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QStandardPaths>
@@ -29,8 +32,10 @@
 #include <QUrl>
 #include <QtConcurrent>
 #include <QtTest>
+#include <csignal>
 #include <fcntl.h>
 #include <signal.h>
+#include <sys/inotify.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -39,6 +44,7 @@
 #include "disks.h"
 #include "fileops.h"
 #include "foldermodel.h"
+#include "fontsample.h"
 #include "mounter.h"
 #include "places.h"
 #include "plugins.h"
@@ -3355,6 +3361,98 @@ private slots:
         QCOMPARE(backend.title(), QString("Trash"));
     }
 
+    void backendReadsMediaFacts()
+    {
+        // A phone's clip: turned a quarter, with sound, past the hour.
+        const QVariantMap clip = Backend::mediaFacts(R"({"streams": [
+            {"codec_name": "hevc", "codec_type": "video", "width": 1920, "height": 1080,
+             "side_data_list": [{"side_data_type": "Display Matrix", "rotation": -90}]},
+            {"codec_name": "aac", "codec_type": "audio"}],
+            "format": {"duration": "3725.900000"}})");
+        QCOMPARE(clip, (QVariantMap{{"seconds", 3725.9}, {"width", 1080}, {"height", 1920}, {"video", "H.265"}, {"audio", "AAC"}}));
+
+        // A song with its cover art: the cover gives no picture size or video codec.
+        const QVariantMap song = Backend::mediaFacts(R"({"streams": [
+            {"codec_name": "pcm_s16le", "codec_type": "audio"},
+            {"codec_name": "mjpeg", "codec_type": "video", "width": 600, "height": 600,
+             "disposition": {"attached_pic": 1}}],
+            "format": {"duration": "59.990000"}})");
+        QCOMPARE(song, (QVariantMap{{"seconds", 59.99}, {"audio", "PCM"}}));
+
+        // A dump with no duration has no length; a codec without a name of
+        // its own keeps ffprobe's, and one without any gives no row.
+        const QVariantMap dump = Backend::mediaFacts(R"({"streams": [
+            {"codec_name": "prores", "codec_type": "video", "width": 3840, "height": 2160},
+            {"codec_type": "audio"}], "format": {}})");
+        QCOMPARE(dump, (QVariantMap{{"width", 3840}, {"height", 2160}, {"video", "PRORES"}}));
+        QVERIFY(Backend::mediaFacts("not json").isEmpty());
+    }
+
+    void backendAsksFfprobeAboutMedia()
+    {
+        // A stand-in ffprobe that answers for clip.mp4 unless a file named broken is beside it, fails on anything else, and notes what it was asked.
+        QTemporaryDir dir, empty;
+        const QString asked = dir.filePath("asked");
+        write(dir.filePath("answer.json"), R"({"streams": [{"codec_name": "h264", "codec_type": "video",
+            "width": 1280, "height": 720}, {"codec_name": "opus", "codec_type": "audio"}], "format": {"duration": "65.4"}})");
+        write(dir.filePath("ffprobe"), "#!/bin/sh\nPATH=/usr/bin:/bin\nfor a in \"$@\"; do echo \"$a\"; done > '" + asked.toUtf8()
+                                           + "'\ncase \"$*\" in *'/-a: clip.mp4') [ -e '" + dir.filePath("broken").toUtf8() + "' ] && exit 1; cat '"
+                                           + dir.filePath("answer.json").toUtf8()
+                                           + "' ;; *) exit 1 ;; esac\n");
+        QVERIFY(QFile::setPermissions(dir.filePath("ffprobe"), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+        const QString clip = dir.filePath("-a: clip.mp4");
+        write(clip, "x");
+
+        Backend backend(dir.path());
+        {
+            const auto restore = pathAt(dir.path());
+            backend.describe({{"path", clip}, {"kind", "video"}, {"mime", "video/mp4"}});
+            QVERIFY(!backend.details().contains("seconds"));
+            QTRY_COMPARE(backend.details().value("seconds").toDouble(), 65.4);
+            QCOMPARE(backend.details().value("width").toInt(), 1280);
+            QCOMPARE(backend.details().value("height").toInt(), 720);
+            QCOMPARE(backend.details().value("video").toString(), QString("H.264"));
+            QCOMPARE(backend.details().value("audio").toString(), QString("Opus"));
+            QFile file(asked);
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            QCOMPARE(QString::fromUtf8(file.readAll()).split('\n').value(6), "file:" + clip);
+
+            // The clip written over with something ffprobe can't read loses the length and codecs it showed.
+            write(dir.filePath("broken"), "x");
+            QVERIFY(QFile::remove(asked));
+            backend.describe({{"path", clip}, {"kind", "video"}, {"mime", "video/mp4"}});
+            QTRY_VERIFY(QFile::exists(asked));
+            QTRY_VERIFY(!backend.details().contains("seconds"));
+            QVERIFY(!backend.details().contains("video"));
+            QVERIFY(QFile::remove(dir.filePath("broken")));
+
+            // ffprobe failing says nothing.
+            QVERIFY(QFile::remove(asked));
+            backend.describe({{"path", dir.filePath("song.mp3")}, {"kind", "audio"}, {"mime", "audio/mpeg"}});
+            QTRY_VERIFY(QFile::exists(asked));
+            QTest::qWait(200);
+            QVERIFY(backend.details().isEmpty());
+        }
+        // Without ffprobe, the package that has it is named.
+        const auto restore = pathAt(empty.path());
+        backend.describe({{"path", clip}, {"kind", "video"}, {"mime", "video/mp4"}});
+        QTRY_COMPARE(backend.details().value("sentence").toString(), QString("Lengths and codecs need ffprobe, from the ffmpeg package."));
+        QVERIFY(!backend.details().contains("seconds"));
+    }
+
+    void formatShowsLengthsAsAClock()
+    {
+        QQmlEngine engine;
+        QQmlComponent lengths(&engine);
+        lengths.setData("import QtQml\nimport \"Format.js\" as Format\n"
+                        "QtObject { property var shown: [0, 0.4, 59.99, 65, 3599, 3725.9, 36000].map(Format.length) }",
+                        QUrl::fromLocalFile(QFINDTESTDATA("../src/Format.js")));
+        std::unique_ptr<QObject> object(lengths.create());
+        QVERIFY2(object, qPrintable(lengths.errorString()));
+        QCOMPARE(object->property("shown").toStringList(),
+                 QStringList({"", "0:00", "0:59", "1:05", "59:59", "1:02:05", "10:00:00"}));
+    }
+
     void placesListEveryFolderInHome()
     {
         QTemporaryDir home;
@@ -5552,7 +5650,15 @@ private slots:
         QCOMPARE(Previewer::viewerFor("text/markdown", false), QString("markdown"));
         QCOMPARE(Previewer::viewerFor("text/x-c++src", false), QString("text"));
         QCOMPARE(Previewer::viewerFor("application/x-shellscript", false), QString("text"));
-        QCOMPARE(Previewer::viewerFor("application/zip", false), QString("other"));
+        QCOMPARE(Previewer::viewerFor("application/zip", false), QString("archive"));
+        QCOMPARE(Previewer::viewerFor("application/x-compressed-tar", false), QString("archive"));
+        QCOMPARE(Previewer::viewerFor("application/x-xz-compressed-tar", false), QString("archive"));
+        QCOMPARE(Previewer::viewerFor("application/x-cpio", false), QString("archive"));
+        QCOMPARE(Previewer::viewerFor("application/x-iso9660-image", false), QString("archive"));
+        // bsdtar can't list a lone compressed file, so it stays as 0.2.0 showed it.
+        QCOMPARE(Previewer::viewerFor("application/gzip", false), QString("other"));
+        QCOMPARE(Previewer::viewerFor("application/zstd", false), QString("other"));
+        QCOMPARE(Previewer::viewerFor("application/x-sharedlib", false), QString("other"));
         QCOMPARE(Previewer::viewerFor("inode/directory", true), QString("folder"));
     }
 
@@ -5791,6 +5897,553 @@ private slots:
             };
             QTRY_COMPARE(misplaced(), QString("7"));
         }
+    }
+
+    void archiveNamesAreReadAsTheyArrive()
+    {
+        // bsdtar's output comes in parts that can end inside a line; a name
+        // is taken once its line is whole, decoded from bsdtar's escapes.
+        ArchiveNames names;
+        QVERIFY(names.add(".\n./\n./sub dir/\n./sub dir/caf\\303\\251 \\\\ two\\nlines.txt\n./ze"));
+        QVERIFY(!names.add("b"));
+        QVERIFY(names.add("ra.txt\n"));
+        QCOMPARE(names.text(false), QString::fromUtf8("At least 3 items\n\nsub dir/\nsub dir/café \\ two\\nlines.txt\nzebra.txt"));
+        QCOMPARE(names.text(true), QString::fromUtf8("3 items\n\nsub dir/\nsub dir/café \\ two\\nlines.txt\nzebra.txt"));
+
+        // Past the names shown, the rest are only counted.
+        ArchiveNames many;
+        QByteArray output;
+        for (int i = 0; i < ArchiveNames::shown + 3; ++i)
+            output += QByteArray::number(i) + ".txt\n";
+        QVERIFY(many.add(output));
+        QVERIFY(!many.add("more.txt\n"));
+        const QStringList lines = many.text(true).split('\n');
+        QCOMPARE(lines.size(), ArchiveNames::shown + 3);
+        QCOMPARE(lines.first(), QString("%1 items").arg(ArchiveNames::shown + 4));
+        QCOMPARE(lines.last(), QString("4 more"));
+        QCOMPARE(many.text(false).section('\n', -1), QString("At least 4 more"));
+
+        // Past the size shown too, however few the names are; a short one after a long one isn't shown out of its place.
+        ArchiveNames longOnes;
+        const QByteArray longName(int(ArchiveNames::shownBytes) * 2 / 5, 'n');
+        QVERIFY(longOnes.add(longName + "1\n" + longName + "2\n"));
+        QVERIFY(!longOnes.add(longName + "3\nshort.txt\n"));
+        const QStringList few = longOnes.text(true).split('\n');
+        QCOMPARE(few.size(), 5);
+        QCOMPARE(few.first(), QString("4 items"));
+        QCOMPARE(few.at(3), QString::fromLatin1(longName + "2"));
+        QCOMPARE(few.last(), QString("2 more"));
+
+        // A name that comes in many parts is one name, whatever part its line ends in.
+        ArchiveNames parts;
+        QVERIFY(!parts.add("one"));
+        QVERIFY(!parts.add(" long"));
+        QVERIFY(parts.add(" name\ntwo"));
+        QVERIFY(parts.add("\n"));
+        QCOMPARE(parts.text(true), QString("2 items\n\none long name\ntwo"));
+    }
+
+    void archivesListTheirNamesOffTheUiThread()
+    {
+        // The details pane and the preview window list an archive with
+        // bsdtar, and say so when there's nothing to list.
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("files/sub dir");
+        write(dir.filePath("files/sub dir/a b.txt"), "x");
+        write(dir.filePath("files/-n.txt"), "x");
+        QCOMPARE(QProcess::execute("bsdtar", {"-cf", dir.filePath("-files.tar"), "-C", dir.filePath("files"), "--", "sub dir", "-n.txt"}), 0);
+        QCOMPARE(QProcess::execute("bsdtar", {"-cf", dir.filePath("empty.tar"), "-T", "/dev/null"}), 0);
+        write(dir.filePath("notes.zip"), "hello\n");
+        const QString listing = "3 items\n\nsub dir/\nsub dir/a b.txt\n-n.txt";
+
+        Backend backend(dir.path());
+        auto describe = [&](const QString &name) {
+            backend.describe({{"path", dir.filePath(name)}, {"kind", "archive"}, {"mime", "application/x-tar"}});
+        };
+        describe("-files.tar");
+        QVERIFY(!backend.details().contains("text"));
+        QTRY_COMPARE(backend.details().value("text").toString(), listing);
+        describe("empty.tar");
+        QTRY_COMPARE(backend.details().value("sentence").toString(), QString("Empty"));
+        QVERIFY(backend.details().value("text").toString().isEmpty());
+        // bsdtar takes a text file for a list of names, then fails.
+        describe("notes.zip");
+        QTRY_COMPARE(backend.details().value("sentence").toString(), QString("Couldn't read this archive."));
+        QVERIFY(backend.details().value("text").toString().isEmpty());
+
+        Previewer previewer;
+        previewer.start(dir.filePath("-files.tar"), false, "name");
+        QCOMPARE(previewer.viewer(), QString("archive"));
+        QTRY_COMPARE(previewer.text(), listing);
+        QVERIFY(previewer.sentence().isEmpty());
+        // The commonest tarball, named by its extension as the folder lists it.
+        QCOMPARE(QProcess::execute("bsdtar", {"-J", "-cf", dir.filePath("-files.tar.xz"), "-C", dir.filePath("files"), "--", "sub dir", "-n.txt"}), 0);
+        previewer.show(dir.filePath("-files.tar.xz"));
+        QCOMPARE(previewer.viewer(), QString("archive"));
+        QTRY_COMPARE(previewer.text(), listing);
+
+        {
+            const auto restore = pathAt(dir.filePath("files"));
+            describe("-files.tar");
+            QTRY_COMPARE(backend.details().value("sentence").toString(),
+                         QString("Listing archives needs bsdtar, from the libarchive package."));
+        }
+    }
+
+    void archivePreviewKeepsItsPlaceWhileNamesArrive()
+    {
+        // A stand-in bsdtar that lists half of a.tar's names, and the rest once `go` is there.
+        QTemporaryDir tools, dir, home;
+        QCOMPARE(QProcess::execute("bsdtar", {"-cf", dir.filePath("a.tar"), "-T", "/dev/null"}), 0);
+        QCOMPARE(QProcess::execute("bsdtar", {"-cf", dir.filePath("b.tar"), "-T", "/dev/null"}), 0);
+        QCOMPARE(QProcess::execute("bsdtar", {"-cf", dir.filePath("c.tar"), "-T", "/dev/null"}), 0);
+        const QByteArray go = QFile::encodeName(tools.filePath("go"));
+        write(tools.filePath("bsdtar"), "#!/bin/sh\nPATH=/usr/bin:/bin\ncase \"$2\" in\n"
+                                        "*/a.tar) seq -f name-%g 1 200; while [ ! -e '" + go + "' ]; do sleep 0.05; done; seq -f name-%g 201 400 ;;\n"
+                                        "*) seq -f name-%g 1 400 ;;\n"
+                                        "esac\n");
+        QVERIFY(QFile::setPermissions(tools.filePath("bsdtar"), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+        const auto restore = pathAt(tools.path());
+
+        Theme theme(home.filePath("theme"));
+        Previewer previewer;
+        previewer.start(dir.filePath("a.tar"), false, "name");
+        QQmlEngine engine;
+        qmlRegisterType<FontSample>("Folio", 1, 0, "FontSample");
+        qmlRegisterType<FontText>("Folio", 1, 0, "FontText");
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("previewer", &previewer);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        QQmlComponent component(&engine, QUrl::fromLocalFile(sourceFolder() + "/PreviewWindow.qml"));
+        std::unique_ptr<QObject> window(component.create());
+        QVERIFY2(window, qPrintable(component.errorString()));
+        const auto view = [&] { return window->property("view").value<QObject *>(); };
+        const auto place = [&] { return view()->property("contentY").toReal(); };
+
+        // Scrolled down while the rest is still to come: the place is kept when it comes.
+        QTRY_VERIFY(previewer.text().contains("name-200"));
+        QTRY_VERIFY(view() && view()->property("contentHeight").toReal() > view()->property("height").toReal() + 300);
+        QVERIFY(view()->setProperty("contentY", 300));
+        write(tools.filePath("go"), "x");
+        QTRY_VERIFY(previewer.text().contains("name-400"));
+        QCOMPARE(place(), 300.0);
+
+        // Another file starts at its top.
+        previewer.next();
+        QCOMPARE(previewer.item().value("name").toString(), QString("b.tar"));
+        QTRY_VERIFY(previewer.text().contains("name-400"));
+        QCOMPARE(place(), 0.0);
+
+        // And does so while the last one still glides.
+        const qreal glide = 3000;
+        QVERIFY(view()->setProperty("contentY", 300));
+        QVERIFY(QMetaObject::invokeMethod(view(), "flick", Q_ARG(qreal, 0), Q_ARG(qreal, -glide)));
+        QTRY_VERIFY(view()->property("moving").toBool());
+        previewer.next();
+        QCOMPARE(previewer.item().value("name").toString(), QString("c.tar"));
+        QTRY_VERIFY(previewer.text().contains("name-400"));
+        QTRY_VERIFY(!view()->property("moving").toBool());
+        QCOMPARE(place(), 0.0);
+    }
+
+    void helperKeepsOnlyTheStartOfWhatItsProgramComplainsOf()
+    {
+        // A program that fails with far more on stderr than a run keeps.
+        const qint64 printed = 64 * Helper::errorsKept;
+        Helper helper;
+        int ended = 0;
+        QByteArray errors;
+        helper.run("sh", {"-c", QString("echo first-line >&2; head -c %1 /dev/zero >&2; exit 3").arg(printed)}, 1024,
+                   [](const QByteArray &) {}, [&](int code, const QByteArray &said) { ended = code; errors = said; });
+        QTRY_COMPARE(ended, 3);
+        QCOMPARE(qint64(errors.size()), Helper::errorsKept);
+        QVERIFY(errors.startsWith("first-line\n"));
+    }
+
+    void helperStopsReadingForWhatsNoLongerShown()
+    {
+        // A stand-in bsdtar that never finishes on stuck.tar, says the
+        // names are encrypted on locked.7z, and lists one name otherwise.
+        QTemporaryDir dir;
+        const QString pid = dir.filePath("pid");
+        const QString kid = dir.filePath("kid");
+        write(dir.filePath("bsdtar"), "#!/bin/sh\nPATH=/usr/bin:/bin\ncase \"$2\" in\n"
+                                      "*/stuck.tar) echo $$ > '" + pid.toUtf8() + "'; exec sleep 30 ;;\n"
+                                      "*/family.tar) sleep 30 & echo $! > '" + kid.toUtf8() + "'; echo $$ > '" + pid.toUtf8() + "'; wait ;;\n"
+                                      "*/locked.7z) echo 'Encrypted file is unsupported' >&2; exit 1 ;;\n"
+                                      "esac\necho one.txt\n");
+        QVERIFY(QFile::setPermissions(dir.filePath("bsdtar"), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+        const auto restore = pathAt(dir.path());
+        auto stuckPid = [&] {
+            QFile file(pid);
+            return file.open(QIODevice::ReadOnly) ? pid_t(file.readAll().trimmed().toInt()) : pid_t(0);
+        };
+
+        // Moving on stops it at once, and what it said is never shown.
+        Backend backend(dir.path());
+        backend.describe({{"path", dir.filePath("stuck.tar")}, {"kind", "archive"}, {"mime", "application/x-tar"}});
+        QTRY_VERIFY(stuckPid() > 0);
+        const pid_t stuck = stuckPid();
+        backend.describe({{"path", dir.filePath("other.tar")}, {"kind", "archive"}, {"mime", "application/x-tar"}});
+        QTRY_VERIFY_WITH_TIMEOUT(::kill(stuck, 0) != 0, 2000);
+        QTRY_COMPARE(backend.details().value("text").toString(), QString("1 items\n\none.txt"));
+        backend.describe({{"path", dir.filePath("locked.7z")}, {"kind", "archive"}, {"mime", "application/x-7z-compressed"}});
+        QTRY_COMPARE(backend.details().value("sentence").toString(), QString("The names in this archive are encrypted."));
+
+        // What the program started (as bsdtar starts a program to unpack with) is stopped with it.
+        QFile::remove(pid);
+        backend.describe({{"path", dir.filePath("family.tar")}, {"kind", "archive"}, {"mime", "application/x-tar"}});
+        QTRY_VERIFY(stuckPid() > 0);
+        QFile started(kid);
+        QVERIFY(started.open(QIODevice::ReadOnly));
+        const pid_t child = pid_t(started.readAll().trimmed().toInt());
+        QVERIFY(child > 0 && !ended(child));
+        backend.describe({{"path", dir.filePath("other.tar")}, {"kind", "archive"}, {"mime", "application/x-tar"}});
+        QTRY_VERIFY_WITH_TIMEOUT(ended(child), 2000);
+
+        // A plugin's own item is no file on the disk: no program is asked about it.
+        QFile::remove(pid);
+        backend.describe({{"path", "notes:/stuck.tar"}, {"kind", "archive"}, {"mime", "application/x-tar"}});
+        QTest::qWait(200);
+        QCOMPARE(stuckPid(), pid_t(0));
+        QVERIFY(!backend.details().contains("sentence"));
+
+        // An archive that gives no name in its time took too long: it isn't called damaged.
+        {
+            Helper slow(nullptr, 300);
+            QString sentence;
+            Previewer::listArchive(slow, dir.filePath("stuck.tar"), [&](const QString &, const QString &said) { sentence = said; });
+            QTRY_COMPARE(sentence, QString("Listing this archive took too long."));
+        }
+
+        // Past its time it's stopped too, and so is one whose view goes.
+        QFile::remove(pid);
+        Helper helper(nullptr, 300);
+        int ended = 0;
+        helper.run("bsdtar", {"-tf", dir.filePath("stuck.tar")}, 1024, [](const QByteArray &) {},
+                   [&](int code, const QByteArray &) { ended = code; });
+        QTRY_VERIFY(stuckPid() > 0);
+        QTRY_COMPARE(ended, Helper::stopped);
+        QTRY_VERIFY_WITH_TIMEOUT(::kill(stuckPid(), 0) != 0, 2000);
+        QFile::remove(pid);
+        {
+            Helper going;
+            going.run("bsdtar", {"-tf", dir.filePath("stuck.tar")}, 1024, [](const QByteArray &) {},
+                      [](int, const QByteArray &) {});
+            QTRY_VERIFY(stuckPid() > 0);
+        }
+        QTRY_VERIFY_WITH_TIMEOUT(::kill(stuckPid(), 0) != 0, 2000);
+    }
+
+    void previewerShowsFontsAsASampleSheet()
+    {
+        for (const char *mime : {"font/ttf", "font/otf", "font/collection", "font/woff", "font/woff2",
+                                 "application/x-font-ttf", "application/x-font-otf", "application/x-font-type1"})
+            QCOMPARE(Previewer::viewerFor(mime, false), QString("font"));
+        // A bitmap font has no outlines to draw a sheet in.
+        QCOMPARE(Previewer::viewerFor("application/x-font-bdf", false), QString("other"));
+
+        // By its extension alone a ".otf" is an OpenDocument template; it's still shown as a font.
+        QTemporaryDir dir;
+        write(dir.filePath("Sample.otf"), tinyFont("Folio Sample", "ABC"));
+        Previewer previewer;
+        previewer.start(dir.filePath("Sample.otf"), false, "name");
+        QCOMPARE(previewer.viewer(), QString("font"));
+
+        // And named as one, in the preview window and in the details pane.
+        const QMimeDatabase mimes;
+        const QString byName = mimes.mimeTypeForFile(dir.filePath("Sample.otf"), QMimeDatabase::MatchExtension).name();
+        const QString font = mimes.mimeTypeForName("font/otf").comment();
+        QVERIFY(!font.isEmpty() && mimes.mimeTypeForName(byName).comment() != font);
+        QCOMPARE(previewer.type(), font);
+        QCOMPARE(Backend::typeName(byName, dir.filePath("Sample.otf")), font);
+        QCOMPARE(Backend::typeName("text/plain", dir.filePath("notes.txt")), mimes.mimeTypeForName("text/plain").comment());
+    }
+
+    void fontSampleKeepsItsFontToItself()
+    {
+        QTemporaryDir dir;
+        const QString latin = " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        write(dir.filePath("One.ttf"), tinyFont("Folio One", latin));
+        write(dir.filePath("Two.ttf"), tinyFont("Folio Two", latin));
+        write(dir.filePath("notes.txt"), "x");
+        const QStringList before = QFontDatabase::families();
+
+        auto sample = std::make_unique<FontSample>();
+        sample->setPath(dir.filePath("One.ttf"));
+        QCOMPARE(sample->status(), QString("loading"));
+        QTRY_COMPARE(sample->status(), QString("ready"));
+        QCOMPARE(sample->family(), QString("Folio One"));
+        QCOMPARE(sample->style(), QString("Regular"));
+        QCOMPARE(sample->faces(), 1);
+        QVERIFY(sample->glyphs().isEmpty());
+        // The sample has the font; Folio's own list of fonts never does.
+        QCOMPARE(sample->font(12).familyName(), QString("Folio One"));
+        QCOMPARE(QFontDatabase::families(), before);
+
+        // Stepping to another font swaps one for the other, and to a file that isn't one leaves neither.
+        sample->setPath(dir.filePath("Two.ttf"));
+        QVERIFY(!sample->font(12).isValid());
+        QTRY_COMPARE(sample->status(), QString("ready"));
+        QCOMPARE(sample->font(12).familyName(), QString("Folio Two"));
+        QCOMPARE(QFontDatabase::families(), before);
+        sample->setPath(dir.filePath("notes.txt"));
+        QVERIFY(sample->status().isEmpty());
+        QVERIFY(!sample->font(12).isValid());
+
+        // A font stepped past while it's read is never the one kept.
+        sample->setPath(dir.filePath("One.ttf"));
+        sample->setPath(dir.filePath("Two.ttf"));
+        QTRY_COMPARE(sample->status(), QString("ready"));
+        QCOMPARE(sample->family(), QString("Folio Two"));
+        QCOMPARE(sample->font(12).familyName(), QString("Folio Two"));
+        QCOMPARE(QFontDatabase::families(), before);
+    }
+
+    void fontSampleDrawsOnlyWhatTheFontHas()
+    {
+        QTemporaryDir dir;
+        // Greek letters and a star but no Latin: the letters are drawn, never
+        // the alphabet in boxes or another font. Without letters, the star.
+        write(dir.filePath("Greek.ttf"), tinyFont("Folio Greek", QString::fromUtf8("★αγβ")));
+        write(dir.filePath("Stars.ttf"), tinyFont("Folio Stars", QString::fromUtf8("★☆")));
+        // The alphabet without the digits: its letters are drawn, never digits from another font.
+        const QString letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+        write(dir.filePath("Letters.ttf"), tinyFont("Folio Letters", letters));
+        write(dir.filePath("Pair.ttc"), tinyCollection({"Folio Left", "Folio Right"}));
+        write(dir.filePath("Broken.ttf"), "not a font");
+        write(dir.filePath("Empty.woff2"), "");
+        const QStringList before = QFontDatabase::families();
+        FontSample sample;
+        sample.setPath(dir.filePath("Greek.ttf"));
+        QTRY_COMPARE(sample.status(), QString("ready"));
+        QCOMPARE(sample.glyphs(), QString::fromUtf8("αβγ"));
+        sample.setPath(dir.filePath("Stars.ttf"));
+        QTRY_COMPARE(sample.status(), QString("ready"));
+        QCOMPARE(sample.glyphs(), QString::fromUtf8("★☆"));
+        sample.setPath(dir.filePath("Letters.ttf"));
+        QTRY_COMPARE(sample.status(), QString("ready"));
+        QCOMPARE(sample.glyphs(), letters);
+        // The alphabet and the digits without the space: its letters again, never a line of words with boxes between them.
+        write(dir.filePath("Tight.ttf"), tinyFont("Folio Tight", letters + "0123456789"));
+        sample.setPath(dir.filePath("Tight.ttf"));
+        QTRY_COMPARE(sample.status(), QString("ready"));
+        QCOMPARE(sample.glyphs(), letters);
+
+        // A collection shows its first face and counts them all.
+        sample.setPath(dir.filePath("Pair.ttc"));
+        QTRY_COMPARE(sample.status(), QString("ready"));
+        QCOMPARE(sample.family(), QString("Folio Left"));
+        QCOMPARE(sample.faces(), 2);
+
+        // A file that can't be read as a font adds nothing.
+        sample.setPath(dir.filePath("Broken.ttf"));
+        QTRY_COMPARE(sample.status(), QString("error"));
+        QVERIFY(sample.family().isEmpty());
+        sample.setPath(dir.filePath("Empty.woff2"));
+        QTRY_COMPARE(sample.status(), QString("error"));
+
+        // Only a mark that sits on another character: nothing to draw alone, so no sheet from another font.
+        write(dir.filePath("Marks.ttf"), tinyFont("Folio Marks", QString(QChar(0x0301))));
+        sample.setPath(dir.filePath("Marks.ttf"));
+        QTRY_COMPARE(sample.status(), QString("error"));
+
+        // A pipe named like a font, with nobody writing to it, is not waited on.
+        const QByteArray pipe = QFile::encodeName(dir.filePath("Pipe.ttf"));
+        QCOMPARE(::mkfifo(pipe.constData(), 0600), 0);
+        // Lets go of a reader that did wait, so a failure here ends the suite.
+        const auto release = qScopeGuard([&] { ::close(::open(pipe.constData(), O_WRONLY | O_NONBLOCK)); });
+        sample.setPath(dir.filePath("Pipe.ttf"));
+        QTRY_COMPARE(sample.status(), QString("error"));
+        QCOMPARE(QFontDatabase::families(), before);
+    }
+
+    void fontSamplesOfOneNameEachDrawTheirOwnFile()
+    {
+        // Two files of one family and style, shown at once as two windows show them, and a font of that name among Folio's own.
+        QTemporaryDir dir;
+        const int there = QFontDatabase::addApplicationFontFromData(tinyFont("Folio Twin", "C"));
+        QVERIFY(there >= 0);
+        const auto remove = qScopeGuard([&] { QFontDatabase::removeApplicationFont(there); });
+        write(dir.filePath("First.ttf"), tinyFont("Folio Twin", "A"));
+        write(dir.filePath("Second.ttf"), tinyFont("Folio Twin", "B"));
+        FontSample first, second;
+        FontText one, two;
+        // The glyph drawn for each character of "AB": 0 is the font's own missing glyph.
+        const auto drawn = [](const FontText &text) {
+            QList<quint32> glyphs;
+            for (const QGlyphRun &run : text.runs())
+                glyphs += run.glyphIndexes();
+            return glyphs;
+        };
+        for (FontText *text : {&one, &two}) {
+            text->setWidth(400);
+            text->setPixelSize(18);
+            text->setText("AB");
+        }
+        one.setSource(&first);
+        two.setSource(&second);
+        QVERIFY(drawn(one).isEmpty());
+        first.setPath(dir.filePath("First.ttf"));
+        QTRY_COMPARE(first.status(), QString("ready"));
+        second.setPath(dir.filePath("Second.ttf"));
+        QTRY_COMPARE(second.status(), QString("ready"));
+        QCOMPARE(first.family(), second.family());
+        QCOMPARE(first.style(), second.style());
+        QCOMPARE(drawn(one), QList<quint32>({1, 0}));
+        QCOMPARE(drawn(two), QList<quint32>({0, 1}));
+        QVERIFY(one.implicitHeight() > 0);
+        // Folio's own font of that name is still the one its name draws.
+        const QRawFont named = QRawFont::fromFont(QFont("Folio Twin"));
+        QVERIFY(named.supportsCharacter(QChar('C')) && !named.supportsCharacter(QChar('A')) && !named.supportsCharacter(QChar('B')));
+
+        // Lines break at the width, a new line in the text starts one, and nothing is drawn once the font goes.
+        two.setAnywhere(true);
+        two.setText("BBBB\nB");
+        const qreal twoLines = two.implicitHeight();
+        QVERIFY(twoLines > one.implicitHeight());
+        two.setWidth(two.pixelSize());
+        QVERIFY(two.implicitHeight() > twoLines);
+        QCOMPARE(drawn(two).size(), 5);
+        second.setPath({});
+        QVERIFY(drawn(two).isEmpty());
+        QCOMPARE(two.implicitHeight(), 0.0);
+        QCOMPARE(drawn(one), QList<quint32>({1, 0}));
+    }
+
+    void fontTextPaintsAPictureMadeWithItsFont()
+    {
+        // paint() runs on the render thread, where a font made on this one must not be used: it only copies a picture.
+        QTemporaryDir dir;
+        write(dir.filePath("Inked.ttf"), tinyFont("Folio Inked", "A", 0, true));
+        FontSample sample;
+        FontText text;
+        text.setWidth(200);
+        text.setPixelSize(40);
+        text.setColor(Qt::red);
+        text.setText("A");
+        text.setSource(&sample);
+        QVERIFY(text.picture().isNull());
+        sample.setPath(dir.filePath("Inked.ttf"));
+        QTRY_COMPARE(sample.status(), QString("ready"));
+        // How many pixels are wholly ink of one colour: the square's inside.
+        const auto inked = [](const QImage &picture, const QColor &colour) {
+            int pixels = 0;
+            for (int y = 0; y < picture.height(); ++y)
+                for (int x = 0; x < picture.width(); ++x)
+                    pixels += picture.pixelColor(x, y) == colour;
+            return pixels;
+        };
+        const QImage red = text.picture();
+        QCOMPARE(red.size(), (QSizeF(200, text.implicitHeight()) * red.devicePixelRatio()).toSize());
+        QVERIFY(inked(red, Qt::red) > 100);
+        QCOMPARE(inked(red, Qt::blue), 0);
+        // What paint() puts down is that picture.
+        QImage painted(red.size(), red.format());
+        painted.setDevicePixelRatio(red.devicePixelRatio());
+        painted.fill(Qt::transparent);
+        {
+            QPainter painter(&painted);
+            text.paint(&painter);
+        }
+        QCOMPARE(painted, red);
+        // A new colour makes a new picture, and no font leaves none.
+        text.setColor(Qt::blue);
+        QVERIFY(inked(text.picture(), Qt::blue) > 100);
+        QCOMPARE(inked(text.picture(), Qt::red), 0);
+        sample.setPath({});
+        QVERIFY(text.picture().isNull());
+    }
+
+    void fontSampleReadsAFontAgainWhenItIsWrittenOver()
+    {
+        QTemporaryDir dir;
+        const QString latin = " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        const QString path = dir.filePath("One.ttf");
+        const QDateTime written = QDateTime::currentDateTime();
+        write(path, tinyFont("Folio Before", latin));
+        FontSample sample;
+        sample.setPath(path);
+        sample.setModified(written);
+        QTRY_COMPARE(sample.status(), QString("ready"));
+        QCOMPARE(sample.family(), QString("Folio Before"));
+
+        // Written over in place: the path is the same, the time the folder reports is not.
+        write(path, tinyFont("Folio After", latin));
+        sample.setModified(written.addSecs(1));
+        QCOMPARE(sample.status(), QString("loading"));
+        QTRY_COMPARE(sample.status(), QString("ready"));
+        QCOMPARE(sample.family(), QString("Folio After"));
+        QCOMPARE(sample.font(12).familyName(), QString("Folio After"));
+
+        // The same time again reads nothing, and neither does a time for a file that isn't a font.
+        sample.setModified(written.addSecs(1));
+        QCOMPARE(sample.status(), QString("ready"));
+        write(dir.filePath("notes.txt"), "x");
+        sample.setPath(dir.filePath("notes.txt"));
+        sample.setModified(written.addSecs(2));
+        QVERIFY(sample.status().isEmpty());
+    }
+
+    void fontSampleReadsOnlyWhatIsStillShown()
+    {
+        QTemporaryDir dir;
+        const QString latin = " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        write(dir.filePath("One.ttf"), tinyFont("Folio One", latin));
+        write(dir.filePath("Two.ttf"), tinyFont("Folio Two", latin));
+        // Counts how often each font is opened from here on.
+        const int watch = ::inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+        QVERIFY(watch >= 0);
+        const auto closed = qScopeGuard([watch] { ::close(watch); });
+        const int one = ::inotify_add_watch(watch, QFile::encodeName(dir.filePath("One.ttf")).constData(), IN_OPEN);
+        const int two = ::inotify_add_watch(watch, QFile::encodeName(dir.filePath("Two.ttf")).constData(), IN_OPEN);
+        QVERIFY(one >= 0 && two >= 0);
+        QHash<int, int> opened;
+        const auto count = [&] {
+            char events[4096];
+            for (ssize_t got; (got = ::read(watch, events, sizeof events)) > 0;) {
+                for (ssize_t at = 0; at < got;) {
+                    inotify_event event;
+                    memcpy(&event, events + at, sizeof event);
+                    ++opened[event.wd];
+                    at += ssize_t(sizeof event) + event.len;
+                }
+            }
+        };
+
+        // A selection that moves sets the path, then the time: the font is opened once for both.
+        static constexpr int aReadingStartsMs = 100;
+        FontSample sample;
+        sample.setPath(dir.filePath("One.ttf"));
+        QThread::msleep(aReadingStartsMs);
+        // Counted here too: two opens that nobody read between come as one event.
+        count();
+        sample.setModified(QDateTime::currentDateTime());
+        QTRY_COMPARE(sample.status(), QString("ready"));
+        count();
+        QCOMPARE(opened.value(one), 1);
+
+        // With every worker busy, a font stepped past before its turn comes is never opened.
+        QThreadPool *pool = QThreadPool::globalInstance();
+        const int workers = pool->maxThreadCount();
+        QSemaphore busy;
+        pool->setMaxThreadCount(1);
+        const auto freed = qScopeGuard([&] {
+            busy.release();
+            pool->setMaxThreadCount(workers);
+        });
+        QFuture<void> holder = QtConcurrent::run([&busy] { busy.acquire(); });
+        sample.setPath(dir.filePath("Two.ttf"));
+        QCoreApplication::processEvents();
+        sample.setPath(dir.filePath("One.ttf"));
+        QCoreApplication::processEvents();
+        busy.release();
+        QTRY_COMPARE(sample.status(), QString("ready"));
+        QCOMPARE(sample.family(), QString("Folio One"));
+        holder.waitForFinished();
+        count();
+        QCOMPARE(opened.value(two), 0);
+        QCOMPARE(opened.value(one), 2);
     }
 
     void themeFallsBack()
@@ -6078,6 +6731,108 @@ private:
     {
         QFile file(path);
         return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+    }
+
+    // A TrueType font for `chars`, its glyphs empty unless `inked`, starting `at` bytes into its file: enough for FreeType to load.
+    static QByteArray tinyFont(const QString &family, const QString &chars, quint32 at = 0, bool inked = false)
+    {
+        QList<quint16> codes;
+        for (const QChar c : chars)
+            codes << c.unicode();
+        std::sort(codes.begin(), codes.end());
+        const quint16 glyphs = quint16(codes.size() + 1);
+        const quint16 segments = quint16(codes.size() + 1);
+        auto table = [](const std::function<void(QDataStream &)> &fill) {
+            QByteArray bytes;
+            QDataStream s(&bytes, QIODevice::WriteOnly);
+            fill(s);
+            return bytes;
+        };
+        auto zeros = [](QDataStream &s, int n) { for (int i = 0; i < n; ++i) s << quint16(0); };
+        // By tag, in the sorted order the table directory wants.
+        QMap<QByteArray, QByteArray> tables;
+        tables["cmap"] = table([&](QDataStream &s) {
+            s << quint16(0) << quint16(1) << quint16(3) << quint16(1) << quint32(12);
+            s << quint16(4) << quint16(16 + 8 * segments) << quint16(0) << quint16(2 * segments);
+            zeros(s, 3);
+            for (const quint16 c : codes) s << c;
+            s << quint16(0xFFFF) << quint16(0);
+            for (const quint16 c : codes) s << c;
+            s << quint16(0xFFFF);
+            for (int i = 0; i < codes.size(); ++i) s << quint16(i + 1 - codes[i]);
+            s << quint16(1);
+            zeros(s, segments);
+        });
+        // When `inked`, the first character is a square: one contour of 4 points on the curve, each a 16-bit step.
+        tables["glyf"] = inked ? table([](QDataStream &s) {
+            s << qint16(1) << qint16(100) << qint16(0) << qint16(500) << qint16(700) << quint16(3) << quint16(0);
+            for (int i = 0; i < 4; ++i) s << quint8(1);
+            s << qint16(100) << qint16(400) << qint16(0) << qint16(-400) << qint16(0) << qint16(0) << qint16(700) << qint16(0);
+        }) : QByteArray(4, '\0');
+        tables["head"] = table([](QDataStream &s) {
+            s << quint32(0x10000) << quint32(0x10000) << quint32(0) << quint32(0x5F0F3CF5) << quint16(0xB)
+              << quint16(1000) << quint64(0) << quint64(0) << qint16(0) << qint16(-200) << qint16(600)
+              << qint16(800) << quint16(0) << quint16(8) << qint16(2) << qint16(0) << qint16(0);
+        });
+        tables["hhea"] = table([&](QDataStream &s) {
+            s << quint32(0x10000) << qint16(800) << qint16(-200) << qint16(0) << quint16(600);
+            zeros(s, 3);
+            s << qint16(1);
+            zeros(s, 7);
+            s << glyphs;
+        });
+        tables["hmtx"] = table([&](QDataStream &s) { for (int i = 0; i < glyphs; ++i) s << quint16(600) << qint16(0); });
+        // In 2-byte units: the square's 34 bytes are glyph 1, and every other glyph is empty.
+        tables["loca"] = table([&](QDataStream &s) {
+            zeros(s, 2);
+            for (int i = 2; i <= glyphs; ++i) s << quint16(inked ? 17 : 0);
+        });
+        tables["maxp"] = table([&](QDataStream &s) {
+            s << quint32(0x10000) << glyphs << quint16(inked ? 4 : 0) << quint16(inked ? 1 : 0);
+            zeros(s, 2);
+            s << quint16(2);
+            zeros(s, 8);
+        });
+        const QStringList names{family, "Regular", family + " Regular", QString(family).remove(' ')};
+        tables["name"] = table([&](QDataStream &s) {
+            s << quint16(0) << quint16(names.size()) << quint16(6 + 12 * names.size());
+            const QList<quint16> ids{1, 2, 4, 6};
+            int offset = 0;
+            for (int i = 0; i < names.size(); ++i) {
+                s << quint16(3) << quint16(1) << quint16(0x409) << ids[i] << quint16(2 * names[i].size()) << quint16(offset);
+                offset += 2 * names[i].size();
+            }
+            for (const QString &name : names)
+                for (const QChar c : name) s << quint16(c.unicode());
+        });
+
+        QByteArray font = table([&](QDataStream &s) {
+            s << quint32(0x10000) << quint16(tables.size());
+            zeros(s, 3);
+        });
+        QByteArray body;
+        const quint32 start = at + 12 + 16 * tables.size();
+        for (auto it = tables.cbegin(); it != tables.cend(); ++it) {
+            font += it.key();
+            font += table([&](QDataStream &s) { s << quint32(0) << quint32(start + body.size()) << quint32(it.value().size()); });
+            body += it.value() + QByteArray((4 - it.value().size() % 4) % 4, '\0');
+        }
+        return font + body;
+    }
+
+    // A collection of one tiny font per family, each face after the last.
+    static QByteArray tinyCollection(const QStringList &families)
+    {
+        const quint32 header = 12 + 4 * families.size();
+        QByteArray faces;
+        QByteArray collection("ttcf");
+        QDataStream s(&collection, QIODevice::Append);
+        s << quint32(0x10000) << quint32(families.size());
+        for (const QString &family : families) {
+            s << quint32(header + faces.size());
+            faces += tinyFont(family, "AB", header + faces.size());
+        }
+        return collection + faces;
     }
 
     static void write(const QString &path, const QByteArray &contents)

@@ -1,7 +1,7 @@
 .pragma library
 .import QtQml as QtQml
 
-// Sizes, dates, counts and thumbnail URLs as the views show them, in one
+// Sizes, dates, lengths, counts and thumbnail URLs as the views show them, in one
 // copy that every tile and row shares. A library can't see context
 // properties, so a binding that shows a date reads translator.language
 // itself to follow a language switch; whatever goes through qsTr here is
@@ -31,6 +31,18 @@ function when(date) {
     const now = new Date()
     const today = date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate()
     return today ? date.toLocaleTimeString(locale, QtQml.Locale.ShortFormat) : date.toLocaleDateString(locale, QtQml.Locale.ShortFormat)
+}
+
+// A length as a player's clock (1:05, or 1:02:05 past the hour); nothing when unknown.
+function length(seconds) {
+    const perMinute = 60, perHour = 3600
+    if (!(seconds > 0))
+        return ""
+    const total = Math.floor(seconds)
+    const hours = Math.floor(total / perHour)
+    const minutes = Math.floor(total % perHour / perMinute)
+    const rest = String(total % perMinute).padStart(2, "0")
+    return hours > 0 ? hours + ":" + String(minutes).padStart(2, "0") + ":" + rest : minutes + ":" + rest
 }
 
 // A folder's contents; nothing until they've been counted.

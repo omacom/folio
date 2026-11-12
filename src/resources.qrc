@@ -22,6 +22,7 @@
         <file>FolioScrollBar.qml</file>
         <file>PlainButton.qml</file>
         <file>PlainField.qml</file>
+        <file>Sentence.qml</file>
         <file>SortMenu.qml</file>
         <file>FileMenu.qml</file>
         <file>FolioDialog.qml</file>

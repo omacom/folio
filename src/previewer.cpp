@@ -1,4 +1,5 @@
 #include "previewer.h"
+#include "fontsample.h"
 
 #include "fileops.h"
 #include <QFile>
@@ -8,7 +9,11 @@
 #include <QMimeDatabase>
 #include <QUrl>
 #include <QtConcurrent>
+#include <algorithm>
+#include <climits>
+#include <csignal>
 #include <cstdio>
+#include <sys/prctl.h>
 #include <unistd.h>
 
 Previewer::Previewer(QObject *parent) : QObject(parent) {}
@@ -18,6 +23,8 @@ QString Previewer::viewerFor(const QString &mime, bool isDir) {
         return "folder";
     if (mime == "application/pdf")
         return "pdf";
+    if (FontSample::isFont(mime))
+        return "font";
     if (mime.startsWith("video/"))
         return "video";
     if (mime.startsWith("audio/"))
@@ -34,12 +41,28 @@ QString Previewer::viewerFor(const QString &mime, bool isDir) {
             return "image";
         return "thumbnail";
     }
+    if (listsArchive(mime))
+        return "archive";
     if (mime == "text/markdown")
         return "markdown";
     const QMimeType type = QMimeDatabase().mimeTypeForName(mime);
     if (mime.startsWith("text/") || type.inherits("text/plain"))
         return "text";
     return "other";
+}
+
+bool Previewer::listsArchive(const QString &mime) {
+    static const QStringList types{"application/zip", "application/x-tar", "application/x-compressed-tar",
+                                   "application/x-xz-compressed-tar", "application/x-bzip2-compressed-tar",
+                                   "application/x-zstd-compressed-tar", "application/x-lz4-compressed-tar",
+                                   "application/x-7z-compressed", "application/vnd.rar", "application/x-iso9660-image",
+                                   "application/x-cpio"};
+    // By the names the system's database gives, older or newer (an ISO is application/vnd.efi.iso in newer ones).
+    const QMimeDatabase mimes;
+    const QString name = mimes.mimeTypeForName(mime).name();
+    return !name.isEmpty() && std::any_of(types.begin(), types.end(), [&](const QString &type) {
+        return mimes.mimeTypeForName(type).name() == name;
+    });
 }
 
 QString Previewer::readText(const QString &path, qint64 limit) {
@@ -182,7 +205,8 @@ QString Previewer::url() const {
 QString Previewer::type() const {
     if (m_index < 0 || m_index >= m_entries.size())
         return {};
-    return QMimeDatabase().mimeTypeForName(m_entries.at(m_index).mime).comment();
+    const FolderModel::Entry &e = m_entries.at(m_index);
+    return QMimeDatabase().mimeTypeForName(FontSample::typeOf(e.mime, e.path)).comment();
 }
 
 void Previewer::next() {
@@ -207,7 +231,19 @@ void Previewer::setIndex(int index, bool report) {
     m_index = index;
     const FolderModel::Entry e = m_entries.at(index);
     m_viewer = viewerFor(e.mime, e.isDir);
+    // By its extension alone a ".otf" font is taken for an OpenDocument template.
+    if (m_viewer == "other" && FontSample::isFontFile(e.path))
+        m_viewer = "font";
     m_text.clear();
+    m_sentence.clear();
+    m_helper.stop();
+    if (m_viewer == "archive") {
+        listArchive(m_helper, e.path, [this](const QString &text, const QString &sentence) {
+            m_text = text;
+            m_sentence = sentence;
+            emit changed();
+        });
+    }
 
     // A folder's count and first pictures, and a text's opening part, are
     // read off the UI thread: a big folder, or any file on a slow mount,
@@ -270,4 +306,189 @@ void Previewer::connectToFolio() {
                 show(path);
         }
     });
+}
+
+// An archive's listing is cut there; bsdtar prints each name on a line.
+static constexpr qint64 archiveOutputLimit = 32 * 1024 * 1024;
+
+Helper::Helper(QObject *parent, int milliseconds) : QObject(parent) {
+    m_limit.setSingleShot(true);
+    m_limit.setInterval(milliseconds);
+    connect(&m_limit, &QTimer::timeout, this, [this] { end(stopped, {}); });
+}
+
+Helper::~Helper() {
+    stop();
+}
+
+void Helper::run(const QString &program, const QStringList &args, qint64 outputLimit,
+                 const std::function<void(const QByteArray &)> &output,
+                 const std::function<void(int, const QByteArray &)> &finished) {
+    stop();
+    m_read = 0;
+    m_outputLimit = outputLimit;
+    m_errors.clear();
+    m_finished = finished;
+    auto *process = new QProcess(this);
+    m_process = process;
+    // UTF-8 names print as they are, whatever Folio's language.
+    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    environment.insert("LC_ALL", "C.UTF-8");
+    process->setProcessEnvironment(environment);
+    // No terminal or input to ask for a passphrase on.
+    process->setStandardInputFile(QProcess::nullDevice());
+    process->setUnixProcessParameters(QProcess::UnixProcessFlag::CreateNewSession);
+    // It goes with Folio, even when Folio crashes.
+    process->setChildProcessModifier([] { ::prctl(PR_SET_PDEATHSIG, SIGKILL); });
+    const auto take = [this, process, output] {
+        const QByteArray part = process->readAllStandardOutput();
+        m_read += part.size();
+        if (m_read > m_outputLimit)
+            return false;
+        if (!part.isEmpty())
+            output(part);
+        return true;
+    };
+    connect(process, &QProcess::readyReadStandardOutput, this, [this, take] {
+        if (!take())
+            end(stopped, {});
+    });
+    // Read as it arrives, so a program that prints errors without end fills no memory.
+    const auto keep = [this, process] {
+        const QByteArray part = process->readAllStandardError();
+        m_errors += part.left(errorsKept - m_errors.size());
+    };
+    connect(process, &QProcess::readyReadStandardError, this, keep);
+    connect(process, &QProcess::finished, this, [this, take, keep](int code, QProcess::ExitStatus status) {
+        if (!take()) {
+            end(stopped, {});
+            return;
+        }
+        keep();
+        end(status == QProcess::NormalExit ? code : crashed, std::exchange(m_errors, {}));
+    });
+    // A program that isn't installed never finishes, so this is the only word from it.
+    connect(process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart)
+            end(missing, {});
+    });
+    m_limit.start();
+    process->start(program, args);
+}
+
+void Helper::stop() {
+    m_limit.stop();
+    m_finished = nullptr;
+    QProcess *process = std::exchange(m_process, nullptr);
+    if (!process)
+        return;
+    process->disconnect(this);
+    if (process->state() == QProcess::NotRunning) {
+        process->deleteLater();
+        return;
+    }
+    // Killed without waiting on a hung disk; the object goes once the process has exited, or has failed to start.
+    process->setParent(nullptr);
+    connect(process, &QProcess::finished, process, &QObject::deleteLater);
+    connect(process, &QProcess::errorOccurred, process, [process](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart)
+            process->deleteLater();
+    });
+    // It leads a session of its own, so what it started (a program bsdtar unpacks with) goes with it.
+    if (const qint64 pid = process->processId(); pid > 0)
+        ::killpg(pid_t(pid), SIGKILL);
+    process->kill();
+}
+
+void Helper::end(int code, const QByteArray &errors) {
+    const auto finished = m_finished;
+    stop();
+    if (finished)
+        finished(code, errors);
+}
+
+bool ArchiveNames::add(const QByteArray &output) {
+    // What was left had no line end in it: the look for one starts at the new part.
+    qsizetype from = m_pending.size();
+    m_pending += output;
+    const qsizetype before = m_names.size();
+    qsizetype start = 0;
+    qsizetype newline;
+    while ((newline = m_pending.indexOf('\n', from)) >= 0) {
+        const QByteArrayView line(m_pending.constData() + start, newline - start);
+        start = from = newline + 1;
+        // The "./" a tar made with `-C folder .` starts with, or an ISO's ".", is the archive itself.
+        if (line.isEmpty() || line == "./" || line == ".")
+            continue;
+        ++m_count;
+        // Names are shown up to a count and up to a size together: a few very long ones would hold the window as a huge text does.
+        m_full = m_full || m_names.size() == shown || m_bytes + line.size() > shownBytes;
+        if (m_full)
+            continue;
+        m_bytes += line.size();
+        m_names << nameFrom(line);
+    }
+    m_pending.remove(0, start);
+    return m_names.size() > before;
+}
+
+QString ArchiveNames::text(bool whole) const {
+    const int count = int(qMin<qint64>(m_count, INT_MAX));
+    const int more = count - int(m_names.size());
+    QStringList lines{whole ? Previewer::tr("%Ln items", nullptr, count) : Previewer::tr("At least %Ln items", nullptr, count),
+                      QString()};
+    lines += m_names;
+    if (more > 0)
+        lines << (whole ? Previewer::tr("%Ln more", nullptr, more) : Previewer::tr("At least %Ln more", nullptr, more));
+    return lines.join('\n');
+}
+
+// Sample: `./sub dir/caf\303\251 \\ two\nlines.txt` reads `sub dir/café \ two\nlines.txt` ("\n" stays).
+QString ArchiveNames::nameFrom(QByteArrayView line) {
+    if (line.startsWith("./"))
+        line = line.sliced(2);
+    const auto octal = [&](qsizetype at) { return at < line.size() && line[at] >= '0' && line[at] <= '7'; };
+    QByteArray name;
+    name.reserve(line.size());
+    for (qsizetype i = 0; i < line.size(); ++i) {
+        if (line[i] == '\\' && i + 1 < line.size() && line[i + 1] == '\\') {
+            name += '\\';
+            ++i;
+        } else if (line[i] == '\\' && octal(i + 1) && octal(i + 2) && octal(i + 3)) {
+            name += char((line[i + 1] - '0') * 64 + (line[i + 2] - '0') * 8 + (line[i + 3] - '0'));
+            i += 3;
+        } else {
+            name += line[i];
+        }
+    }
+    return QString::fromUtf8(name);
+}
+
+void Previewer::listArchive(Helper &helper, const QString &path,
+                            const std::function<void(const QString &, const QString &)> &show) {
+    auto names = std::make_shared<ArchiveNames>();
+    // An absolute path is never read as an option, or as "-" for stdin.
+    helper.run("bsdtar", {"-tf", QFileInfo(path).absoluteFilePath()}, archiveOutputLimit,
+               [names, show](const QByteArray &output) {
+                   if (names->add(output))
+                       show(names->text(false), {});
+               },
+               [names, show](int code, const QByteArray &errors) {
+                   if (code == 0 && names->count() > 0)
+                       show(names->text(true), {});
+                   else if (code == 0)
+                       show({}, tr("Empty"));
+                   else if (code == Helper::stopped && names->count() > 0)
+                       show(names->text(false), {});
+                   // Stopped before its first name: a large archive on a slow drive, not a damaged one.
+                   else if (code == Helper::stopped)
+                       show({}, tr("Listing this archive took too long."));
+                   else if (code == Helper::missing)
+                       show({}, tr("Listing archives needs bsdtar, from the libarchive package."));
+                   // A failed run shows no names: bsdtar reads a renamed text file as a list of names.
+                   else if (errors.contains("ncrypt"))
+                       show({}, tr("The names in this archive are encrypted."));
+                   else
+                       show({}, tr("Couldn't read this archive."));
+               });
 }

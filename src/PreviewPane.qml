@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import Folio
 import "Format.js" as Format
 
 // A larger look at the selected item and the facts about it, with the one
@@ -43,6 +44,11 @@ Rectangle {
     // A picture's size or a text's opening lines once they've been read off
     // the UI thread.
     readonly property var info: backend.details
+    // Text files show their opening lines in a frame, archives bsdtar can list the names inside.
+    readonly property bool archive: hasItem && backend.listsArchive(item.mime)
+    readonly property bool listed: hasItem && (item.kind === "text" || archive)
+    // Fonts show the alphabet and a pangram in the font itself.
+    readonly property bool sampled: fontSample.status !== ""
     // Described once the folder's loaded has put the cursor back on its
     // item: a re-read leaves another item on the cursor's row for a moment,
     // and describing that would drop what's been read of this one.
@@ -68,14 +74,14 @@ Rectangle {
                 anchors.fill: parent
                 asynchronous: true
                 fillMode: Image.PreserveAspectFit
-                source: pane.hasItem && !pane.item.isDir && pane.item.kind !== "text" && !pane.pluginItem ? Format.thumb(pane.item.path, pane.item.mime, 512, pane.item.modified) : ""
+                source: pane.hasItem && !pane.item.isDir && !pane.listed && !pane.sampled && !pane.pluginItem ? Format.thumb(pane.item.path, pane.item.mime, 512, pane.item.modified) : ""
                 visible: status === Image.Ready
             }
 
-            // Text files show their opening lines instead of a picture.
+            // Text files show their opening lines instead of a picture, archives the names inside.
             Rectangle {
                 anchors.fill: parent
-                visible: pane.hasItem && pane.item.kind === "text"
+                visible: pane.listed
                 color: theme.background
                 border.width: 1
                 border.color: Qt.alpha(theme.foreground, 0.12)
@@ -90,11 +96,63 @@ Rectangle {
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
                 }
+                Sentence {
+                    visible: pane.archive && !pane.info.text
+                    margin: 14
+                    text: pane.info.sentence || qsTr("Reading the archive…")
+                    color: theme.secondaryForeground
+                    font.pixelSize: 12
+                }
+            }
+
+            FontSample {
+                id: fontSample
+                path: pane.hasItem && !pane.item.isDir ? pane.item.path : ""
+                modified: pane.hasItem ? pane.item.modified : undefined
+            }
+            Rectangle {
+                anchors.fill: parent
+                visible: pane.sampled
+                color: theme.background
+                border.width: 1
+                border.color: Qt.alpha(theme.foreground, 0.12)
+                clip: true
+                Column {
+                    anchors.fill: parent
+                    anchors.margins: 14
+                    spacing: 10
+                    visible: fontSample.status === "ready"
+                    // The Latin alphabet and the digits on purpose: they're what the font was checked for.
+                    FontText {
+                        width: parent.width
+                        source: fontSample
+                        text: fontSample.glyphs || "ABCDEFGHIJKLMNOPQRSTUVWXYZ\nabcdefghijklmnopqrstuvwxyz\n0123456789"
+                        color: theme.foreground
+                        pixelSize: 18
+                        anywhere: true
+                    }
+                    FontText {
+                        width: parent.width
+                        visible: !fontSample.glyphs
+                        source: fontSample
+                        // Not translated: the font was checked for these letters and the space, no others.
+                        text: "The quick brown fox jumps over the lazy dog"
+                        color: theme.foreground
+                        pixelSize: 13
+                    }
+                }
+                Sentence {
+                    visible: fontSample.status === "error"
+                    margin: 14
+                    text: qsTr("Couldn't read this font.")
+                    color: theme.secondaryForeground
+                    font.pixelSize: 12
+                }
             }
 
             Glyph {
                 anchors.centerIn: parent
-                visible: !big.visible && pane.hasItem && pane.item.kind !== "text"
+                visible: !big.visible && pane.hasItem && !pane.listed && !pane.sampled
                 name: pane.pluginItem ? pane.item.icon : pane.hasItem && pane.item.isDir ? "folder" : "file"
                 size: 72
                 stroke: 1.2
@@ -123,7 +181,7 @@ Rectangle {
                 horizontalAlignment: Text.AlignLeft
                 text: {
                     translator.language // The type's name comes from the system, in the language of the moment.
-                    return Format.summary(pane.item, backend.typeName(pane.item.mime || ""))
+                    return Format.summary(pane.item, backend.typeName(pane.item.mime || "", pane.item.path || ""))
                 }
                 color: theme.secondaryForeground
                 font.pixelSize: 12
@@ -219,6 +277,45 @@ Rectangle {
                                                      .arg(pane.info.height.toLocaleString(Qt.locale(), "f", 0)) : ""
                 color: theme.foreground
                 font.pixelSize: 12
+            }
+            Text { visible: !!pane.info.seconds; text: qsTr("Length"); color: theme.secondaryForeground; font.pixelSize: 12 }
+            Text {
+                visible: !!pane.info.seconds
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignRight
+                text: Format.length(pane.info.seconds)
+                color: theme.foreground
+                font.pixelSize: 12
+            }
+            Text { visible: !!pane.info.video; text: qsTr("Video"); color: theme.secondaryForeground; font.pixelSize: 12 }
+            Text {
+                visible: !!pane.info.video
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignRight
+                text: pane.info.video || ""
+                color: theme.foreground
+                font.pixelSize: 12
+                elide: Text.ElideRight
+            }
+            Text { visible: !!pane.info.audio; text: qsTr("Audio"); color: theme.secondaryForeground; font.pixelSize: 12 }
+            Text {
+                visible: !!pane.info.audio
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignRight
+                text: pane.info.audio || ""
+                color: theme.foreground
+                font.pixelSize: 12
+                elide: Text.ElideRight
+            }
+            // Without ffprobe, the package that brings it.
+            Text {
+                visible: (pane.item.kind === "video" || pane.item.kind === "audio") && !!pane.info.sentence
+                Layout.columnSpan: 2
+                Layout.fillWidth: true
+                text: pane.info.sentence || ""
+                color: theme.secondaryForeground
+                font.pixelSize: 12
+                wrapMode: Text.Wrap
             }
             // Plugins' rows, label and value in turn, after Folio's own: a
             // plugin's item's details, or what plugins say about a file.
