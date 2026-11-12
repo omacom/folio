@@ -44,6 +44,9 @@ FocusScope {
     // the folder. By path: Recents can list two files of the same name.
     property string lastPath: ""
     property string loadedPath: ""
+    // The search the loaded listing answered, so a new query is a new
+    // listing (the cursor goes to its first result) rather than a re-read.
+    property string loadedQuery: ""
     // Set when a click on empty space lets go of the cursor: a re-read or a
     // switch of view leaves it let go of, until it moves again or another
     // folder arrives.
@@ -278,8 +281,9 @@ FocusScope {
             if (!view.item)
                 return
             const pending = backend.takeSelection()
-            const same = backend.folder.path === pane.loadedPath
+            const same = backend.folder.path === pane.loadedPath && backend.folder.query === pane.loadedQuery
             pane.loadedPath = backend.folder.path
+            pane.loadedQuery = backend.folder.query
             const row = backend.folder.indexOfPath(pane.lastPath)
             if (pending || !same)
                 pane.cursorLetGo = false
