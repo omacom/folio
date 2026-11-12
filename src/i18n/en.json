@@ -394,6 +394,8 @@
   "This folder is empty": "This folder is empty",
   "This folder no longer exists.": "This folder no longer exists.",
   "Trash": "Trash",
+  "Trash (empty)": "Trash (empty)",
+  "Trash (has items)": "Trash (has items)",
   "Try again once the work under way is done.": "Try again once the work under way is done.",
   "Type a path, or a server's address like sftp://host/ (Tab completes)": "Type a path, or a server's address like sftp://host/ (Tab completes)",
   "Undid compressing into %1.": "Undid compressing into %1.",
