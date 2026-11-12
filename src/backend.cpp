@@ -16,6 +16,9 @@
 #include <QtConcurrent>
 #include <unistd.h>
 
+// How long bat gets to color a text's opening lines, which the details wait for.
+static constexpr int detailColorsMs = 500;
+
 Backend::Backend(const QString &home, QObject *parent)
     : QObject(parent), m_home(home.isEmpty() ? QDir::homePath() : home) {
     m_noticeTimer.setSingleShot(true);
@@ -393,7 +396,7 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
     // Stepping through files faster than they're read queues readings; the
     // ones overtaken before they start are skipped rather than left to tie
     // up the threads the next folder is listed on.
-    watcher->setFuture(QtConcurrent::run([path, kind, inTrash, latest = m_describing, generation] {
+    watcher->setFuture(QtConcurrent::run([path, kind, mime, inTrash, latest = m_describing, generation] {
         QVariantMap read;
         if (*latest != generation)
             return read;
@@ -416,7 +419,12 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
         } else if (kind == "text") {
             // Enough of the top of the file to recognize it, never the whole
             // thing: a log can be gigabytes.
-            read.insert("text", Previewer::readText(path, 6000).section('\n', 0, 40));
+            const QString text = Previewer::readText(path, 6000).section('\n', 0, 40);
+            read.insert("text", text);
+            // A source file's lines come with their colors, so that the pane draws them once; a plain text and Markdown have none to ask for.
+            if (CodeColors::isCode(mime) && !text.isEmpty())
+                if (const QVariantList colors = CodeColors::runsOf(CodeColors::of(text, QFileInfo(path).fileName(), detailColorsMs), text); !colors.isEmpty())
+                    read.insert("colors", colors);
         }
         return read;
     }));

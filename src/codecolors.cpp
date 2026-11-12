@@ -100,6 +100,23 @@ CodeColors::Lines CodeColors::of(const QString &text, const QString &name, int l
     return parse(QString::fromUtf8(bat.readAllStandardOutput()));
 }
 
+QVariantList CodeColors::runsOf(const Lines &lines, const QString &text) {
+    QStringList texts;
+    QVariantList all;
+    bool colored = false;
+    for (const Line &line : lines) {
+        texts << line.text;
+        QVariantList runs;
+        for (const Run &run : line.runs)
+            runs << QVariant(QVariantList{run.start, run.length, run.ink});
+        colored = colored || !runs.isEmpty();
+        all << QVariant(runs);
+    }
+    // bat ends a last line that had no end, and nothing else may differ.
+    const QString read = texts.join(u'\n');
+    return colored && (read == text || read + u'\n' == text) ? all : QVariantList();
+}
+
 void CodeColors::setTextDocument(QQuickTextDocument *textDocument) {
     if (textDocument == m_textDocument)
         return;

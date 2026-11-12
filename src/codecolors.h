@@ -39,6 +39,8 @@ public:
     static Lines parse(const QString &printed);
     // The colors of a text from a file of this name; none without bat, when it fails, takes longer than the limit or prints more than colors take, or once they aren't wanted.
     static Lines of(const QString &text, const QString &name, int limitMs, const std::function<bool()> &wanted = {});
+    // The runs of each line as numbers, start, length and ink, for QML; none when nothing is colored or the lines aren't this text's.
+    static QVariantList runsOf(const Lines &lines, const QString &text);
 
     QQuickTextDocument *textDocument() const { return m_textDocument; }
     void setTextDocument(QQuickTextDocument *textDocument);

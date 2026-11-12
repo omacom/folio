@@ -3308,6 +3308,182 @@ private slots:
         QVERIFY(!backend.details().contains("width"));
     }
 
+    void detailsColorTheOpeningLinesOfCode()
+    {
+        // The details show a source file's opening lines in the theme's colors: read with the text, and laid out as the plain text is.
+        QTemporaryDir home;
+        const QString ran = home.filePath("ran");
+        // Stands in for bat: the first word of every line in magenta, noting that it ran.
+        const QString bin = binWith(home.filePath("bin"), {{"bat", "#!/bin/sh\n: > '" + QFile::encodeName(ran) + "'\n"
+                                                                    "while IFS= read -r line || [ -n \"$line\" ]; do\n"
+                                                                    "  first=${line%% *}\n"
+                                                                    "  printf '\\033[35m%s\\033[0m%s\\n' \"$first\" \"${line#\"$first\"}\"\n"
+                                                                    "done\n"}});
+        const QString stuck = binWith(home.filePath("stuck"), {{"bat", "#!/bin/sh\nexec tail -f /dev/null\n"}});
+        // A bat that never answers is given up on well inside the second of these, and the first is all a slow machine is waited for.
+        const int longMs = 15000, soonMs = 2000;
+        QDir(home.path()).mkdir("none");
+        QDir(home.path()).mkdir("src");
+        const QString src = home.filePath("src");
+        // Two spaces, a tab, what HTML would read as a tag, an empty line and a line that wraps: all of which must stay as they are.
+        const QByteArray text = "int  main() {\n\treturn 0; // a <b> & c\n}\n\nlast line that is long enough to wrap around the narrow pane twice over, surely\n";
+        write(src + "/press.c", text);
+        write(src + "/notes.txt", text);
+        // Tabs at the start of a line and inside one, in a colored word and outside.
+        const QByteArray tabs = "\tx\n \ty\nz\tw q\n";
+        write(src + "/tabs.c", tabs);
+        write(src + "/tabs.txt", tabs);
+        // Windows line ends, after a plain word and after a colored one.
+        const QByteArray ends = "ab cd\r\nef\r\n";
+        write(src + "/ends.c", ends);
+        write(src + "/ends.txt", ends);
+        const QVariantMap code{{"path", src + "/press.c"}, {"kind", "text"}, {"mime", "text/x-csrc"}};
+        const QVariantMap notes{{"path", src + "/notes.txt"}, {"kind", "text"}, {"mime", "text/plain"}};
+        write(src + "/readme.md", "# int main\n");
+        const QVariantMap readme{{"path", src + "/readme.md"}, {"kind", "text"}, {"mime", "text/markdown"}};
+
+        Backend backend(home.path());
+        // Whether the colors were there each time a text arrived.
+        QVector<bool> arrived;
+        connect(&backend, &Backend::detailsChanged, &backend, [&] {
+            if (backend.details().contains("text"))
+                arrived << backend.details().contains("colors");
+        });
+        {
+            const auto path = pathAt(bin);
+            backend.describe(code);
+            QTRY_VERIFY(backend.details().contains("text"));
+            // The text and its colors in one change, not one after the other.
+            QCOMPARE(arrived, QVector<bool>{true});
+            QCOMPARE(backend.details().value("text").toString(), QString::fromUtf8(text));
+            const QVariantList colors = backend.details().value("colors").toList();
+            QCOMPARE(colors.size(), 5);
+            QCOMPARE(colors.at(0).toList(), (QVariantList{QVariantList{0, 3, 5}}));
+            QCOMPARE(colors.at(1).toList(), (QVariantList{QVariantList{0, 7, 5}}));
+            QVERIFY(colors.at(3).toList().isEmpty());
+        }
+        {
+            // The same file read again without bat: its lines are shown as they always were, and the colors it had are gone.
+            const auto path = pathAt(home.filePath("none"));
+            backend.describe(code);
+            QTRY_COMPARE(arrived, (QVector<bool>{true, false}));
+            QVERIFY(!backend.details().contains("colors"));
+            QCOMPARE(backend.details().value("text").toString(), QString::fromUtf8(text));
+        }
+        for (const QVariantMap &plain : {notes, readme}) {
+            // A plain text has no colors to ask bat for, and Markdown's lines stay as they were: neither waits for it.
+            const auto path = pathAt(bin);
+            QFile::remove(ran);
+            const int before = arrived.size();
+            backend.describe(plain);
+            QTRY_COMPARE(arrived.size(), before + 1);
+            QThreadPool::globalInstance()->waitForDone();
+            QVERIFY(!backend.details().contains("colors"));
+            QVERIFY(!QFile::exists(ran));
+        }
+        {
+            // A bat that never answers holds the lines back half a second, not the seconds a whole text is given.
+            const auto path = pathAt(stuck);
+            QElapsedTimer waited;
+            waited.start();
+            backend.describe(code);
+            QTRY_COMPARE_WITH_TIMEOUT(arrived.size(), 5, longMs);
+            QVERIFY(waited.elapsed() < soonMs);
+            QVERIFY(!arrived.last());
+        }
+        // Colors for another text than the one read are no colors.
+        const CodeColors::Lines lines{{"int a;", {{0, 3, 5}}}, {"b", {}}};
+        QCOMPARE(CodeColors::runsOf(lines, "int a;\nb\n").size(), 2);
+        QCOMPARE(CodeColors::runsOf(lines, "int a;\nb").size(), 2);
+        QVERIFY(CodeColors::runsOf(lines, "int a;\nc\n").isEmpty());
+        QVERIFY(CodeColors::runsOf(lines, "int a;\nb\nc\n").isEmpty());
+        QVERIFY(CodeColors::runsOf({{"int a;", {}}}, "int a;").isEmpty());
+
+        // In the pane: the same lines, the same height and the same wraps as the plain text, with the colored words in the theme's inks.
+        backend.navigate(src);
+        QTRY_COMPARE(backend.folder()->rowCount(), 7);
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        Places places(home.path());
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("places", &places);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window { width: 300; height: 700; visible: true\n"
+                          "    QtObject { id: files; property var current: ({}); readonly property bool inTrash: false\n"
+                          "        readonly property var paneBackend: backend; readonly property var paneFileOps: fileOps }\n"
+                          "    PreviewPane { id: pane; anchors.fill: parent; folderPane: files }\n"
+                          "    function show(name) { files.current = backend.folder.get(backend.folder.indexOfPath(backend.path + '/' + name)) }\n"
+                          "    function find(item, wanted) {\n"
+                          "        if (wanted(item)) return item\n"
+                          "        for (const child of item.children) { const found = find(child, wanted); if (found) return found }\n"
+                          "        return null }\n"
+                          "    function opening() { return find(pane, item => item instanceof Text && item.wrapMode === Text.WrapAnywhere) }\n"
+                          "    function styled() { return opening().textFormat === Text.StyledText }\n"
+                          "    function shown() { return opening().text }\n"
+                          "    function laidOut() { const text = opening(); return [text.lineCount, text.implicitWidth, text.implicitHeight, text.contentHeight].join(' ') }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/DetailsCodeTest.qml"));
+        const auto path = pathAt(bin);
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        const auto asked = [window](const char *method) {
+            QVariant result;
+            QMetaObject::invokeMethod(window, method, Q_RETURN_ARG(QVariant, result));
+            return result;
+        };
+        QMetaObject::invokeMethod(window, "show", Q_ARG(QVariant, "notes.txt"));
+        QTRY_COMPARE(asked("shown").toString(), QString::fromUtf8(text));
+        QVERIFY(!asked("styled").toBool());
+        const QString plain = asked("laidOut").toString();
+        QVERIFY(plain.startsWith("9 "));
+
+        QMetaObject::invokeMethod(window, "show", Q_ARG(QVariant, "press.c"));
+        QTRY_VERIFY(asked("styled").toBool());
+        const QString ink = theme.codeInks().at(4).value<QColor>().name();
+        QCOMPARE(asked("shown").toString(),
+                 "<font color=\"" + ink + "\">int</font>&nbsp;&nbsp;main()&nbsp;{<br>"
+                 "<font color=\"" + ink + "\">&#9;return</font>&nbsp;0;&nbsp;//&nbsp;a&nbsp;&lt;b&gt;&nbsp;&amp;&nbsp;c<br>"
+                 "<font color=\"" + ink + "\">}</font><br><br>"
+                 "<font color=\"" + ink + "\">last</font>&nbsp;line&nbsp;that&nbsp;is&nbsp;long&nbsp;enough&nbsp;to&nbsp;wrap&nbsp;around&nbsp;the&nbsp;narrow&nbsp;pane&nbsp;twice&nbsp;over,&nbsp;surely<br>");
+        QCOMPARE(asked("laidOut").toString(), plain);
+
+        // A tab is as wide as in the plain text, where a Text that reads StyledText would draw it as one space or none.
+        QMetaObject::invokeMethod(window, "show", Q_ARG(QVariant, "tabs.txt"));
+        QTRY_COMPARE(asked("shown").toString(), QString::fromUtf8(tabs));
+        const QString plainTabs = asked("laidOut").toString();
+        QMetaObject::invokeMethod(window, "show", Q_ARG(QVariant, "tabs.c"));
+        QTRY_COMPARE(asked("shown").toString(), "<font color=\"" + ink + "\">&#9;x</font><br>&nbsp;&#9;y<br><font color=\"" + ink + "\">z&#9;w</font>&nbsp;q<br>");
+        QCOMPARE(asked("laidOut").toString(), plainTabs);
+
+        // A Windows line end is one break, as in the plain text: its \r is left out, where a Text that reads StyledText would draw it as a space.
+        QMetaObject::invokeMethod(window, "show", Q_ARG(QVariant, "ends.txt"));
+        QTRY_COMPARE(asked("shown").toString(), QString::fromUtf8(ends));
+        const QString plainEnds = asked("laidOut").toString();
+        QMetaObject::invokeMethod(window, "show", Q_ARG(QVariant, "ends.c"));
+        QTRY_COMPARE(asked("shown").toString(), "<font color=\"" + ink + "\">ab</font>&nbsp;cd<br><font color=\"" + ink + "\">ef</font><br>");
+        QCOMPARE(asked("laidOut").toString(), plainEnds);
+        QMetaObject::invokeMethod(window, "show", Q_ARG(QVariant, "press.c"));
+        QTRY_VERIFY(asked("shown").toString().startsWith("<font color=\"" + ink + "\">int</font>"));
+
+        // Another theme is picked while the file is selected: its lines are redrawn in that theme's colors, laid out as before.
+        QDir(home.path()).mkpath("theme/theme");
+        write(home.filePath("theme/theme/colors.toml"), "magenta = \"#ffaaff\"\n");
+        QTRY_VERIFY(asked("shown").toString().startsWith("<font color=\"#ffaaff\">int</font>"));
+        QCOMPARE(asked("laidOut").toString(), plain);
+
+        // Back on a plain text the Text reads it plainly again: a "<" in it is a "<".
+        QMetaObject::invokeMethod(window, "show", Q_ARG(QVariant, "notes.txt"));
+        QTRY_VERIFY(!asked("styled").toBool());
+        QTRY_COMPARE(asked("shown").toString(), QString::fromUtf8(text));
+    }
+
     void backendReadsTrashNotesOffTheUiThread()
     {
         // Finding a trashed item's note looks over every mounted drive, so
