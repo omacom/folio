@@ -16,7 +16,14 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 DBus Concurrent Test)
+# The tests are built unless -DBUILD_TESTING=OFF, which a package can pass
+# to build Folio alone, without Qt Test.
+option(BUILD_TESTING "Build the tests" ON)
+
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 DBus Concurrent)
+if(BUILD_TESTING)
+  find_package(Qt6 REQUIRED COMPONENTS Test)
+endif()
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GIO REQUIRED IMPORTED_TARGET gio-2.0 gio-unix-2.0)
 find_package(ZLIB REQUIRED)
@@ -39,15 +46,17 @@ target_link_libraries(folio PRIVATE folio_core)
 target_compile_definitions(folio_core PRIVATE
   FOLIO_PACKAGED_PLUGINS="${CMAKE_INSTALL_FULL_DATADIR}/folio/plugins")
 
-# The tests compile the same sources, run offscreen, and read the QML they
-# check straight from src/.
-add_executable(folio_tests tests/folio_tests.cpp)
-target_link_libraries(folio_tests PRIVATE folio_core Qt6::Test)
-# The bundled plugins, which the tests run against stubs.
-target_compile_definitions(folio_tests PRIVATE FOLIO_PLUGINS="${CMAKE_SOURCE_DIR}/plugins")
-enable_testing()
-add_test(NAME folio_tests COMMAND folio_tests)
-set_tests_properties(folio_tests PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)
+if(BUILD_TESTING)
+  # The tests compile the same sources, run offscreen, and read the QML they
+  # check straight from src/.
+  add_executable(folio_tests tests/folio_tests.cpp)
+  target_link_libraries(folio_tests PRIVATE folio_core Qt6::Test)
+  # The bundled plugins, which the tests run against stubs.
+  target_compile_definitions(folio_tests PRIVATE FOLIO_PLUGINS="${CMAKE_SOURCE_DIR}/plugins")
+  enable_testing()
+  add_test(NAME folio_tests COMMAND folio_tests)
+  set_tests_properties(folio_tests PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)
+endif()
 
 # `cmake --install build` (with DESTDIR for a package) puts Folio where a
 # package does, so a packager needs no list of files of their own. Tests stay
