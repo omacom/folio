@@ -5,6 +5,7 @@
 #include <QQuickWindow>
 
 #include "backend.h"
+#include "chooser.h"
 #include "fileops.h"
 
 Windows::Windows(QQmlEngine *engine, Plugins *plugins, QObject *parent)
@@ -12,15 +13,22 @@ Windows::Windows(QQmlEngine *engine, Plugins *plugins, QObject *parent)
       m_pane(engine, QUrl("qrc:/FolderPane.qml")) {
     // Main.qml calls windows.openSplit() and windows.closeSplit().
     engine->rootContext()->setContextProperty("windows", this);
+    engine->rootContext()->setContextProperty("chooser", nullptr);
 }
 
-Windows::Pane Windows::makePane(QQmlComponent &component, QQmlContext *parent) {
+Windows::Pane Windows::makePane(QQmlComponent &component, QQmlContext *parent, Chooser *chooser) {
     // A context per pane overrides `backend` and `fileOps`; everything else
     // comes from the contexts above it, shared.
     Pane pane;
     pane.context = new QQmlContext(parent, this);
     pane.backend = new Backend({}, this);
     pane.backend->setPlugins(m_plugins);
+    // A dialog's panes know which dialog they are; every other window reads
+    // the null set for them all.
+    if (chooser) {
+        pane.context->setContextProperty("chooser", chooser);
+        pane.backend->setChooser(chooser);
+    }
     pane.fileOps = new FileOps(this);
     pane.context->setContextProperty("backend", pane.backend);
     pane.context->setContextProperty("fileOps", pane.fileOps);
@@ -30,18 +38,23 @@ Windows::Pane Windows::makePane(QQmlComponent &component, QQmlContext *parent) {
         release(pane);
         return {};
     }
-    connect(pane.backend, &Backend::newWindowRequested, this, [this](const QString &path) { open(path); });
+    // A dialog stays the one window it is.
+    if (!chooser)
+        connect(pane.backend, &Backend::newWindowRequested, this, [this](const QString &path) { open(path); });
     return pane;
 }
 
-Backend *Windows::open(const QString &folder, const QString &select) {
-    Pane main = makePane(m_component, m_engine->rootContext());
+Backend *Windows::open(const QString &folder, const QString &select, Chooser *chooser) {
+    Pane main = makePane(m_component, m_engine->rootContext(), chooser);
     auto *window = qobject_cast<QQuickWindow *>(main.item);
     if (!window) {
         release(main);
         return nullptr;
     }
-    m_windows.prepend({main, {}});
+    m_windows.prepend({main, {}, chooser});
+    // Gone with the window's context, after the window that reads it.
+    if (chooser)
+        chooser->setParent(main.context);
 
     // Whichever window was used last answers "Show in folder".
     connect(window, &QQuickWindow::activeChanged, this, [this, window] {
@@ -90,7 +103,7 @@ QObject *Windows::openSplit(QObject *window, const QString &folder) {
         return nullptr;
     if (!w->split.item) {
         // Inside the window's context, with its own backend and file work.
-        w->split = makePane(m_pane, w->main.context);
+        w->split = makePane(m_pane, w->main.context, w->chooser);
         if (!w->split.item)
             return nullptr;
         // Owned here, not by QML's garbage collector, though QML holds it.

@@ -214,6 +214,7 @@
   "Keep Both": "Keep Both",
   "Keyboard shortcuts": "Keyboard shortcuts",
   "Kind": "Kind",
+  "Kinds of file listed": "Kinds of file listed",
   "Making a preview…": "Making a preview…",
   "Merge": "Merge",
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.",
@@ -259,6 +260,8 @@
   "Only folders can be pinned.": "Only folders can be pinned.",
   "Open": "Open",
   "Open (⏎)": "Open (⏎)",
+  "Open File": "Open File",
+  "Open Files": "Open Files",
   "Open Folder": "Open Folder",
   "Open Terminal Here": "Open Terminal Here",
   "Open With": "Open With",
@@ -320,6 +323,11 @@
   "Rename / duplicate": "Rename / duplicate",
   "Rename…": "Rename…",
   "Replace": "Replace",
+  "Replace %1?": "Replace %1?",
+  "Replace %Ln files?": {
+    "one": "Replace %Ln file?",
+    "other": "Replace %Ln files?"
+  },
   "Replacing moves the one there now to the trash.": "Replacing moves the one there now to the trash.",
   "Restore": "Restore",
   "Restore %Ln Items": {
@@ -342,6 +350,10 @@
     "other": "Restoring %Ln items…"
   },
   "Right-click / Alt+⏎ / Menu": "Right-click / Alt+⏎ / Menu",
+  "Save": "Save",
+  "Save As": "Save As",
+  "Save Files": "Save Files",
+  "Saving here writes over what's already there. This can't be undone.": "Saving here writes over what's already there. This can't be undone.",
   "Scroll": "Scroll",
   "Search %1": "Search %1",
   "Search %1 and below": "Search %1 and below",

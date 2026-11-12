@@ -39,6 +39,7 @@ Done, tested, and verified offscreen:
 - Mouse back/forward buttons move through history (in the preview: previous/next file).
 - Space opens a large preview in its own process (`folio preview`), like Sushi: pictures at full size with zoom, animated GIF/WebP, video and audio playing (Qt Multimedia's FFmpeg backend), PDFs scrolling (Qt PDF), text and rendered Markdown, folders with their pictures, and the largest cached thumbnail for anything else. Arrows step through the folder and the grid follows; a crash in the preview is reported in the Folio window. Ctrl+I toggles the details pane.
 - `org.freedesktop.FileManager1` for "Show in folder"; `folio <file>` opens its folder with the file selected.
+- `folio chooser`: other apps' Open and Save dialogs, as `xdg-desktop-portal`'s FileChooser backend (`share/folio.portal`, started by D-Bus). A dialog is a Folio window with a bar along the bottom: the name to save under, the app's filters and choices, and the answer. Opt-in through `portals.conf` until Omarchy names it.
 - Whole-palette theme following, Hyprland rounding, the Omarchy translator, `?` overlay.
 
 ## Phases
@@ -109,6 +110,6 @@ Done, tested, and verified offscreen:
 
 ## Open questions
 
-- **File chooser.** Open/save dialogs in other apps come from `xdg-desktop-portal-gtk`, not Nautilus, so they keep working. Should Folio later provide the portal's FileChooser so dialogs look and behave like Folio?
+- **File chooser as the default.** `folio chooser` is there; Omarchy's `hyprland-portals.conf` would name it (`org.freedesktop.impl.portal.FileChooser=folio`), the package would install `share/folio.portal`, the D-Bus service and `folio-chooser.desktop`, and a window rule would float `folio-chooser`. Dialogs don't yet attach to the window that asked (xdg-foreign), so they float on their own.
 - **Nautilus as an option.** Offer `omarchy-install-nautilus` for people who want it back (with LocalSearch masked)?
 - **Thumbnail sizes on HiDPI.** Request `x-large` (512) on scaled outputs, or keep `large` and accept softer tiles?

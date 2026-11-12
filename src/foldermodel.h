@@ -32,6 +32,11 @@ class FolderModel : public QAbstractListModel {
     Q_PROPERTY(QString query READ query WRITE setQuery NOTIFY queryChanged)
     // The items a plugin's view lists, as Plugins::views gives them.
     Q_PROPERTY(QVariantList items READ items WRITE setItems NOTIFY itemsChanged)
+    // The kinds of file a file chooser was asked for: name patterns (*.png)
+    // and MIME types (image/png, image/*), told apart by the slash. Files
+    // that fit none aren't listed; folders always are, as the way to the
+    // files in them. Empty lists everything.
+    Q_PROPERTY(QStringList filter READ filter WRITE setFilter NOTIFY filterChanged)
 
 public:
     enum Role {
@@ -85,6 +90,8 @@ public:
     void setQuery(const QString &query);
     QVariantList items() const { return m_items; }
     void setItems(const QVariantList &items);
+    QStringList filter() const { return m_filter; }
+    void setFilter(const QStringList &filter);
 
     void setPath(const QString &path);
     Q_INVOKABLE void reload();
@@ -133,6 +140,8 @@ public:
     // whose names contain `query` (ignoring case), or all of them.
     static bool isPluginView(const QString &path) { return path.startsWith("plugin:") && !path.contains('/'); }
     static QVector<Entry> listItems(const QVariantList &items, const QString &query = {});
+    // Whether a filter lists the entry.
+    static bool fits(const Entry &entry, const QStringList &filter);
     // Recents and plugins' views: lists of their own, not folders.
     static bool isView(const QString &path) { return path == recentPath() || isPluginView(path); }
     static QString kindForMime(const QString &mime);
@@ -141,7 +150,7 @@ public:
     // filesystems and at symlinks, and as soon as `stop` returns true.
     static QVector<Entry> search(const QString &root, const QString &query, bool showHidden, const QString &sort,
                                  const std::function<bool()> &stop = {}, int limit = 1000,
-                                 const QLocale &locale = QLocale());
+                                 const QLocale &locale = QLocale(), const QStringList &filter = {});
 
 signals:
     void pathChanged();
@@ -152,6 +161,7 @@ signals:
     void sortModeChanged();
     void queryChanged();
     void itemsChanged();
+    void filterChanged();
     void selectionChanged();
     void loaded();
 
@@ -175,6 +185,7 @@ private:
     QString m_sort = "name";
     QString m_query;
     QVariantList m_items;
+    QStringList m_filter;
     quint64 m_generation = 0;
     // The newest listing's generation, shared with the background listing,
     // search and folder counts, so work that's been overtaken (more typing,

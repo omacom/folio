@@ -32,6 +32,20 @@ Files (`folio`) is Omarchy's file manager. It's one quiet window that follows yo
 | Tab, Shift+Tab | Sidebar, panes and details |
 | ? | Every other shortcut |
 
+## Open and Save dialogs
+
+Files can also be the window other apps show for Open and Save: the same views, sidebar, previews and keys, with the name to save under, the kinds of file asked for and the answer in a bar along the bottom. Return on a file answers, as does Ctrl+Return anywhere; Escape calls it off.
+
+It's `folio chooser`, a file chooser for `xdg-desktop-portal`. D-Bus starts it when an app asks for a dialog, and it goes again a minute after the last one closes. To turn it on, name it in `~/.config/xdg-desktop-portal/portals.conf` (under Hyprland the file is `hyprland-portals.conf`), keeping the `default` line the system's own file has:
+
+```ini
+[preferred]
+default=hyprland;gtk
+org.freedesktop.impl.portal.FileChooser=folio
+```
+
+Then `systemctl --user restart xdg-desktop-portal`. Its windows have the app id `folio-chooser`, for a window rule to float them.
+
 ## Building
 
 Files is C++ and Qt Quick. `bin/build` compiles it into `build/folio`, and `bin/test` runs the tests. Omarchy installs it from [omarchy-pkgs](https://github.com/omacom/omarchy-pkgs).

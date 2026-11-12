@@ -50,7 +50,10 @@ FocusScope {
     property bool cursorLetGo: false
     // While a text field has the keyboard (renaming, a password), single-key
     // and clipboard shortcuts stand aside so typing works.
-    readonly property bool typing: rename.visible || confirm.visible || clash.visible || formatDialog.visible || backend.mounter.asking || pathBar.editing || pathBar.searchFocused || (!!host && host.helpVisible)
+    readonly property bool ownTyping: rename.visible || confirm.visible || clash.visible || formatDialog.visible || backend.mounter.asking || pathBar.editing || pathBar.searchFocused || (!!host && host.helpVisible)
+    // A file chooser's name field counts as typing too, for every key but
+    // the one that goes to type a path instead.
+    readonly property bool typing: ownTyping || (!!host && !!host.bar && host.bar.typing)
     // Keys for the pane as a whole (undo, a new window, typing a path) work
     // wherever the keyboard is; keys for its files only while the files
     // have it, not while Tab has put it in the sidebar or the details, where
@@ -109,6 +112,11 @@ FocusScope {
                     qsTr("Empty Trash"), () => fileOps.emptyTrash())
     }
 
+    // A question from outside the pane (a file chooser's Replace), asked
+    // over it like its own.
+    function ask(heading, body, button, run) { confirm.ask(heading, body, button, run) }
+    readonly property bool asking: confirm.visible
+
     // Format… from a drive's menu in the sidebar, and Burn from an image's.
     function formatDrive(disk) { formatDialog.open(disk) }
     function confirmBurn(path, drive) {
@@ -122,6 +130,13 @@ FocusScope {
     // details pane follow.
     onActiveFocusChanged: if (activeFocus && host) host.activePane = pane
     function focusView() { if (view.item) view.item.focusView() }
+    // Nothing under the cursor and nothing selected, as after a click on
+    // empty space.
+    function letGo() {
+        backend.folder.clearSelection()
+        if (view.item)
+            view.item.letGo()
+    }
 
     // Pins a folder to the sidebar, or unpins it when it's pinned already.
     function togglePin(target) {
@@ -179,7 +194,7 @@ FocusScope {
     Shortcut { sequence: "Ctrl+Shift+D"; enabled: pane.fileKeys && !pane.inTrash; onActivated: if (pane.current.path) fileOps.duplicate(pane.current.path) }
     Shortcut { sequences: [StandardKey.New]; enabled: pane.paneKeys; onActivated: backend.newWindow() }
     Shortcut { sequence: "Ctrl+Shift+N"; enabled: pane.fileKeys && !pane.inTrash; onActivated: fileOps.newFolder(backend.path) }
-    Shortcut { sequences: ["Ctrl+L", "Alt+D"]; enabled: pane.paneKeys; onActivated: pathBar.editPath() }
+    Shortcut { sequences: ["Ctrl+L", "Alt+D"]; enabled: pane.active && !pane.ownTyping; onActivated: pathBar.editPath() }
     // Pins the selected folder, or the folder being shown when a file is
     // selected; pressed again, unpins it.
     Shortcut { sequence: "Ctrl+P"; enabled: pane.active && !pane.inView; onActivated: pane.togglePin(pane.current.isDir ? pane.current.path : backend.path) }
@@ -283,7 +298,14 @@ FocusScope {
             const row = backend.folder.indexOfPath(pane.lastPath)
             if (pending || !same)
                 pane.cursorLetGo = false
-            if (pending)
+            // A file chooser picking a folder answers with what's selected,
+            // or else the folder shown: arriving somewhere selects nothing,
+            // so the first item (or the folder just come up out of) isn't
+            // the answer unasked. What file work made here (a new folder, a
+            // new name) is still selected, as it's what was just asked for.
+            if (!same && pane.host && pane.host.bar && pane.host.bar.pickingFolder)
+                pane.letGo()
+            else if (pending)
                 view.item.select(backend.folder.indexOf(pending), false)
             else if (!same)
                 view.item.select(-1, false)

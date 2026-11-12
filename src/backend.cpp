@@ -1,4 +1,5 @@
 #include "backend.h"
+#include "chooser.h"
 #include "fileops.h"
 #include "previewer.h"
 
@@ -201,6 +202,10 @@ void Backend::open(const QString &path) {
         navigate(path);
         return;
     }
+    if (m_chooser) {
+        m_chooser->activate(path);
+        return;
+    }
     // The desktop's default app for the type, or for the nearest type it
     // belongs to.
     if (const QString problem = FileOps::openInDefaultApp(path); !problem.isEmpty())
@@ -248,6 +253,12 @@ void Backend::setPlugins(Plugins *plugins) {
     // A view's title and a mount's name come from the plugins.
     connect(plugins, &Plugins::changed, this, &Backend::placeChanged);
     connect(plugins, &Plugins::detailsChanged, this, [this] { showPluginRows(askPlugins()); });
+}
+
+void Backend::setChooser(Chooser *chooser) {
+    m_chooser = chooser;
+    m_folder.setFilter(chooser->filter());
+    connect(chooser, &Chooser::filterChanged, this, [this, chooser] { m_folder.setFilter(chooser->filter()); });
 }
 
 void Backend::openItem(const QString &path) {
@@ -483,8 +494,8 @@ QString Backend::typedPath() const {
     return FolderModel::isView(p) || p == "/" ? p : p + "/";
 }
 
-QString Backend::expandTyped(const QString &text, const QString &home, const QString &current) {
-    QString t = text.trimmed();
+QString Backend::expandTyped(const QString &text, const QString &home, const QString &current, bool exact) {
+    QString t = exact ? text : text.trimmed();
     if (t.startsWith("file://"))
         t = QUrl(t).toLocalFile();
     if (t == "~")

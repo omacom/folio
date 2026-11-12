@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QPointer>
 #include <QProcess>
 #include <QStringList>
 #include <QTimer>
@@ -9,6 +10,8 @@
 #include "foldermodel.h"
 #include "mounter.h"
 #include "plugins.h"
+
+class Chooser;
 
 // Where the window is and how it got there: the current folder, its
 // breadcrumbs, back/forward history, and the actions that leave the folder
@@ -40,6 +43,10 @@ public:
 
     // The plugins whose views, items and actions this window offers.
     void setPlugins(Plugins *plugins);
+    // The Open or Save dialog this window is, for another app: the folders
+    // list the kinds of file it asked for, and opening a file answers it
+    // rather than starting the file's app.
+    void setChooser(Chooser *chooser);
 
     FolderModel *folder() { return &m_folder; }
     Mounter *mounter() { return &m_mounter; }
@@ -104,7 +111,9 @@ public:
     void showFolder(const QString &path);
     void showItem(const QString &path);
 
-    static QString expandTyped(const QString &text, const QString &home, const QString &current);
+    // `exact` keeps spaces at the ends of what was typed: a file's name can
+    // have them.
+    static QString expandTyped(const QString &text, const QString &home, const QString &current, bool exact = false);
     static QString complete(const QString &text, const QString &home, const QString &current);
     static QString mountLabel(const QString &mountFolder);
     // A server address (sftp://, smb://, ftp://, dav://, davs://) as GIO
@@ -161,6 +170,7 @@ private:
     QString m_busy;
     QString m_pendingSelection;
     Plugins *m_plugins = nullptr;
+    QPointer<Chooser> m_chooser;
     Mounter m_mounter;
     // What's being connected to, as the window names it, and whether it's
     // a bare server, which lands in the matching home folder.

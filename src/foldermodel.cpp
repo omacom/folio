@@ -51,7 +51,7 @@ static QCache<QString, QVector<FolderModel::Entry>> &recentListings() {
 
 // The language is part of it: names sort by its alphabet.
 QString FolderModel::cacheKey() const {
-    return m_path + '\n' + (m_showHidden ? "h" : "") + '\n' + m_sort + '\n' + QLocale().name();
+    return m_path + '\n' + (m_showHidden ? "h" : "") + '\n' + m_sort + '\n' + QLocale().name() + '\n' + m_filter.join('\n');
 }
 
 void FolderModel::remember() {
@@ -150,6 +150,53 @@ void FolderModel::setQuery(const QString &query) {
             setEntries(*cached);
     }
     reload();
+}
+
+void FolderModel::setFilter(const QStringList &filter) {
+    if (filter == m_filter)
+        return;
+    m_filter = filter;
+    emit filterChanged();
+    reload();
+}
+
+bool FolderModel::fits(const Entry &entry, const QStringList &filter) {
+    if (filter.isEmpty() || entry.isDir)
+        return true;
+    // A type is told by the name, as everywhere in Folio; a file whose name
+    // says nothing is looked into, or a filter of types would hide it.
+    // Once, however many types the filter names.
+    QString mime = entry.mime;
+    bool looked = false;
+    const auto type = [&] {
+        if (!looked && mime == "application/octet-stream")
+            mime = QMimeDatabase().mimeTypeForFile(entry.path).name();
+        looked = true;
+        return mime;
+    };
+    // A search names what it finds by its path from the folder searched; a
+    // pattern is for the file's own name.
+    const QString name = entry.path.isEmpty() ? entry.name : entry.path.section('/', -1);
+    for (const QString &rule : filter) {
+        if (!rule.contains('/')) {
+            // A pattern is matched against the name whatever its case, so
+            // *.jpg lists PHOTO.JPG. Nearly every one is "*" or "*.ext",
+            // which need no pattern matching at all.
+            const QString end = rule.mid(1);
+            if (rule == "*" || (rule.startsWith("*.") && !end.contains('*') && !end.contains('?') && !end.contains('[')
+                                    ? name.endsWith(end, Qt::CaseInsensitive)
+                                    : QDir::match(QStringList{rule}, name)))
+                return true;
+        } else if (rule.endsWith("/*")) {
+            if (type().startsWith(rule.chopped(1)))
+                return true;
+        // A type also lists the types that are a kind of it (text/plain
+        // lists a Markdown file).
+        } else if (type() == rule || QMimeDatabase().mimeTypeForName(type()).inherits(rule)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void FolderModel::setItems(const QVariantList &items) {
@@ -282,7 +329,7 @@ FolderModel::Entry FolderModel::entryFor(const QFileInfo &info, const QMimeDatab
 
 QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QString &query, bool showHidden,
                                                 const QString &sort, const std::function<bool()> &stop,
-                                                int limit, const QLocale &locale) {
+                                                int limit, const QLocale &locale, const QStringList &filter) {
     QVector<Entry> entries;
     struct stat top;
     if (::stat(QFile::encodeName(root).constData(), &top) != 0)
@@ -304,8 +351,12 @@ QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QStri
             const QFileInfo info = it.nextFileInfo();
             if (info.fileName().contains(query, Qt::CaseInsensitive) && entries.size() < limit) {
                 Entry e = entryFor(info, mimes);
-                e.name = base.relativeFilePath(e.path);
-                entries.push_back(e);
+                // Only what a filter lists counts toward the limit, or files
+                // it leaves out could use the limit up.
+                if (fits(e, filter)) {
+                    e.name = base.relativeFilePath(e.path);
+                    entries.push_back(e);
+                }
             }
             // Other filesystems (a mounted drive, another machine, /proc
             // from /) and symlinked folders aren't walked into.
@@ -450,6 +501,7 @@ void FolderModel::reload() {
     const QString query = m_query;
     const QLocale locale;
     const QVariantList items = m_items;
+    const QStringList filter = m_filter;
     *m_latest = generation;
     const auto latest = m_latest;
     auto *watcher = new QFutureWatcher<QPair<QVector<Entry>, QString>>(this);
@@ -481,12 +533,18 @@ void FolderModel::reload() {
             remember();
         countFolders(generation);
     });
-    watcher->setFuture(QtConcurrent::run([path, showHidden, sort, query, items, latest, generation, locale] {
+    watcher->setFuture(QtConcurrent::run([path, showHidden, sort, query, items, filter, latest, generation, locale] {
         QString error;
         const auto overtaken = [&] { return *latest != generation; };
+        const bool listed = query.isEmpty() || path == recentPath();
         auto entries = isPluginView(path) ? listItems(items, query)
-                     : query.isEmpty() || path == recentPath() ? list(path, showHidden, sort, &error, overtaken, locale)
-                     : search(path, query, showHidden, sort, overtaken, 1000, locale);
+                     : listed ? list(path, showHidden, sort, &error, overtaken, locale)
+                     : search(path, query, showHidden, sort, overtaken, 1000, locale, filter);
+        // A plugin's items aren't files, and stay whatever is asked for; a
+        // search has left out what doesn't fit already. Looking into a file
+        // takes time, so it stops once this listing is no longer wanted.
+        if (!filter.isEmpty() && listed && !isPluginView(path))
+            entries.removeIf([&](const Entry &entry) { return overtaken() || !fits(entry, filter); });
         return qMakePair(entries, error);
     }));
 }

@@ -9,9 +9,12 @@
 #include <QQmlEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
+#include <QDBusConnection>
+#include <QTimer>
 #include <QUrl>
 #include <cstdio>
 
+#include "chooser.h"
 #include "filemanager1.h"
 #include "foldermodel.h"
 #include "places.h"
@@ -114,14 +117,22 @@ static int preview(QGuiApplication &app) {
 }
 
 int main(int argc, char *argv[]) {
+    // The portal waits for the chooser as it starts, so a theme plugin that
+    // asks the portal for its settings would stall both for 25 seconds.
+    if (argc > 1 && qstrcmp(argv[1], "chooser") == 0)
+        qputenv("QT_QPA_PLATFORMTHEME", "generic");
     QGuiApplication app(argc, argv);
     setUp(app);
     if (app.arguments().value(1) == "preview")
         return preview(app);
 
+    // `folio chooser`: other apps' Open and Save dialogs, asked for through
+    // xdg-desktop-portal. Its windows have their own app id, for window
+    // rules to float them as dialogs.
+    const bool chooser = app.arguments().value(1) == "chooser";
     // Matches the window to folio.desktop, so the compositor (Wayland app_id)
     // and the launcher pick up the installed icon.
-    app.setDesktopFileName("folio");
+    app.setDesktopFileName(chooser ? "folio-chooser" : "folio");
 
     // Installed before anything is translated, and every qsTr() binding is
     // re-evaluated when the Omarchy language changes.
@@ -150,6 +161,26 @@ int main(int argc, char *argv[]) {
     engine.rootContext()->setContextProperty("plugins", &plugins);
 
     Windows windows(&engine, &plugins);
+    if (chooser) {
+        ChooserPortal portal(&windows);
+        // Another one is already answering.
+        if (!portal.registerOn(QDBusConnection::sessionBus()))
+            return 0;
+        // Started by D-Bus for the first dialog, it stays a minute past the
+        // last one, so the next opens at once, and then goes: nothing of
+        // Folio runs while no one is using it.
+        app.setQuitOnLastWindowClosed(false);
+        QTimer linger;
+        linger.setSingleShot(true);
+        linger.setInterval(60000);
+        QObject::connect(&portal, &ChooserPortal::idle, &linger, qOverload<>(&QTimer::start));
+        QObject::connect(&linger, &QTimer::timeout, &app, [&] {
+            if (!portal.busy())
+                app.quit();
+        });
+        linger.start();
+        return app.exec();
+    }
     if (!windows.open(start, select))
         return 1;
     FileManager1::registerOn(&windows);

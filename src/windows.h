@@ -5,6 +5,7 @@
 #include <QQmlComponent>
 
 class Backend;
+class Chooser;
 class FileOps;
 class Plugins;
 class QQmlContext;
@@ -23,7 +24,9 @@ public:
 
     // Opens a window on a folder, or on a file's folder with it selected.
     // Null if the interface failed to load (the errors are on stderr).
-    Backend *open(const QString &folder, const QString &select = {});
+    // With a chooser, the window is that Open or Save dialog, and takes the
+    // chooser with it when it closes.
+    Backend *open(const QString &folder, const QString &select = {}, Chooser *chooser = nullptr);
 
     // The window used most recently, for "Show in folder" from other apps.
     Backend *latest() const;
@@ -46,8 +49,9 @@ private:
     struct Window {
         Pane main;
         Pane split;
+        Chooser *chooser = nullptr;
     };
-    Pane makePane(QQmlComponent &component, QQmlContext *parent);
+    Pane makePane(QQmlComponent &component, QQmlContext *parent, Chooser *chooser);
     Window *find(QObject *window);
     static void release(Pane &pane);
     void close(QObject *window);

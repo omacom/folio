@@ -10,8 +10,9 @@ import QtCore
 // the sidebar and the details follow the pane used last.
 ApplicationWindow {
     id: win
-    width: 1280
-    height: 800
+    // Smaller as another app's Open or Save dialog.
+    width: chooser ? 1040 : 1280
+    height: chooser ? 680 : 800
     minimumWidth: 720
     minimumHeight: 460
     visible: true
@@ -19,6 +20,8 @@ ApplicationWindow {
     // retranslating QML doesn't redo, so the language is read here too.
     title: {
         translator.language
+        if (chooser)
+            return chooser.title
         return activePane && activePane.paneBackend.title.length > 0 ? activePane.paneBackend.title : qsTr("Files")
     }
     color: theme.background
@@ -42,7 +45,8 @@ ApplicationWindow {
     // so they first appear where they'll stay. Until then they take no
     // clicks or keys either, so nothing acts on files no one can see yet.
     property bool settled: false
-    onSettledChanged: activePane.focusView()
+    // A save starts in the name; anything else, in the files.
+    onSettledChanged: bar && bar.saving ? bar.focusKeyboard() : activePane.focusView()
     property bool drawn: false
     onFrameSwapped: if (!drawn) { drawn = true; settleTimer.start() }
     onWidthChanged: if (drawn) settled = true
@@ -65,7 +69,21 @@ ApplicationWindow {
     readonly property bool split: rightPane !== null
     // Whether keys are going into a text field. The right pane can go before
     // the window does when it closes, leaving activePane null.
-    readonly property bool typing: !!activePane && activePane.typing
+    readonly property bool typing: (!!activePane && activePane.typing) || (!!bar && bar.typing)
+    // The bar that answers, when the window is another app's Open or Save
+    // dialog (see ChooserBar.qml); null in every other window.
+    readonly property var bar: barLoader.item
+    // Answered, the dialog goes; closed, it's called off.
+    Connections {
+        target: chooser
+        function onFinished() { win.close() }
+    }
+    onClosing: if (chooser) chooser.cancel()
+    // Ctrl+Return answers and Escape calls off, but not while a dialog over
+    // the files (Rename, Replace), the path or the shortcuts are up: those
+    // have their own Return and Escape.
+    readonly property bool barKeys: !!bar && (bar.typing || !typing)
+    Shortcut { sequences: ["Ctrl+Return", "Ctrl+Enter"]; enabled: win.barKeys; onActivated: win.bar.go() }
     // The rightmost pane's path bar reaches over the details column.
     readonly property int detailsWidth: details.visible ? details.width : 0
     // Whether the window is wide enough for the details column at all.
@@ -96,6 +114,10 @@ ApplicationWindow {
             rightPane.zoom = activePane.zoom
             rightPane.barExtension = Qt.binding(() => win.detailsWidth)
             rightPane.closeRequested.connect(closeSplit)
+            // It listed its folder before it was in the window, so before
+            // it could know a folder is being picked (see FolderPane).
+            if (bar && bar.pickingFolder)
+                rightPane.letGo()
         }
         rightPane.focusView()
     }
@@ -119,13 +141,17 @@ ApplicationWindow {
     Shortcut { sequence: "Tab"; enabled: !win.typing; onActivated: win.moveKeyboard(1) }
     Shortcut { sequence: "Shift+Backtab"; enabled: !win.typing; onActivated: win.moveKeyboard(-1) }
     function moveKeyboard(step) {
-        const stops = [sidebar, leftPane].concat(split ? [rightPane] : [], details.takesKeyboard ? [details] : [])
-        const here = sidebar.activeFocus ? sidebar : details.hasKeyboard ? details : activePane
+        // The dialog's bar is the last stop, and Tab goes through its
+        // buttons before moving on.
+        if (bar && bar.activeFocus && bar.stepKeyboard(step > 0))
+            return
+        const stops = [sidebar, leftPane].concat(split ? [rightPane] : [], details.takesKeyboard ? [details] : [], bar ? [bar] : [])
+        const here = sidebar.activeFocus ? sidebar : details.hasKeyboard ? details : bar && bar.activeFocus ? bar : activePane
         const next = stops[(stops.indexOf(here) + step + stops.length) % stops.length]
         if (next === sidebar)
             sidebar.focusSidebar()
-        else if (next === details)
-            details.focusKeyboard()
+        else if (next === details || next === bar)
+            next.focusKeyboard()
         else
             next.focusView()
     }
@@ -135,6 +161,9 @@ ApplicationWindow {
         enabled: win.settled
         opacity: win.settled ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: 100 } }
+        // Escape that nothing else took (a search, a selection, a dialog)
+        // calls the Open or Save dialog off.
+        Keys.onEscapePressed: (event) => { if (win.barKeys) chooser.cancel(); else event.accepted = false }
 
         // The bar across the top; the panes' path bars draw over it.
         readonly property int barHeight: 60
@@ -147,6 +176,7 @@ ApplicationWindow {
 
         RowLayout {
             anchors.fill: parent
+            anchors.bottomMargin: barLoader.height
             spacing: 0
 
             Sidebar {
@@ -190,6 +220,14 @@ ApplicationWindow {
                 folderPane: win.activePane
                 onFinished: win.activePane.focusView()
             }
+        }
+
+        Loader {
+            id: barLoader
+            anchors.bottom: parent.bottom
+            width: parent.width
+            active: !!chooser
+            sourceComponent: ChooserBar { pane: win.activePane }
         }
 
         HelpOverlay {
