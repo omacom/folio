@@ -164,10 +164,10 @@ void Theme::watchHyprland() {
         return;
     std::memcpy(address.sun_path, path.constData(), path.size());
     m_hyprlandEvents = ::socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
-    if (m_hyprlandEvents < 0)
-        return;
-    if (::connect(m_hyprlandEvents, reinterpret_cast<const sockaddr *>(&address), sizeof address) != 0) {
+    if (m_hyprlandEvents < 0 || ::connect(m_hyprlandEvents, reinterpret_cast<const sockaddr *>(&address), sizeof address) != 0) {
         closeHyprlandEvents();
+        // No answer: tried again after each pause, as one try alone would leave the corners untold; leaving Folio stops the tries.
+        m_hyprlandAgain.start();
         return;
     }
     m_hyprlandNotifier = new QSocketNotifier(m_hyprlandEvents, QSocketNotifier::Read, this);

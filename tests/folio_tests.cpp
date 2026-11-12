@@ -6794,6 +6794,77 @@ private slots:
         QCOMPARE(countRuns(runs), 3);
     }
 
+    void themeKeepsTryingHyprlandWhileInUseUntilItAnswers()
+    {
+        QTemporaryDir dir, stage;
+        const QString response = stage.filePath("response.json"), runs = stage.filePath("runs");
+        const QString command = standInHyprctl(stage, response, runs);
+        write(response, "{\"int\":2}");
+        const QByteArray runtime = qgetenv("XDG_RUNTIME_DIR");
+        int hyprland = listenAsHyprland(stage.path());
+        QVERIFY(hyprland >= 0);
+        const auto restore = qScopeGuard([&hyprland, runtime] { stopHyprland(hyprland, runtime); });
+
+        Theme theme(dir.path(), nullptr, command);
+        const int events = ::accept4(hyprland, nullptr, nullptr, SOCK_CLOEXEC);
+        QVERIFY(events >= 0);
+        QTRY_COMPARE(theme.radius(), 2);
+        // Hyprland hangs up and its socket is gone for longer than one pause: the first try after it finds nothing there.
+        ::close(std::exchange(hyprland, -1));
+        QVERIFY(QFile::remove(stage.filePath("hypr/test/.socket2.sock")));
+        ::close(events);
+        QTRY_VERIFY(theme.findChildren<QSocketNotifier *>(Qt::FindDirectChildrenOnly).isEmpty());
+        QSignalSpy states(qGuiApp, &QGuiApplication::applicationStateChanged);
+        // Two tries and more go by with nothing there, so no single try is the one that connects.
+        QTest::qWait(Theme::watchAgainAfter * 5 / 2);
+        // The socket is back, with a reload gone by untold; Folio was never left and come back to, and a later try finds it.
+        write(response, "{\"int\":4}");
+        hyprland = listenAsHyprland(stage.path());
+        QVERIFY(hyprland >= 0);
+        pollfd knock{hyprland, POLLIN, 0};
+        QTRY_COMPARE_WITH_TIMEOUT(::poll(&knock, 1, 0), 1, 5 * Theme::watchAgainAfter);
+        const int again = ::accept4(hyprland, nullptr, nullptr, SOCK_CLOEXEC);
+        QVERIFY(again >= 0);
+        const auto hangUp = qScopeGuard([again] { ::close(again); });
+        QTRY_COMPARE(theme.radius(), 4);
+        QCOMPARE(countRuns(runs), 2);
+        // Coming back to Folio connects too, and didn't happen: a try after a pause did this.
+        QCOMPARE(states.size(), 0);
+    }
+
+    void themeWatchesAHyprlandThatWasNotThereAtFirst()
+    {
+        QTemporaryDir dir, stage;
+        const QString response = stage.filePath("response.json"), runs = stage.filePath("runs");
+        const QString command = standInHyprctl(stage, response, runs);
+        write(response, "{\"int\":2}");
+        const QByteArray runtime = qgetenv("XDG_RUNTIME_DIR");
+        int hyprland = listenAsHyprland(stage.path());
+        QVERIFY(hyprland >= 0);
+        const auto restore = qScopeGuard([&hyprland, runtime] { stopHyprland(hyprland, runtime); });
+        // Hyprland is named and its socket isn't there: the theme's first try, as it's made, finds nothing.
+        ::close(std::exchange(hyprland, -1));
+        QVERIFY(QFile::remove(stage.filePath("hypr/test/.socket2.sock")));
+
+        Theme theme(dir.path(), nullptr, command);
+        QSignalSpy states(qGuiApp, &QGuiApplication::applicationStateChanged);
+        QTRY_COMPARE(theme.radius(), 2);
+        QVERIFY(theme.findChildren<QSocketNotifier *>(Qt::FindDirectChildrenOnly).isEmpty());
+        // The socket appears, with a reload gone by untold; Folio's state never changes, and a later try finds it.
+        write(response, "{\"int\":4}");
+        hyprland = listenAsHyprland(stage.path());
+        QVERIFY(hyprland >= 0);
+        pollfd knock{hyprland, POLLIN, 0};
+        QTRY_COMPARE_WITH_TIMEOUT(::poll(&knock, 1, 0), 1, 5 * Theme::watchAgainAfter);
+        const int events = ::accept4(hyprland, nullptr, nullptr, SOCK_CLOEXEC);
+        QVERIFY(events >= 0);
+        const auto hangUp = qScopeGuard([events] { ::close(events); });
+        QTRY_COMPARE(theme.radius(), 4);
+        QCOMPARE(countRuns(runs), 2);
+        // Coming back to Folio connects too, and didn't happen: a try after a pause did this.
+        QCOMPARE(states.size(), 0);
+    }
+
     void themeAsksHyprlandOnlyWhenSomethingChanges()
     {
         QTemporaryDir dir, stage;
