@@ -228,14 +228,16 @@ Item {
                 layer.textureSize: thumb.layer.textureSize
             }
 
-            // Videos get a play mark over their frame.
-            Rectangle {
-                visible: thumb.status === Image.Ready && tile.kind === "video"
+            // Videos get a play mark over their frame, made when there is a frame: every other tile goes without its items.
+            Loader {
                 anchors.centerIn: parent
-                width: 30; height: 30
-                radius: Math.min(4, theme.radius)
-                color: Qt.alpha(theme.darkBackground, 0.75)
-                Glyph { anchors.centerIn: parent; name: "play"; size: 16; color: theme.brightForeground }
+                active: thumb.status === Image.Ready && tile.kind === "video"
+                sourceComponent: Rectangle {
+                    width: 30; height: 30
+                    radius: Math.min(4, theme.radius)
+                    color: Qt.alpha(theme.darkBackground, 0.75)
+                    Glyph { anchors.centerIn: parent; name: "play"; size: 16; color: theme.brightForeground }
+                }
             }
 
             // Stand-ins while a thumbnail loads, or when none can be made.
