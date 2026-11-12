@@ -1919,6 +1919,102 @@ private slots:
         QCOMPARE(text->property("soFar").toString(), QString("12 matches so far, still reading %2 %1 and below"));
     }
 
+    void searchStatusLeavesRoomForTheQuery()
+    {
+        // In a narrow pane the count and the folder's name would take the whole field, and the query typed there could not be seen.
+        QTest::failOnWarning(QRegularExpression("Binding loop|recursive rearrange"));
+        QTemporaryDir home;
+        Theme theme(home.filePath("theme"));
+        QQmlEngine engine;
+        QQmlComponent stubs(&engine);
+        stubs.setData("import QtQml\n"
+                      "QtObject {\n"
+                      "    property string language: \"en\"\n"
+                      "    property string path: \"/a\"\n"
+                      "    property var crumbs: [{ name: \"A folder with quite a long name of its own\", path: \"/a\" }]\n"
+                      "    property QtObject folder: QtObject {\n"
+                      "        property string query: \"q\"; property int matches: 987; property int count: 987\n"
+                      "        property bool reading: true; property string sortMode: \"name\"\n"
+                      "    }\n"
+                      "}\n", QUrl());
+        std::unique_ptr<QObject> stub(stubs.create());
+        QVERIFY2(stub, qPrintable(stubs.errorString()));
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("backend", stub.get());
+        engine.rootContext()->setContextProperty("translator", stub.get());
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window {\n"
+                          "    width: 420; height: 80; visible: true\n"
+                          "    property bool mirrored: false\n"
+                          "    PathBar { id: bar; anchors.fill: parent; LayoutMirroring.enabled: mirrored; LayoutMirroring.childrenInherit: true }\n"
+                          "    // The search field's width and paddings, then its status: the width drawn, the width wanted, whether it is cut short, whether it is drawn.\n"
+                          "    function measured() {\n"
+                          "        let found = []\n"
+                          "        const walk = item => {\n"
+                          "            for (const child of item.children) {\n"
+                          "                if (child instanceof Text && child.text.includes('still reading') && item.visible) {\n"
+                          "                    // Read once the row has laid its items out again, not on the way there.\n"
+                          "                    item.parent.ensurePolished()\n"
+                          "                    found = [item.width, item.leftPadding, item.rightPadding, child.width, child.implicitWidth, child.truncated, child.visible]\n"
+                          "                }\n"
+                          "                walk(child)\n"
+                          "            }\n"
+                          "        }\n"
+                          "        walk(bar)\n"
+                          "        return found\n"
+                          "    }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/PathBarTest.qml"));
+        std::unique_ptr<QObject> window(component.create());
+        QVERIFY2(window, qPrintable(component.errorString()));
+        const auto measured = [&] {
+            QVariant numbers;
+            QMetaObject::invokeMethod(window.get(), "measured", Q_RETURN_ARG(QVariant, numbers));
+            return numbers.toList();
+        };
+        // The room the query keeps, the field's padding at the query's end, and the status's margin and gap at the other.
+        const qreal room = 160, padding = 12, aroundStatus = 24;
+        // field, left, right, status, wanted, cut, drawn: the status wants more than the field has, and the query keeps its room.
+        QTRY_COMPARE(measured().size(), 7);
+        QTRY_VERIFY(measured().at(0).toReal() > room + padding + aroundStatus);
+        const QList<QVariant> narrow = measured();
+        QVERIFY2(narrow.at(4).toReal() > narrow.at(0).toReal() - room - padding - aroundStatus, "The pane is not narrow enough to try the status.");
+        QCOMPARE(narrow.at(0).toReal() - narrow.at(1).toReal() - narrow.at(2).toReal(), room);
+        QCOMPARE(narrow.at(1).toReal(), padding);
+        QVERIFY(narrow.at(3).toReal() > 0);
+        QVERIFY(narrow.at(5).toBool() && narrow.at(6).toBool());
+
+        // Mirrored, the status is at the other end of the field and the query keeps the same room.
+        window->setProperty("mirrored", true);
+        QTRY_COMPARE(measured().at(2).toReal(), padding);
+        const QList<QVariant> mirrored = measured();
+        QCOMPARE(mirrored.at(1).toReal(), mirrored.at(3).toReal() + aroundStatus);
+        QCOMPARE(mirrored.at(0).toReal() - mirrored.at(1).toReal() - mirrored.at(2).toReal(), room);
+        QCOMPARE(mirrored.at(0).toReal(), narrow.at(0).toReal());
+        window->setProperty("mirrored", false);
+        QTRY_COMPARE(measured().at(1).toReal(), padding);
+
+        // In a field with room for both, the status is whole and the field's padding the one it had.
+        window->setProperty("width", 2400);
+        QTRY_VERIFY(!measured().at(5).toBool());
+        const QList<QVariant> wide = measured();
+        QCOMPARE(wide.at(3).toReal(), wide.at(4).toReal());
+        QCOMPARE(wide.at(2).toReal(), wide.at(4).toReal() + aroundStatus);
+
+        // A shorter status changes the field's padding and never its width: the field takes what the row has left, whatever its status asks for.
+        QVERIFY(stub->setProperty("crumbs", QVariantList{QVariantMap{{"name", "A"}, {"path", "/a"}}}));
+        QTRY_VERIFY(measured().at(4).toReal() < wide.at(4).toReal());
+        const QList<QVariant> shorter = measured();
+        QCOMPARE(shorter.at(2).toReal(), shorter.at(4).toReal() + aroundStatus);
+        QCOMPARE(shorter.at(0).toReal(), wide.at(0).toReal());
+
+        // A field narrower than the query's room draws no status at all.
+        window->setProperty("width", 200);
+        QTRY_COMPARE(measured().at(3).toReal(), 0.0);
+        QVERIFY(!measured().at(6).toBool());
+    }
+
     void searchSelectAllUnderAnotherSortTakesEveryMatch()
     {
         // Sorted by size, the rows are the best 1000; a selection of every match stays whole through the switch and back, and Select All there takes them all.

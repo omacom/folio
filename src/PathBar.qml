@@ -94,8 +94,12 @@ Rectangle {
             visible: bar.searching && !bar.editing
             font.pixelSize: 14
             // Room at the end for where it searches; padding isn't mirrored.
-            leftPadding: LayoutMirroring.enabled ? scope.implicitWidth + 24 : 12
-            rightPadding: LayoutMirroring.enabled ? 12 : scope.implicitWidth + 24
+            leftPadding: LayoutMirroring.enabled ? scope.width + 24 : 12
+            rightPadding: LayoutMirroring.enabled ? 12 : scope.width + 24
+            // What the query keeps of a narrow field, some twenty letters: the status is cut short before it takes that.
+            readonly property int queryRoom: 160
+            // The padding at the query's end of the field, and the status's margin and its gap from the query at the other.
+            readonly property int besideStatus: 12 + 24
             // Where it searches and, once answered, how many match: unlike a placeholder it stays while typing.
             Text {
                 id: scope
@@ -108,6 +112,11 @@ Rectangle {
                 anchors.right: parent.right
                 anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
+                // What the field has left beside the query's room; in a field with room for both, the whole status as before.
+                width: Math.max(0, Math.min(implicitWidth, searchField.width - searchField.besideStatus - searchField.queryRoom))
+                elide: Text.ElideRight
+                // With no room at all it isn't drawn: cut to nothing, it could still leave its ellipsis beside the query.
+                visible: width > 0
                 text: backend.path.startsWith("plugin:") ? qsTr("Search %1").arg(here)
                     : backend.folder.query.length > 0 && backend.folder.matches >= 0
                     // Sorted another way than best first, the rows are the best of the matches, and it says so.
