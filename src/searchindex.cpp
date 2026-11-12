@@ -540,7 +540,8 @@ qsizetype SearchIndex::answer(const QString &query) {
         if ((found == SearchMatcher::NoMatch || (found < SearchMatcher::Named + SearchMatcher::Span && found != SearchMatcher::Pending))
             && r.parent != None) {
             const quint64 held = m_folders[r.parent].bits | m_names[r.name].bits;
-            if (needle.size() <= pathLength(row) && possible(first, held) && possible(folderBits, m_folders[r.parent].bits)
+            // A path's length rules it out only in ASCII: folding can make another letter longer than it is stored.
+            if ((held & SearchMatcher::NotAscii || needle.size() <= pathLength(row)) && possible(first, held) && possible(folderBits, m_folders[r.parent].bits)
                 && possible(m_matcher.bits(), held)) {
                 const qsizetype got = reach(r.parent);
                 if (got >= m_matcher.folderPart() && possible(m_matcher.bitsFrom(got), m_names[r.name].bits)

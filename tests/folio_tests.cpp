@@ -2170,6 +2170,39 @@ private slots:
         QCOMPARE(best("render"), QString("render_notes.txt"));
     }
 
+    void searchFindsAPathThatFoldsToALongerOne()
+    {
+        // U+023A is two bytes of UTF-8 and folds to U+2C65, which is three: the folded query is longer than the path as it is stored.
+        const QString letter = QChar(0x023A);
+        QTemporaryDir plain;
+        QVERIFY(QDir(plain.path()).mkpath("plain"));
+        write(plain.filePath("plain/x"), "x");
+        const auto found = [](SearchIndex &index, const QString &query) {
+            QStringList paths;
+            const auto count = index.answer(query);
+            for (const quint32 row : index.rows(0, count))
+                paths << QString::fromUtf8(index.path(row));
+            return paths;
+        };
+        // The letter is found as a folder's name and as a file's: either makes the path longer folded.
+        for (const QString &path : {letter + "/x", "x/" + letter}) {
+            QTemporaryDir odd;
+            QVERIFY(QDir(odd.path()).mkpath(path.section('/', 0, 0)));
+            write(odd.filePath(path), "x");
+            SearchIndex index;
+            QVERIFY(index.walk(odd.path(), false));
+            QCOMPARE(found(index, path), QStringList{path});
+        }
+
+        // A path in ASCII too short for a query whose letters it all holds is still ruled out by its length, no folder read.
+        SearchIndex ascii;
+        QVERIFY(ascii.walk(plain.path(), false));
+        QCOMPARE(found(ascii, "plain/x"), QStringList{"plain/x"});
+        const qsizetype before = ascii.counts.folders;
+        QCOMPARE(found(ascii, "plain/xx"), QStringList());
+        QCOMPARE(ascii.counts.folders, before);
+    }
+
     void searchForgivesATypoWhenNoNameSpellsTheQuery()
     {
         // No name spelling the query out, a name a letter off (a swapped
