@@ -87,6 +87,7 @@ Item {
     // "28.0 KB · 11/9/26" before; just the item count for a folder, the
     // subtitle for a plugin's item.
     Text {
+        objectName: "metadataLabel"
         anchors.top: label.bottom
         anchors.topMargin: 3
         anchors.horizontalCenter: parent.horizontalCenter
@@ -98,7 +99,7 @@ Item {
             const size = tile.isDir ? Format.count(tile.itemCount) : Format.size(tile.size)
             // A folder's own date says little (it changes when anything in
             // it is added or removed), so only files show one.
-            const date = tile.isDir ? "" : Format.when(tile.modified)
+            const date = tile.isDir ? "" : Format.when(tile.modified, translator.dateLocale)
             return size && date ? qsTr("%1 · %2").arg(size).arg(date) : size || date
         }
         color: theme.secondaryForeground

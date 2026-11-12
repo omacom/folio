@@ -37,3 +37,9 @@ add_test(NAME folio_tests COMMAND folio_tests)
 set_tests_properties(folio_tests PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)
 # The bundled plugins, which the tests run against stubs.
 target_compile_definitions(folio_tests PRIVATE FOLIO_PLUGINS="${CMAKE_SOURCE_DIR}/plugins")
+
+add_executable(locale_tests tests/locale_tests.cpp src/translator.cpp src/translator.h)
+target_include_directories(locale_tests PRIVATE src)
+target_link_libraries(locale_tests PRIVATE Qt6::Quick Qt6::Test)
+add_test(NAME locale_tests COMMAND locale_tests)
+set_tests_properties(locale_tests PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)
