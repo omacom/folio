@@ -259,16 +259,21 @@ void Places::movePin(const QString &path, int to) {
     if (from < 0 || from == to)
         return;
     order.move(from, to);
-    // Each pin's line, and the lineSlots they take in the file: the pins are
-    // put back into the same lineSlots in their new order, so remote bookmarks
-    // and Omarchy's seeded ones stay where they were.
+    // Each pin's line, and the places they take in the file: the pins are
+    // put back into the same places in their new order, so remote bookmarks
+    // and Omarchy's seeded ones stay where they were. A pin's later copies
+    // go, or the next read would take the order from them.
     QStringList lines = readBookmarkLines();
-    QList<int> lineSlots;
+    QList<int> lineSlots, copies;
     QHash<QString, QString> lineOf;
     for (int i = 0; i < lines.size(); ++i) {
         const QUrl url(lines[i].trimmed().section(' ', 0, 0));
         const QString p = url.isLocalFile() ? QDir::cleanPath(url.toLocalFile()) : QString();
-        if (order.contains(p) && !lineOf.contains(p)) {
+        if (!order.contains(p))
+            continue;
+        if (lineOf.contains(p)) {
+            copies << i;
+        } else {
             lineOf.insert(p, lines[i]);
             lineSlots << i;
         }
@@ -277,6 +282,8 @@ void Places::movePin(const QString &path, int to) {
         return;
     for (int i = 0; i < lineSlots.size(); ++i)
         lines[lineSlots[i]] = lineOf.value(order[i]);
+    for (auto it = copies.crbegin(); it != copies.crend(); ++it)
+        lines.removeAt(*it);
     if (writeBookmarkLines(lines)) {
         refreshPinned();
         emit changed();

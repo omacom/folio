@@ -3330,6 +3330,18 @@ private slots:
         QFile file(bookmarks);
         QVERIFY(file.open(QIODevice::ReadOnly));
         QCOMPARE(file.readAll(), line("c") + "\nsftp://studio/srv Studio\n" + line("a") + "\n" + line("b") + " Bee\n");
+        file.close();
+
+        // A folder bookmarked twice is pinned once; moving it drops the
+        // later copy, which would otherwise put it back where it was.
+        write(bookmarks, line("a") + "\n" + line("a") + "\n" + line("b") + "\n" + line("c") + "\n");
+        places.refresh();
+        places.movePin(home.filePath("a"), 2);
+        order.clear();
+        for (const auto &p : places.pinned()) order << QFileInfo(p.toMap().value("path").toString()).fileName();
+        QCOMPARE(order, QStringList({"b", "c", "a"}));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QCOMPARE(file.readAll(), line("b") + "\n" + line("c") + "\n" + line("a") + "\n");
     }
 
     void placesPinFoldersAsGtkBookmarks()

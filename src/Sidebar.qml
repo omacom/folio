@@ -98,21 +98,30 @@ Rectangle {
     // Rows taken away under the keyboard leave it on the last one.
     onRowsChanged: cursor = Math.max(0, Math.min(cursor, rows.length - 1))
 
-    // Alt+⏎ (or the Menu key) on a drive opens its menu beside it; the
-    // files' menu stands aside for it.
+    // Alt+⏎ (or the Menu key) on a drive, place or pin opens its menu
+    // beside it; the files' menu stands aside for it.
     readonly property var keyedDrive: activeFocus && cursor >= devicesAt && cursor < pluginsAt
                                       ? driveRows.itemAt(cursor - devicesAt) : null
+    readonly property var keyedPlace: !activeFocus ? null
+                                    : cursor < viewsAt ? placeRows.itemAt(cursor)
+                                    : cursor >= pinnedAt && cursor < devicesAt ? pinRows.itemAt(cursor - pinnedAt)
+                                    : null
     function menuKey(event) {
         return ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.AltModifier))
             || event.key === Qt.Key_Menu || (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))
     }
-    Keys.onShortcutOverride: (event) => event.accepted = menuKey(event) && keyedDrive !== null
+    Keys.onShortcutOverride: (event) => event.accepted = menuKey(event) && (keyedDrive !== null || keyedPlace !== null)
     // Return has its own handler, which Keys calls before this one.
     Keys.onPressed: (event) => event.accepted = openDriveMenu(event)
     function openDriveMenu(event) {
-        if (!menuKey(event) || !keyedDrive)
+        if (!menuKey(event))
             return false
-        driveMenu.show(keyedDrive.modelData, keyedDrive)
+        if (keyedDrive)
+            driveMenu.show(keyedDrive.modelData, keyedDrive)
+        else if (keyedPlace)
+            placeMenu.show(keyedPlace.modelData, keyedPlace)
+        else
+            return false
         return true
     }
 
@@ -121,10 +130,14 @@ Rectangle {
         id: placeMenu
         property string path
         property bool pinned: false
-        function show(row) {
+        // Opens at the pointer, or (from the keyboard) beside the row.
+        function show(row, near) {
             path = row.path
             pinned = places.isPinned(row.path)
-            popup()
+            if (near)
+                popup(near, Math.min(near.width / 2, 120), near.height / 2)
+            else
+                popup()
         }
         FolioMenuItem {
             text: qsTr("Open")
@@ -312,6 +325,7 @@ Rectangle {
 
             // Places: Home and its standard folders, then Recents and Trash.
             Repeater {
+                id: placeRows
                 model: places.places
                 PlaceRow {
                     required property var modelData
@@ -326,7 +340,7 @@ Rectangle {
                     onClicked: sidebar.target.navigate(modelData.path)
                     TapHandler {
                         acceptedButtons: Qt.RightButton
-                        onTapped: placeMenu.show(parent.modelData)
+                        onTapped: placeMenu.show(parent.modelData, null)
                     }
                 }
             }
@@ -351,6 +365,7 @@ Rectangle {
             // empty) as the place to drop it.
             SectionLabel { text: qsTr("Pinned"); visible: places.pinned.length > 0 || sidebar.dragging }
             Repeater {
+                id: pinRows
                 model: places.pinned
                 PlaceRow {
                     id: pinRow
@@ -366,7 +381,7 @@ Rectangle {
                     onClicked: sidebar.target.navigate(modelData.path)
                     TapHandler {
                         acceptedButtons: Qt.RightButton
-                        onTapped: placeMenu.show(pinRow.modelData)
+                        onTapped: placeMenu.show(pinRow.modelData, null)
                     }
                     // Dragged up or down, the pin moves among the pins.
                     readonly property int pinIndex: index
