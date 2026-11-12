@@ -393,6 +393,7 @@
   "This computer can't make %1 drives.": "This computer can't make %1 drives.",
   "This folder is empty": "This folder is empty",
   "This folder no longer exists.": "This folder no longer exists.",
+  "Thumbnails of this type need the %1 package.": "Thumbnails of this type need the %1 package.",
   "Trash": "Trash",
   "Try again once the work under way is done.": "Try again once the work under way is done.",
   "Type a path, or a server's address like sftp://host/ (Tab completes)": "Type a path, or a server's address like sftp://host/ (Tab completes)",

@@ -129,6 +129,16 @@ Rectangle {
                 font.pixelSize: 12
                 elide: Text.ElideRight
             }
+            // A type nothing installed can draw: which package would.
+            Text {
+                readonly property string missing: big.status === Image.Error ? thumbnails.missingPackage(pane.item.mime) : ""
+                visible: missing.length > 0
+                Layout.fillWidth: true
+                text: qsTr("Thumbnails of this type need the %1 package.").arg(missing)
+                color: theme.secondaryForeground
+                font.pixelSize: 12
+                wrapMode: Text.Wrap
+            }
         }
 
         GridLayout {

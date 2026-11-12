@@ -3,6 +3,7 @@
 #include <QHash>
 #include <QDateTime>
 #include <QImage>
+#include <QObject>
 #include <QQuickAsyncImageProvider>
 #include <QStringList>
 #include <QThreadPool>
@@ -15,7 +16,9 @@
 // /usr/share/thumbnailers (videos via ffmpegthumbnailer, and so on), with
 // Poppler's pdftoppm drawing PDFs when no thumbnailer does. Nothing is generated until a
 // tile asks for it: there is no background crawl.
-class Thumbnails {
+class Thumbnails : public QObject {
+    Q_OBJECT
+
 public:
     explicit Thumbnails(const QString &cacheDirectory = {}, const QStringList &thumbnailerDirectories = {});
 
@@ -24,11 +27,15 @@ public:
     QImage load(const QString &path, const QString &mime, int size) const;
 
     static QString cacheKey(const QString &path);
+    // The spec's fail/<program>-<version>: the number is raised when Folio learns to draw more, so old failures are tried again.
+    static inline const QString failures = QStringLiteral("fail/folio-2");
     static QString bucketFor(int size);
     // A text file's first lines set on a page in the given colors. Made
     // fresh each time rather than cached, since the colors follow the theme.
     static QImage textPage(const QString &path, int pixels, const QColor &paper, const QColor &ink);
     QString thumbnailerFor(const QString &mime) const { return m_thumbnailers.value(mime); }
+    // The package that would draw `mime` when neither Qt nor an installed thumbnailer does, or nothing.
+    Q_INVOKABLE QString missingPackage(const QString &mime) const;
 
 private:
     QString cachePath(const QString &path, int size) const;
@@ -38,10 +45,11 @@ private:
     QImage runThumbnailer(const QString &command, const QString &path, int pixels) const;
     static QImage pdfPage(const QString &path, int pixels);
     void remember(QImage image, const QString &path, int size, const QDateTime &modified) const;
-    void rememberFailure(const QString &path, const QDateTime &modified) const;
-    bool failedBefore(const QString &path, const QDateTime &modified) const;
+    // A failure goes with the type's thumbnailer as it was then, none included: one installed since gets its turn.
+    void rememberFailure(const QString &path, const QDateTime &modified, const QString &thumbnailer) const;
+    bool failedBefore(const QString &path, const QDateTime &modified, const QString &thumbnailer) const;
     void save(QImage image, const QString &target, const QString &path, const QDateTime &modified) const;
-    static bool madeFor(const QImage &image, const QDateTime &modified);
+    static bool madeFor(const QImage &image, const QString &path, const QDateTime &modified);
 
     QString m_cache;
     QHash<QString, QString> m_thumbnailers;

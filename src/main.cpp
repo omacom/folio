@@ -148,6 +148,7 @@ int main(int argc, char *argv[]) {
     engine.rootContext()->setContextProperty("theme", &theme);
     engine.rootContext()->setContextProperty("places", &places);
     engine.rootContext()->setContextProperty("plugins", &plugins);
+    engine.rootContext()->setContextProperty("thumbnails", &thumbnails);
 
     Windows windows(&engine, &plugins);
     if (!windows.open(start, select))

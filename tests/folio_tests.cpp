@@ -15,6 +15,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMimeDatabase>
 #include <QProcess>
 #include <QQmlComponent>
 #include <QQmlContext>
@@ -5420,6 +5421,48 @@ private slots:
         QCOMPARE(Thumbnails::bucketFor(512), QString("x-large"));
     }
 
+    void thumbnailsRejectACacheEntryForAnotherFile()
+    {
+        QTemporaryDir dir;
+        QImage picture(800, 400, QImage::Format_RGB32);
+        picture.fill(Qt::red);
+        const QString file = dir.filePath("wide.png");
+        QVERIFY(picture.save(file));
+
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.filePath("none")});
+        thumbnails.load(file, "image/png", 256);
+        const QString cached = dir.filePath("cache/large/" + Thumbnails::cacheKey(file));
+
+        // A fresh entry tagged for another file, or for none, is made again.
+        for (const QString &uri : {QString("file:///elsewhere/wide.png"), QString()}) {
+            QImage foreign(cached);
+            foreign.fill(Qt::blue);
+            foreign.setText("Thumb::URI", uri);
+            QVERIFY(foreign.save(cached));
+            QCOMPARE(thumbnails.load(file, "image/png", 256).pixelColor(0, 0), QColor(Qt::red));
+            QCOMPARE(QImage(cached).text("Thumb::URI"), QUrl::fromLocalFile(file).toString(QUrl::FullyEncoded));
+        }
+    }
+
+    void thumbnailsRejectAFailureMarkerForAnotherFile()
+    {
+        QTemporaryDir dir;
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.filePath("none")});
+
+        // A marker with the file's time but another file's URI, or none, doesn't stop its thumbnail.
+        for (const QString &uri : {QString("file:///elsewhere/photo.png"), QString()}) {
+            const QString file = dir.filePath(uri.isEmpty() ? "unnamed.png" : "named.png");
+            QVERIFY(QImage(64, 32, QImage::Format_RGB32).save(file));
+            const QString marker = dir.filePath("cache/" + Thumbnails::failures + "/" + Thumbnails::cacheKey(file));
+            QVERIFY(QDir().mkpath(QFileInfo(marker).absolutePath()));
+            QImage foreign(1, 1, QImage::Format_ARGB32);
+            foreign.setText("Thumb::URI", uri);
+            foreign.setText("Thumb::MTime", QString::number(QFileInfo(file).lastModified().toSecsSinceEpoch()));
+            QVERIFY(foreign.save(marker));
+            QVERIFY(!thumbnails.load(file, "image/png", 128).isNull());
+        }
+    }
+
     void thumbnailsFollowAPictureSavedOver()
     {
         // Qt keeps the images it has shown by their URL, and a re-read makes
@@ -5472,7 +5515,91 @@ private slots:
         // A thumbnailer that fails leaves a failure marker, so it isn't retried.
         write(dir.filePath("clip.mp4"), "not a video");
         QVERIFY(thumbnails.load(dir.filePath("clip.mp4"), "video/mp4", 128).isNull());
-        QVERIFY(QFile::exists(dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(dir.filePath("clip.mp4")))));
+        QVERIFY(QFile::exists(dir.filePath("cache/" + Thumbnails::failures + "/" + Thumbnails::cacheKey(dir.filePath("clip.mp4")))));
+    }
+
+    void thumbnailsTryAgainWhatAnOlderVersionCouldnt()
+    {
+        QTemporaryDir dir;
+        // The thumbnailer is a script that notes each run beside itself and fails.
+        const QString script = dir.filePath("fail.sh"), runs = script + ".runs";
+        write(script, "echo run >> \"$0.runs\"\nexit 1\n");
+        write(dir.filePath("demo.thumbnailer"),
+              "[Thumbnailer Entry]\nExec=/bin/sh \"" + script.toUtf8() + "\" %i %o %s\nMimeType=video/mp4;\n");
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
+        const QString clip = dir.filePath("clip.mp4"), older = dir.filePath("older.mp4");
+        write(clip, "not a video");
+        write(older, "not a video");
+
+        // A marker of this Folio's holds the file back, so the thumbnailer runs once; each run notes four bytes.
+        QVERIFY(thumbnails.load(clip, "video/mp4", 128).isNull());
+        QVERIFY(thumbnails.load(clip, "video/mp4", 128).isNull());
+        QVERIFY(QFile::exists(dir.filePath("cache/" + Thumbnails::failures + "/" + Thumbnails::cacheKey(clip))));
+        QCOMPARE(QFileInfo(runs).size(), 4);
+
+        // A marker from 0.2.0, which kept them in fail/folio, holds nothing back: the file is tried once more.
+        const QString marker = dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(older));
+        QVERIFY(QDir().mkpath(QFileInfo(marker).absolutePath()));
+        QImage stale(1, 1, QImage::Format_ARGB32);
+        stale.setText("Thumb::URI", QUrl::fromLocalFile(older).toString(QUrl::FullyEncoded));
+        stale.setText("Thumb::MTime", QString::number(QFileInfo(older).lastModified().toSecsSinceEpoch()));
+        // It names the thumbnailer this Folio's marker names, so only its folder sets it apart.
+        const QImage current(dir.filePath("cache/" + Thumbnails::failures + "/" + Thumbnails::cacheKey(clip)));
+        QVERIFY(!current.text("X-Folio::Thumbnailer").isEmpty());
+        stale.setText("X-Folio::Thumbnailer", current.text("X-Folio::Thumbnailer"));
+        QVERIFY(stale.save(marker));
+        QVERIFY(thumbnails.load(older, "video/mp4", 128).isNull());
+        QCOMPARE(QFileInfo(runs).size(), 8);
+    }
+
+    void thumbnailsClearAwayAnOlderFoliosFailures()
+    {
+        QTemporaryDir dir;
+        // A newer Folio's markers are its own to keep, as are another program's.
+        const QString newer = "fail/folio-" + QString::number(Thumbnails::failures.section('-', -1).toInt() + 1);
+        const QStringList kept = {Thumbnails::failures, newer, "fail/gnome-thumbnail-factory"}, gone = {"fail/folio", "fail/folio-1"};
+        for (const QString &folder : kept + gone) {
+            QVERIFY(QDir().mkpath(dir.filePath("cache/" + folder)));
+            write(dir.filePath("cache/" + folder + "/marker.png"), "marker");
+        }
+        // An old marker folder that links out of the cache is never followed.
+        QVERIFY(QDir().mkpath(dir.filePath("photos")));
+        write(dir.filePath("photos/beach.jpg"), "picture");
+        QVERIFY(QFile::link(dir.filePath("photos"), dir.filePath("cache/fail/folio-0")));
+        const Thumbnails thumbnails(dir.filePath("cache"), {dir.filePath("none")});
+        QThreadPool::globalInstance()->waitForDone();
+        for (const QString &folder : kept)
+            QVERIFY(QFile::exists(dir.filePath("cache/" + folder + "/marker.png")));
+        for (const QString &folder : gone)
+            QVERIFY(!QFileInfo::exists(dir.filePath("cache/" + folder)));
+        QVERIFY(QFile::exists(dir.filePath("photos/beach.jpg")));
+
+        // Nor is a fail folder that is itself a link: what it leads to isn't
+        // the cache's.
+        QTemporaryDir linked;
+        QVERIFY(QDir().mkpath(linked.filePath("elsewhere/folio-1")));
+        write(linked.filePath("elsewhere/folio-1/keep.txt"), "mine");
+        QVERIFY(QDir().mkpath(linked.filePath("cache")));
+        QVERIFY(QFile::link(linked.filePath("elsewhere"), linked.filePath("cache/fail")));
+        const Thumbnails throughLink(linked.filePath("cache"), {linked.filePath("none")});
+        QThreadPool::globalInstance()->waitForDone();
+        QVERIFY(QFile::exists(linked.filePath("elsewhere/folio-1/keep.txt")));
+    }
+
+    void thumbnailsLetAThumbnailerInstalledLaterDraw()
+    {
+        QTemporaryDir dir;
+        // A camera RAW with no picture inside and nothing installed to draw it fails, and that is remembered.
+        const QString raw = dir.filePath("bare.cr2");
+        write(raw, "no picture inside");
+        QVERIFY(Thumbnails(dir.filePath("cache"), {dir.filePath("none")}).load(raw, "image/x-canon-cr2", 128).isNull());
+        QVERIFY(QFile::exists(dir.filePath("cache/" + Thumbnails::failures + "/" + Thumbnails::cacheKey(raw))));
+
+        // The failure was the built-in reader's, so a thumbnailer installed since still draws the file.
+        QVERIFY(QImage(10, 20, QImage::Format_RGB32).save(dir.filePath("mark.png")));
+        write(dir.filePath("raw.thumbnailer"), "[Thumbnailer Entry]\nTryExec=/bin/cp\nExec=/bin/cp \""
+              + dir.filePath("mark.png").toUtf8() + "\" %o\nMimeType=image/x-canon-cr2;\n");
+        QCOMPARE(Thumbnails(dir.filePath("cache"), {dir.path()}).load(raw, "image/x-canon-cr2", 128).size(), QSize(10, 20));
     }
 
     void thumbnailsRememberOnlyWhatFailed()
@@ -5489,7 +5616,7 @@ private slots:
         // later still gets its turn.
         write(dir.filePath("bundle.zip"), "not a zip");
         QVERIFY(thumbnails.load(dir.filePath("bundle.zip"), "application/zip", 128).isNull());
-        QVERIFY(!QFile::exists(dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(dir.filePath("bundle.zip")))));
+        QVERIFY(!QFile::exists(dir.filePath("cache/" + Thumbnails::failures + "/" + Thumbnails::cacheKey(dir.filePath("bundle.zip")))));
 
         // A folder's peek asks for any picture, and gets the thumbnailer for
         // the one it names.
@@ -5539,6 +5666,214 @@ private slots:
         QVERIFY(page.width() > 150 && page.width() < 200);
         QVERIFY(qGray(page.pixel(5, 5)) < 64);
         QVERIFY(qGray(page.pixel(page.width() - 3, page.height() - 3)) > 200);
+    }
+
+    void thumbnailsMatchATypeNamedByItsAlias()
+    {
+        QTemporaryDir dir;
+        QImage page(64, 96, QImage::Format_RGB32);
+        page.fill(Qt::green);
+        QVERIFY(page.save(dir.filePath("page.png")));
+        QVERIFY(QDir(dir.path()).mkdir("system") && QDir(dir.path()).mkdir("user"));
+        // Like evince, the user's spec names comic books and icons only by an alias.
+        write(dir.filePath("user/comics.thumbnailer"),
+              "[Thumbnailer Entry]\nExec=/bin/cp \"" + dir.filePath("page.png").toUtf8() + "\" %o\n"
+              "MimeType=application/x-cbz;image/x-icon;application/x-nothing-here;video/x-matroska;audio/vnd.wave;\n");
+        write(dir.filePath("user/media.thumbnailer"), "[Thumbnailer Entry]\nExec=/bin/true %i\nMimeType=video/matroska;audio/x-wav;\n");
+        write(dir.filePath("system/icons.thumbnailer"), "[Thumbnailer Entry]\nExec=/bin/false %i\nMimeType=image/vnd.microsoft.icon;\n");
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.filePath("system"), dir.filePath("user")});
+
+        write(dir.filePath("issue.cbz"), "not really a zip");
+        const QImage thumb = thumbnails.load(dir.filePath("issue.cbz"), "application/vnd.comicbook+zip", 128);
+        QCOMPARE(thumb.pixelColor(0, 0), QColor(Qt::green));
+        // The later directory still wins when its spec names the type by an alias.
+        QVERIFY(thumbnails.thumbnailerFor("image/vnd.microsoft.icon").startsWith("/bin/cp"));
+        // Within one directory the spec that names the type itself wins, whichever file is read first.
+        QCOMPARE(QMimeDatabase().mimeTypeForName("video/x-matroska").name(), QString("video/matroska"));
+        QCOMPARE(QMimeDatabase().mimeTypeForName("audio/x-wav").name(), QString("audio/vnd.wave"));
+        QVERIFY(thumbnails.thumbnailerFor("video/matroska").startsWith("/bin/true"));
+        QVERIFY(thumbnails.thumbnailerFor("audio/vnd.wave").startsWith("/bin/cp"));
+        // A type the MIME database doesn't know is matched by the name the spec gives, and by no other.
+        QVERIFY(thumbnails.thumbnailerFor("application/x-nothing-here").startsWith("/bin/cp"));
+        QVERIFY(thumbnails.thumbnailerFor("").isEmpty());
+    }
+
+    void thumbnailsShowACameraRawsEmbeddedJpeg()
+    {
+        // IFD0's quarter turn applies to the stored 400 by 300 picture unless the JPEG names its own, which then rules.
+        QCOMPARE(rawThumbnail(rawWithJpeg(jpeg(400, 300), kQuarterTurn)), QSize(300, 400));
+        QCOMPARE(rawThumbnail(rawWithJpeg(jpeg(400, 300, kUpright), kQuarterTurn)), QSize(400, 300));
+        QCOMPARE(rawThumbnail(rawWithJpeg(jpeg(400, 300, kQuarterTurn), kUpright)), QSize(300, 400));
+
+        // A later directory that names a turn of its own rules its picture; one that names none takes IFD0's.
+        const QByteArray picture = jpeg(400, 300);
+        const auto turned = [&](quint32 first, const Entries &own) {
+            Raw raw(true);
+            const quint32 at = raw.add(picture);
+            raw.setFirst(raw.ifd({{kOrientation, kShort, 1, first}}, raw.ifd(pair(at, picture.size()) + own)));
+            return rawThumbnail(raw.bytes);
+        };
+        QCOMPARE(turned(kUpright, {{kOrientation, kShort, 1, kQuarterTurn}}), QSize(300, 400));
+        QCOMPARE(turned(kQuarterTurn, {{kOrientation, kShort, 1, kUpright}}), QSize(400, 300));
+        QCOMPARE(turned(kQuarterTurn, {}), QSize(300, 400));
+
+        // Of two directories that name a turn the first speaks for the file, so a third that names none takes that one.
+        Raw three(true);
+        const QByteArray small = jpeg(160, 120);
+        const quint32 bigAt = three.add(picture), smallAt = three.add(small);
+        three.setFirst(three.ifd({{kOrientation, kShort, 1, kQuarterTurn}},
+                                 three.ifd(pair(smallAt, small.size()) + Entries{{kOrientation, kShort, 1, kUpright}},
+                                           three.ifd(pair(bigAt, picture.size())))));
+        QCOMPARE(rawThumbnail(three.bytes), QSize(300, 400));
+    }
+
+    void thumbnailsReadAnEmbeddedJpegsOwnTurnFromItsFirstDirectory()
+    {
+        // 0xFF fill bytes may stand ahead of any JPEG marker, so the upright the Exif segment after them names still rules.
+        const QByteArray padded = jpeg(400, 300, kUpright).insert(2, QByteArray("\xFF\xFF", 2));
+        QCOMPARE(rawThumbnail(rawWithJpeg(padded, kQuarterTurn)), QSize(400, 300));
+        // IFD1 is the Exif thumbnail's directory: the upright it names says nothing of the picture, so the RAW's turn applies.
+        Raw tiff(true);
+        tiff.setFirst(tiff.ifd({}, tiff.ifd({{kOrientation, kShort, 1, kUpright}})));
+        const QByteArray unnamed = jpeg(400, 300).insert(2, exifSegment(tiff));
+        QCOMPARE(rawThumbnail(rawWithJpeg(unnamed, kQuarterTurn)), QSize(300, 400));
+    }
+
+    void thumbnailsPickTheLargestEmbeddedJpeg()
+    {
+        // Big-endian like a NEF: IFD0 names a small JPEG, its SubIFDs lossless raw data (SOF3) and the preview.
+        const QByteArray small = jpeg(160, 120), big = jpeg(640, 480);
+        const QByteArray sof3("\xFF\xD8\xFF\xC3\x00\x0B\x08\x0B\xB8\x0F\xA0\x01\x01\x22\x00\xFF\xD9\0\0\0\0\0\0\0\0", 25);
+        Raw nef(false);
+        const quint32 smallAt = nef.add(small), bigAt = nef.add(big), sof3At = nef.add(sof3);
+        const quint32 raw = nef.ifd(strip(sof3At, sof3.size())), preview = nef.ifd(pair(bigAt, big.size()));
+        const quint32 subs = nef.add(nef.word(raw, 4) + nef.word(preview, 4));
+        nef.setFirst(nef.ifd(pair(smallAt, small.size()) + Entries{{kSubIfds, kLong, 2, subs}}));
+        QCOMPARE(rawThumbnail(nef.bytes), QSize(640, 480));
+        // Like a CR2: the preview is IFD0's JPEG-compressed strip and IFD1 holds a thumbnail.
+        Raw cr2(true);
+        const quint32 stripAt = cr2.add(big), thumbAt = cr2.add(small);
+        cr2.setFirst(cr2.ifd(strip(stripAt, big.size()), cr2.ifd(pair(thumbAt, small.size()))));
+        QCOMPARE(rawThumbnail(cr2.bytes), QSize(640, 480));
+    }
+
+    void thumbnailsFallBackToASmallerEmbeddedJpeg()
+    {
+        // The larger preview's frame header reads but its picture data is gone, so the thumbnail IFD0 names is shown.
+        const QByteArray small = jpeg(160, 120), big = jpeg(640, 480);
+        const qsizetype scan = big.indexOf(QByteArray("\xFF\xDA", 2));
+        QVERIFY(scan > 0);
+        const QByteArray damaged = big.left(scan) + QByteArray(big.size() - scan, '\0');
+        Raw raw(true);
+        const quint32 smallAt = raw.add(small), damagedAt = raw.add(damaged);
+        raw.setFirst(raw.ifd(pair(smallAt, small.size()), raw.ifd(pair(damagedAt, damaged.size()))));
+        QCOMPARE(rawThumbnail(raw.bytes), QSize(160, 120));
+        // A preview one byte over what the reader holds in memory is never picked ahead of one it can show.
+        Raw huge(true);
+        const quint32 thumbAt = huge.add(small), hugeAt = huge.add(big);
+        huge.setFirst(huge.ifd(pair(thumbAt, small.size()), huge.ifd(pair(hugeAt, kMostJpegBytes + 1))));
+        QCOMPARE(rawThumbnail(huge.bytes, hugeAt + kMostJpegBytes + 1), QSize(160, 120));
+        // All the previews tried share that limit: a damaged one that leaves a byte too few for the next sends it past that one.
+        const QByteArray wide = jpeg(800, 600), gone = wide.left(wide.indexOf(QByteArray("\xFF\xDA", 2)));
+        const auto after = [&](qint64 damagedLength) {
+            Raw spent(true);
+            const quint32 firstAt = spent.add(small), nextAt = spent.add(big), goneAt = spent.add(gone);
+            spent.setFirst(spent.ifd(pair(firstAt, small.size()),
+                                     spent.ifd(pair(nextAt, big.size()), spent.ifd(pair(goneAt, damagedLength)))));
+            return rawThumbnail(spent.bytes, goneAt + damagedLength);
+        };
+        QCOMPARE(after(kMostJpegBytes - big.size()), QSize(640, 480));
+        QCOMPARE(after(kMostJpegBytes - big.size() + 1), QSize(160, 120));
+    }
+
+    void thumbnailsRefuseABrokenCameraRaw()
+    {
+        QCOMPARE(rawThumbnail(rawWithJpeg(jpeg(400, 300), kUpright)), QSize(400, 300));
+        // A preview that runs past the end of the file is passed over for the whole thumbnail IFD0 names.
+        const QByteArray small = jpeg(160, 120), big = jpeg(640, 480);
+        Raw cut(true);
+        const quint32 smallAt = cut.add(small), bigAt = quint32(cut.bytes.size()) + 2 * kTwoEntryIfd;
+        cut.setFirst(cut.ifd(pair(smallAt, small.size()), cut.ifd(pair(bigAt, big.size()))));
+        cut.add(big);
+        QCOMPARE(rawThumbnail(cut.bytes), QSize(640, 480));
+        QCOMPARE(rawThumbnail(cut.bytes.left(cut.bytes.size() - 16)), QSize(160, 120));
+        // A SubIFD that names itself as its next directory is walked once, so the preview in IFD1 is still reached.
+        Raw loop(true);
+        const quint32 previewAt = loop.add(big), self = quint32(loop.bytes.size());
+        loop.ifd({}, self);
+        loop.setFirst(loop.ifd({{kSubIfds, kLong, 1, self}}, loop.ifd(pair(previewAt, big.size()))));
+        QCOMPARE(rawThumbnail(loop.bytes), QSize(640, 480));
+        // The picture the 64th directory of a chain names is reached; with one more directory ahead of it, it is not.
+        Raw chain(true);
+        const quint32 lastAt = chain.add(small);
+        quint32 next = chain.ifd(pair(lastAt, small.size()));
+        for (int i = 1; i < kDirectoryLimit; ++i)
+            next = chain.ifd({}, next);
+        chain.setFirst(next);
+        QCOMPARE(rawThumbnail(chain.bytes), QSize(160, 120));
+        chain.setFirst(chain.ifd({}, next));
+        QVERIFY(rawThumbnail(chain.bytes).isEmpty());
+        // An IFD0 whose first two entries name the JPEG and whose other entries, all held by the file, name nothing.
+        const auto wide = [&small](int entries) {
+            Raw raw(true);
+            const quint32 at = raw.add(small);
+            raw.setFirst(raw.ifd(pair(at, small.size()) + Entries(entries - 2, std::array<quint32, 4>{})));
+            return rawThumbnail(raw.bytes);
+        };
+        QCOMPARE(wide(kEntryLimit), QSize(160, 120));
+        QVERIFY(wide(kEntryLimit + 1).isEmpty());
+        QVERIFY(wide(kMostEntries).isEmpty());
+        // A frame header that claims more pixels than any camera's preview, 20000 by 20000, is passed over undecoded.
+        QByteArray vast = big;
+        const qsizetype frame = vast.indexOf(QByteArray("\xFF\xC0", 2));
+        QVERIFY(frame > 0);
+        vast.replace(frame + 5, 4, QByteArray("\x4E\x20\x4E\x20", 4));
+        Raw claimed(true);
+        const quint32 thumbAt = claimed.add(small), vastAt = claimed.add(vast);
+        claimed.setFirst(claimed.ifd(pair(thumbAt, small.size()), claimed.ifd(pair(vastAt, vast.size()))));
+        QCOMPARE(rawThumbnail(claimed.bytes), QSize(160, 120));
+    }
+
+    void thumbnailsKeepOtherPathsForCameraRaws()
+    {
+        QTemporaryDir dir;
+        const QByteArray raw = rawWithJpeg(jpeg(400, 300), kUpright);
+        QCOMPARE(rawThumbnail(raw), QSize(400, 300));
+        // An installed thumbnailer stays the desktop's answer, and a plain TIFF never takes the RAW reader.
+        QVERIFY(QImage(10, 20, QImage::Format_RGB32).save(dir.filePath("mark.png")));
+        write(dir.filePath("raw.thumbnailer"), "[Thumbnailer Entry]\nTryExec=/bin/cp\nExec=/bin/cp \""
+              + dir.filePath("mark.png").toUtf8() + "\" %o\nMimeType=image/x-adobe-dng;\n");
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
+        write(dir.filePath("photo.dng"), raw);
+        QCOMPARE(thumbnails.load(dir.filePath("photo.dng"), "image/x-adobe-dng", 1024).size(), QSize(10, 20));
+        write(dir.filePath("photo.tif"), raw);
+        QVERIFY(thumbnails.load(dir.filePath("photo.tif"), "image/tiff", 1024).isNull());
+    }
+
+    void thumbnailsNameThePackageThatWouldDrawAType()
+    {
+        QTemporaryDir dir;
+        write(dir.filePath("webm.thumbnailer"),
+              "[Thumbnailer Entry]\nTryExec=/bin/sh\nExec=/bin/sh -c \"exit 1\" %i %o\nMimeType=video/webm;\n");
+        const Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
+        QCOMPARE(thumbnails.missingPackage("video/mp4"), QString("ffmpegthumbnailer"));
+        QCOMPARE(thumbnails.missingPackage("application/vnd.oasis.opendocument.text"), QString("libgsf"));
+        // Installed already, drawn by Qt itself, or no package known: nothing to name.
+        QVERIFY(thumbnails.missingPackage("video/webm").isEmpty());
+        QVERIFY(thumbnails.missingPackage("image/png").isEmpty());
+        QVERIFY(thumbnails.missingPackage("model/step").isEmpty());
+
+        // A PDF has its package named only where pdftoppm is not there to draw it.
+        const QByteArray programs = qgetenv("PATH");
+        QVERIFY(QDir(dir.path()).mkpath("bin"));
+        qputenv("PATH", dir.filePath("bin").toUtf8());
+        const QString without = thumbnails.missingPackage("application/pdf");
+        write(dir.filePath("bin/pdftoppm"), "#!/bin/sh\n");
+        QFile::setPermissions(dir.filePath("bin/pdftoppm"), QFile::ReadOwner | QFile::ExeOwner);
+        const QString with = thumbnails.missingPackage("application/pdf");
+        qputenv("PATH", programs);
+        QCOMPARE(without, QString("papers"));
+        QVERIFY(with.isEmpty());
     }
 
     void previewerPicksAViewerForEachType()
@@ -6078,6 +6413,94 @@ private:
     {
         QFile file(path);
         return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+    }
+
+    using Entries = QList<std::array<quint32, 4>>;
+    // The TIFF 6.0 tags, field types and values a camera RAW names its embedded JPEG and its turn with.
+    static constexpr quint32 kCompression = 0x0103, kStripOffsets = 0x0111, kOrientation = 0x0112, kStripByteCounts = 0x0117;
+    static constexpr quint32 kSubIfds = 0x014A, kJpegOffset = 0x0201, kJpegLength = 0x0202;
+    static constexpr quint32 kShort = 3, kLong = 4, kJpegCompression = 7, kUpright = 1, kQuarterTurn = 6;
+    // An IFD of two entries: count(2), two 12-byte entries, next(4).
+    static constexpr quint32 kTwoEntryIfd = 2 + 2 * 12 + 4;
+    // The reader walks this many directories of one file and no more.
+    static constexpr int kDirectoryLimit = 64;
+    // The reader takes a directory of this many entries and none longer; a 16-bit count can claim the second.
+    static constexpr int kEntryLimit = 1024, kMostEntries = 0xFFFF;
+    // The reader holds an embedded JPEG of this many bytes in memory and none longer.
+    static constexpr qint64 kMebibyte = 1048576, kMostJpegBytes = 64 * kMebibyte;
+    // A camera RAW in either byte order; blobs and IFDs are appended, so every offset is known before it is named.
+    struct Raw {
+        explicit Raw(bool littleEndian)
+            : le(littleEndian), bytes(QByteArray(le ? "II*\0" : "MM\0*", 4) + QByteArray(4, '\0')) {}
+        QByteArray word(quint32 value, int size) const
+        {
+            QByteArray out(4, '\0');
+            le ? qToLittleEndian(value, out.data()) : qToBigEndian(value, out.data());
+            return le ? out.left(size) : out.right(size);
+        }
+        // Entries are (tag, type, count, value) and a SHORT value fills its field's first two bytes.
+        QByteArray dir(const Entries &entries, quint32 next = 0) const
+        {
+            QByteArray out = word(entries.size(), 2);
+            for (const auto &[tag, type, count, value] : entries)
+                out += word(tag, 2) + word(type, 2) + word(count, 4)
+                       + (type == kShort ? word(value, 2) + QByteArray(2, '\0') : word(value, 4));
+            return out + word(next, 4);
+        }
+        quint32 add(const QByteArray &data) { bytes += data; return quint32(bytes.size() - data.size()); }
+        quint32 ifd(const Entries &entries, quint32 next = 0) { return add(dir(entries, next)); }
+        void setFirst(quint32 ifd) { bytes.replace(4, 4, word(ifd, 4)); }
+        bool le;
+        QByteArray bytes;
+    };
+    // JPEGInterchangeFormat and its length, or one JPEG-compressed strip as DNG and CR2 store a preview.
+    static Entries pair(quint32 at, qsizetype length)
+    {
+        return {{kJpegOffset, kLong, 1, at}, {kJpegLength, kLong, 1, quint32(length)}};
+    }
+    static Entries strip(quint32 at, qsizetype length)
+    {
+        return {{kStripOffsets, kLong, 1, at}, {kStripByteCounts, kLong, 1, quint32(length)},
+                {kCompression, kShort, 1, kJpegCompression}};
+    }
+    // A green JPEG; `own`, when not 0, is the Orientation its own Exif segment (FF E1, length, "Exif\0\0", a TIFF) names.
+    static QByteArray jpeg(int width, int height, quint32 own = 0)
+    {
+        QImage picture(width, height, QImage::Format_RGB32);
+        picture.fill(Qt::green);
+        QByteArray data;
+        QBuffer buffer(&data);
+        if (!buffer.open(QIODevice::WriteOnly) || !picture.save(&buffer, "JPEG"))
+            return {};
+        Raw tiff(true);
+        tiff.setFirst(tiff.ifd({{kOrientation, kShort, 1, own}}));
+        return own ? data.insert(2, exifSegment(tiff)) : data;
+    }
+    // An Exif segment holding `tiff`: FF E1, its big-endian length, "Exif\0\0" and the TIFF.
+    static QByteArray exifSegment(const Raw &tiff)
+    {
+        const QByteArray exif = QByteArray("Exif\0\0", 6) + tiff.bytes;
+        return QByteArray("\xFF\xE1", 2) + Raw(false).word(2 + exif.size(), 2) + exif;
+    }
+
+    // A little-endian RAW whose IFD0 names one JPEG and an orientation.
+    static QByteArray rawWithJpeg(const QByteArray &picture, quint32 orientation)
+    {
+        Raw raw(true);
+        const quint32 at = raw.add(picture);
+        raw.setFirst(raw.ifd(pair(at, picture.size()) + Entries{{kOrientation, kShort, 1, orientation}}));
+        return raw.bytes;
+    }
+
+    // What Folio shows for these bytes as a DNG with no thumbnailer installed, unscaled; `grownTo` lengthens the file with a hole.
+    static QSize rawThumbnail(const QByteArray &raw, qint64 grownTo = 0)
+    {
+        QTemporaryDir dir;
+        write(dir.filePath("photo.dng"), raw);
+        if (grownTo > 0 && !QFile::resize(dir.filePath("photo.dng"), grownTo))
+            return {};
+        const Thumbnails thumbnails(dir.filePath("cache"), {dir.filePath("none")});
+        return thumbnails.load(dir.filePath("photo.dng"), "image/x-adobe-dng", 1024).size();
     }
 
     static void write(const QString &path, const QByteArray &contents)

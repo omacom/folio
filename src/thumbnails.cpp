@@ -1,4 +1,5 @@
 #include "thumbnails.h"
+#include "rawembed.h"
 
 #include <QBuffer>
 #include <QCryptographicHash>
@@ -79,6 +80,73 @@ QStringList expandCommand(const QString &command, const QString &input, const QS
     return args;
 }
 
+// Each optional package's thumbnailers and the MimeType= lines they ship, as "video/mp4;video/webm;". Copied from the
+// .thumbnailer files of Arch's ffmpegthumbnailer 2.3.1 (the video one only: the audio one draws just cover art, which
+// most files lack), glycin 2.2.6, papers 51.1 and libgsf's gsf-office; refresh them from there when a package adds types.
+struct PackageTypes {
+    const char *package;
+    const char *types;
+};
+const PackageTypes packageTypes[] = {
+    {"ffmpegthumbnailer",
+     "video/3gpp;video/3gpp2;video/annodex;video/dv;video/isivideo;video/matroska;video/matroska-3d;"
+     "video/mj2;video/mp2t;video/mp4;video/mpeg;video/ogg;video/quicktime;video/vnd.avi;"
+     "video/vnd.mpegurl;video/vnd.radgamettools.bink;video/vnd.radgamettools.smacker;"
+     "video/vnd.rn-realvideo;video/vnd.vivo;video/vnd.youtube.yt;video/wavelet;video/webm;"
+     "video/x-anim;video/x-flic;video/x-flv;video/x-javafx;video/x-matroska;video/x-matroska-3d;"
+     "video/x-mjpeg;video/x-mng;video/x-ms-wmv;video/x-nsv;video/x-ogm+ogg;video/x-sgi-movie;"
+     "video/x-theora+ogg;application/mxf;application/vnd.ms-asf;application/vnd.rn-realmedia;"
+     "application/matroska;application/x-matroska;application/ogg;"},
+    {"glycin",
+     "image/avif;image/heif;image/apng;image/bmp;image/gif;image/jp2;image/jpeg;image/png;image/qoi;"
+     "image/tiff;image/vnd.microsoft.icon;image/webp;image/x-dds;image/x-exr;image/x-jp2-codestream;"
+     "image/x-portable-anymap;image/x-portable-bitmap;image/x-portable-graymap;"
+     "image/x-portable-pixmap;image/x-tga;image/x-win-bitmap;image/x-xbitmap;image/x-xpixmap;"
+     "image/jxl;image/svg+xml;image/svg+xml-compressed;"},
+    {"papers",
+     "application/vnd.comicbook-rar;application/vnd.comicbook+zip;application/x-cb7;application/x-cbr;"
+     "application/x-cbt;application/x-cbz;application/x-ext-cb7;application/x-ext-cbr;"
+     "application/x-ext-cbt;application/x-ext-cbz;application/x-ext-djv;application/x-ext-djvu;"
+     "image/vnd.djvu;image/vnd.djvu+multipage;application/pdf;application/x-bzpdf;"
+     "application/x-ext-pdf;application/x-gzpdf;application/x-xzpdf;application/illustrator;"
+     "image/tiff;"},
+    {"libgsf",
+     "application/msword;application/vnd.ms-excel;application/vnd.ms-powerpoint;"
+     "application/vnd.oasis.opendocument.chart;application/vnd.oasis.opendocument.formula;"
+     "application/vnd.oasis.opendocument.graphics;"
+     "application/vnd.oasis.opendocument.graphics-template;application/vnd.oasis.opendocument.image;"
+     "application/vnd.oasis.opendocument.presentation;"
+     "application/vnd.oasis.opendocument.presentation-template;"
+     "application/vnd.oasis.opendocument.spreadsheet;"
+     "application/vnd.oasis.opendocument.spreadsheet-template;application/vnd.oasis.opendocument.text;"
+     "application/vnd.oasis.opendocument.text-master;application/vnd.oasis.opendocument.text-template;"
+     "application/vnd.openxmlformats-officedocument.presentationml.presentation;"
+     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;"
+     "application/vnd.openxmlformats-officedocument.wordprocessingml.document;"
+     "application/vnd.sun.xml.calc;application/vnd.sun.xml.calc.template;application/vnd.sun.xml.draw;"
+     "application/vnd.sun.xml.draw.template;application/vnd.sun.xml.impress;"
+     "application/vnd.sun.xml.impress.template;application/vnd.sun.xml.math;"
+     "application/vnd.sun.xml.writer;application/vnd.sun.xml.writer.global;"
+     "application/vnd.sun.xml.writer.template;"},
+};
+
+// The package for each type by its own name, read once; the first package listed wins, so glycin draws TIFF before papers.
+const QHash<QString, QString> &packageFor() {
+    static const QHash<QString, QString> table = [] {
+        QMimeDatabase mimes;
+        QHash<QString, QString> byType;
+        for (const PackageTypes &entry : packageTypes) {
+            for (const QString &declared : QString::fromLatin1(entry.types).split(';', Qt::SkipEmptyParts)) {
+                const QString type = mimes.mimeTypeForName(declared).name();
+                if (const QString key = type.isEmpty() ? declared : type; !byType.contains(key))
+                    byType.insert(key, QString::fromLatin1(entry.package));
+            }
+        }
+        return byType;
+    }();
+    return table;
+}
+
 } // namespace
 
 Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbnailerDirectories)
@@ -94,7 +162,10 @@ Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbna
         for (const QString &base : data)
             directories << base + "/thumbnailers";
     }
+    QMimeDatabase mimes;
     for (const QString &directory : directories) {
+        // A .thumbnailer file may name a type by an alias, as glycin names DDS pictures image/x-dds.
+        QHash<QString, QString> named, aliased;
         QDirIterator it(directory, {"*.thumbnailer"}, QDir::Files);
         while (it.hasNext()) {
             // A tiny desktop-entry reader: QSettings would treat the
@@ -115,10 +186,42 @@ Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbna
             const QString tryExec = fields.value("TryExec");
             if (exec.isEmpty() || (!tryExec.isEmpty() && QStandardPaths::findExecutable(tryExec).isEmpty()))
                 continue;
-            for (const QString &mime : fields.value("MimeType").split(';', Qt::SkipEmptyParts))
-                m_thumbnailers.insert(mime.trimmed(), exec);
+            for (const QString &declared : fields.value("MimeType").split(';', Qt::SkipEmptyParts)) {
+                const QString mime = declared.trimmed();
+                named.insert(mime, exec);
+                if (const QString type = mimes.mimeTypeForName(mime).name(); !type.isEmpty())
+                    aliased.insert(type, exec);
+            }
         }
+        // Within one directory the file that names a type itself wins over one that names an alias of it.
+        m_thumbnailers.insert(aliased);
+        m_thumbnailers.insert(named);
     }
+    // An older Folio's failure markers (fail/folio, or a fail/folio-<n> with a lower number) are never read again, so
+    // they are cleared away, on a worker since there may be thousands. A newer Folio's are left for it, so an installed
+    // Folio and a newer build side by side don't clear each other's on every start. A symlink is never followed, the fail
+    // folder itself included: removing through one would delete files outside the cache.
+    QThreadPool::globalInstance()->start([fail = m_cache + "/fail"] {
+        if (QFileInfo(fail).isSymLink())
+            return;
+        const int current = failures.section('-', -1).toInt();
+        for (const QString &name :
+             QDir(fail).entryList({"folio", "folio-*"}, QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks)) {
+            bool numbered = true;
+            const int version = name == "folio" ? 0 : name.mid(6).toInt(&numbered);
+            if (numbered && version < current)
+                QDir(fail + "/" + name).removeRecursively();
+        }
+    });
+}
+
+QString Thumbnails::missingPackage(const QString &mime) const {
+    // Qt draws its own pictures in-process, an installed thumbnailer needs nothing more, and pdftoppm draws a PDF without one.
+    if ((mime.startsWith("image/") && QImageReader::supportedMimeTypes().contains(mime.toLatin1()))
+        || m_thumbnailers.contains(mime)
+        || (mime == "application/pdf" && !QStandardPaths::findExecutable("pdftoppm").isEmpty()))
+        return {};
+    return packageFor().value(mime);
 }
 
 QString Thumbnails::cacheKey(const QString &path) {
@@ -144,8 +247,11 @@ QString Thumbnails::cachePath(const QString &path, int size) const {
 }
 
 QString Thumbnails::failPath(const QString &path) const {
-    return m_cache + "/fail/folio/" + cacheKey(path);
+    return m_cache + "/" + failures + "/" + cacheKey(path);
 }
+
+// The marker's own key for the thumbnailer command the type had when it failed, empty for none.
+static const QString kFailedWith = QStringLiteral("X-Folio::Thumbnailer");
 
 QImage Thumbnails::load(const QString &path, const QString &mime, int size) const {
     const QFileInfo info(path);
@@ -157,16 +263,17 @@ QImage Thumbnails::load(const QString &path, const QString &mime, int size) cons
         return {};
 
     const QDateTime modified = info.lastModified();
-    if (const QImage image(cachePath(path, size)); madeFor(image, modified))
+    if (const QImage image(cachePath(path, size)); madeFor(image, path, modified))
         return image;
-    if (failedBefore(path, modified))
-        return {};
 
     // A folder's peek asks for any picture ("image/*"); named by extension,
     // as the grid names it, it goes to the same thumbnailer as its tile.
     const QString type = mime.endsWith("/*")
         ? QMimeDatabase().mimeTypeForFile(path, QMimeDatabase::MatchExtension).name()
         : mime;
+    const QString thumbnailer = m_thumbnailers.value(type);
+    if (failedBefore(path, modified, thumbnailer))
+        return {};
     const int pixels = bucketPixels(bucketFor(size));
     bool attempted = false;
     QImage image = generate(path, type, pixels, attempted);
@@ -174,7 +281,7 @@ QImage Thumbnails::load(const QString &path, const QString &mime, int size) cons
         // Only a reader or thumbnailer that ran and failed is remembered, so
         // one installed later still gets its turn.
         if (attempted)
-            rememberFailure(path, modified);
+            rememberFailure(path, modified, thumbnailer);
         return {};
     }
     if (image.width() > pixels || image.height() > pixels)
@@ -184,6 +291,12 @@ QImage Thumbnails::load(const QString &path, const QString &mime, int size) cons
 }
 
 QImage Thumbnails::generate(const QString &path, const QString &mime, int pixels, bool &attempted) const {
+    // A camera RAW with no installed thumbnailer, the desktop's own answer, shows the JPEG the camera embedded.
+    if (RawEmbed::handles(mime) && !m_thumbnailers.contains(mime)) {
+        attempted = true;
+        if (const QImage image = RawEmbed::thumbnail(path, pixels); !image.isNull())
+            return image;
+    }
     // Common photo formats decode fastest in-process; anything Qt can't read
     // (HEIC, JPEG XL) falls through to the installed thumbnailers.
     if (mime.startsWith("image/")) {
@@ -310,14 +423,16 @@ void Thumbnails::remember(QImage image, const QString &path, int size, const QDa
     save(std::move(image), cachePath(path, size), path, modified);
 }
 
-void Thumbnails::rememberFailure(const QString &path, const QDateTime &modified) const {
+void Thumbnails::rememberFailure(const QString &path, const QDateTime &modified, const QString &thumbnailer) const {
     QImage marker(1, 1, QImage::Format_ARGB32);
     marker.fill(Qt::transparent);
+    marker.setText(kFailedWith, thumbnailer);
     save(std::move(marker), failPath(path), path, modified);
 }
 
-bool Thumbnails::failedBefore(const QString &path, const QDateTime &modified) const {
-    return madeFor(QImage(failPath(path)), modified);
+bool Thumbnails::failedBefore(const QString &path, const QDateTime &modified, const QString &thumbnailer) const {
+    const QImage marker(failPath(path));
+    return madeFor(marker, path, modified) && marker.text(kFailedWith) == thumbnailer;
 }
 
 // Whether a cached thumbnail (or failure marker) was made from the file as it
@@ -326,9 +441,11 @@ bool Thumbnails::failedBefore(const QString &path, const QDateTime &modified) co
 // the milliseconds. One another app made goes by the seconds alone.
 // QImageReader::text() splits keys at ':', so these are only readable from
 // the decoded image.
-bool Thumbnails::madeFor(const QImage &image, const QDateTime &modified) {
+bool Thumbnails::madeFor(const QImage &image, const QString &path, const QDateTime &modified) {
     const QString exact = image.text("X-Folio::MTime");
-    return !image.isNull() && image.text("Thumb::MTime") == QString::number(modified.toSecsSinceEpoch())
+    // The spec asks a reader to check that Thumb::URI names the file too.
+    return !image.isNull() && image.text("Thumb::URI") == fileUri(path)
+        && image.text("Thumb::MTime") == QString::number(modified.toSecsSinceEpoch())
         && (exact.isEmpty() || exact == QString::number(modified.toMSecsSinceEpoch()));
 }
 
