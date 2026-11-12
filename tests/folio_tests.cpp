@@ -4476,18 +4476,13 @@ private slots:
         QCOMPARE(output->places[0].icon, QString("dropbox.svg"));
         QVERIFY(output->places[0].status.isUndefined());
         QCOMPARE(output->actions, std::optional<QStringList>(QStringList{}));
-        // Up to date says nothing; links work while Dropbox runs.
-        output = run("Up to date", true);
-        QVERIFY(output->places[0].status.isUndefined());
-        QCOMPARE(output->actions, std::optional<QStringList>(QStringList{"link"}));
-        output = run("Syncing 3 files", true);
-        QCOMPARE(output->places[0].status.toString(), QString("syncing"));
-        QCOMPARE(output->places[0].tone, QString("warning"));
-        QCOMPARE(output->actions, std::optional<QStringList>(QStringList{"link"}));
-        output = run("Dropbox isn't running!", true);
-        QCOMPARE(output->places[0].status.toString(), QString("stopped"));
-        QCOMPARE(output->places[0].tone, QString("error"));
-        QCOMPARE(output->actions, std::optional<QStringList>(QStringList{}));
+        // The row never says Dropbox's state; links work while it runs.
+        for (const QString &says : {"Up to date", "Syncing 3 files", "Dropbox isn't running!"}) {
+            output = run(says, true);
+            QVERIFY(output->places[0].status.isUndefined());
+            QCOMPARE(output->actions,
+                     std::optional<QStringList>(says.contains("running") ? QStringList{} : QStringList{"link"}));
+        }
     }
 
     void dropboxPluginCopiesLinks()

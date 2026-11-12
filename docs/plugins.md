@@ -566,9 +566,8 @@ stands.
 ```
 
 It requires nothing, so the folder keeps its mark without `dropbox-cli`.
-`status` prints `{}` without a `~/Dropbox` folder; otherwise the mark,
-plus, when `dropbox-cli` is there, `syncing` (warning) or `stopped` (error)
-from `dropbox-cli status`, and `"actions": ["link"]` while Dropbox runs
+`status` prints `{}` without a `~/Dropbox` folder; otherwise the mark (no
+status: Dropbox shows its own), and `"actions": ["link"]` while Dropbox runs
 (`"actions": []` otherwise, since leaving `actions` out would offer the link). `link`
 runs `dropbox-cli sharelink` and prints `{"copy": link, "notice": ["Dropbox
 link for %1 copied.", name]}`. `filestatus` prints `[["Dropbox", status]]`
