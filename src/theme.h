@@ -55,6 +55,8 @@ public:
     static constexpr qsizetype eventsATurn = 64 * 1024;
     // The longest line of Hyprland's events kept: window titles arrive there too, and no line we want is this long.
     static constexpr qsizetype longestEventLine = 64 * 1024;
+    // How long after Hyprland hung up the watch is taken up again, in milliseconds.
+    static constexpr int watchAgainAfter = 1000;
 
 signals:
     void changed();
@@ -79,6 +81,8 @@ private:
     bool m_roundingPending = false;
     int m_hyprlandEvents = -1;
     QSocketNotifier *m_hyprlandNotifier = nullptr;
+    QTimer m_hyprlandAgain;
+    bool m_inUse = true;
     QByteArray m_hyprlandLine;
     bool m_hyprlandLineTooLong = false;
 };

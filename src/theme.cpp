@@ -109,12 +109,23 @@ Theme::Theme(const QString &directory, QObject *parent, const QString &hyprctl)
     if (!m_hyprctl.isEmpty()) {
         // Hyprland names each config reload; a value set any other way is read when Folio is back in use.
         connect(qGuiApp, &QGuiApplication::applicationStateChanged, this, [this](Qt::ApplicationState state) {
-            if (state != Qt::ApplicationActive)
+            m_inUse = state == Qt::ApplicationActive;
+            m_hyprlandAgain.stop();
+            if (!m_inUse)
                 return;
             // Hyprland hangs up on a reader that fell behind, so a watch that ended is taken up again here.
             if (m_hyprlandEvents < 0)
                 watchHyprland();
             refreshRounding();
+        });
+        // Hung up on while Folio stays in use, it connects again after a pause and reads the rounding: a reload may have gone by untold.
+        m_hyprlandAgain.setSingleShot(true);
+        m_hyprlandAgain.setInterval(watchAgainAfter);
+        connect(&m_hyprlandAgain, &QTimer::timeout, this, [this] {
+            if (m_hyprlandEvents < 0)
+                watchHyprland();
+            if (m_hyprlandEvents >= 0)
+                refreshRounding();
         });
         // Subscribed before the first ask, so a reload during that ask isn't missed.
         watchHyprland();
@@ -196,9 +207,12 @@ void Theme::readHyprlandEvents() {
     }
     if (reloaded)
         refreshRounding();
-    // Hyprland is gone, and the corners keep their last rounding.
-    if (closed)
+    // Hung up on, or Hyprland is gone: a try after a pause while Folio is in use, and without an answer the corners keep their last rounding.
+    if (closed) {
         closeHyprlandEvents();
+        if (m_inUse)
+            m_hyprlandAgain.start();
+    }
 }
 
 void Theme::closeHyprlandEvents() {

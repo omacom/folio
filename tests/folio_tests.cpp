@@ -37,6 +37,7 @@
 #include <cstring>
 #include <random>
 #include <linux/sockios.h>
+#include <poll.h>
 #include <signal.h>
 #include <sys/ioctl.h>
 #include <sys/resource.h>
@@ -6737,15 +6738,54 @@ private slots:
         QVERIFY(events >= 0);
         QTRY_COMPARE(theme.radius(), 2);
         QCOMPARE(theme.findChildren<QSocketNotifier *>(Qt::FindDirectChildrenOnly).size(), 1);
-        // Hyprland hangs up, as it does on a reader that fell behind, and the theme lets go of the socket.
+        // Away from Folio, Hyprland hangs up, as it does on a reader that fell behind, and the theme lets go of the socket.
+        emit qGuiApp->applicationStateChanged(Qt::ApplicationInactive);
         ::close(events);
         QTRY_VERIFY(theme.findChildren<QSocketNotifier *>(Qt::FindDirectChildrenOnly).isEmpty());
         write(response, "{\"int\":4}");
+        // Nothing connects again while away, however long; coming back does.
+        QTest::qWait(2 * Theme::watchAgainAfter);
+        pollfd knock{hyprland, POLLIN, 0};
+        QCOMPARE(::poll(&knock, 1, 0), 0);
         emit qGuiApp->applicationStateChanged(Qt::ApplicationActive);
         const int again = ::accept4(hyprland, nullptr, nullptr, SOCK_CLOEXEC);
         QVERIFY(again >= 0);
         const auto hangUp = qScopeGuard([again] { ::close(again); });
         // Coming back asked once, and that ask is over; the next change is told by the new watch alone.
+        QTRY_COMPARE(theme.radius(), 4);
+        QCOMPARE(countRuns(runs), 2);
+        write(response, "{\"int\":6}");
+        send(again, "configreloaded>>\n");
+        QTRY_COMPARE(theme.radius(), 6);
+        QCOMPARE(countRuns(runs), 3);
+    }
+
+    void themeWatchesHyprlandAgainAfterAHangUpWhileInUse()
+    {
+        QTemporaryDir dir, stage;
+        const QString response = stage.filePath("response.json"), runs = stage.filePath("runs");
+        const QString command = standInHyprctl(stage, response, runs);
+        write(response, "{\"int\":2}");
+        const QByteArray runtime = qgetenv("XDG_RUNTIME_DIR");
+        const int hyprland = listenAsHyprland(stage.path());
+        QVERIFY(hyprland >= 0);
+        const auto restore = qScopeGuard([=] { stopHyprland(hyprland, runtime); });
+
+        Theme theme(dir.path(), nullptr, command);
+        const int events = ::accept4(hyprland, nullptr, nullptr, SOCK_CLOEXEC);
+        QVERIFY(events >= 0);
+        QTRY_COMPARE(theme.radius(), 2);
+        // Hyprland hangs up and then reloads its config: nobody is told of that reload.
+        ::close(events);
+        QTRY_VERIFY(theme.findChildren<QSocketNotifier *>(Qt::FindDirectChildrenOnly).isEmpty());
+        write(response, "{\"int\":4}");
+        // Folio is never left and come back to: the theme connects again by itself after its pause.
+        pollfd knock{hyprland, POLLIN, 0};
+        QTRY_COMPARE_WITH_TIMEOUT(::poll(&knock, 1, 0), 1, 5 * Theme::watchAgainAfter);
+        const int again = ::accept4(hyprland, nullptr, nullptr, SOCK_CLOEXEC);
+        QVERIFY(again >= 0);
+        const auto hangUp = qScopeGuard([again] { ::close(again); });
+        // Connected again, it reads the rounding it wasn't told of, once; the next change is told by the new watch.
         QTRY_COMPARE(theme.radius(), 4);
         QCOMPARE(countRuns(runs), 2);
         write(response, "{\"int\":6}");
