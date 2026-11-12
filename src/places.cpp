@@ -65,6 +65,13 @@ QVariantList parseBookmarks(const QStringList &lines, const QString &home) {
     return pinned;
 }
 
+// Views: lists that aren't a folder of their own. The sidebar names
+// them, so a language switch renames them at once.
+QVariantList viewList() {
+    return {QVariantMap{{"path", FolderModel::recentPath()}, {"icon", "recent"}},
+            QVariantMap{{"path", QDir::cleanPath(FileOps::homeTrash() + "/files")}, {"icon", "trash"}}};
+}
+
 // GIO's mount at `path`, with a reference for the caller, or null when GIO
 // doesn't list one there (a drive only fstab knows of, which a user can't
 // unmount anyway). The monitor is kept: let go of, it's made again on the
@@ -121,20 +128,46 @@ Places::Places(const QString &home, QObject *parent)
     : QObject(parent), m_home(home.isEmpty() ? QDir::homePath() : home), m_realHome(home.isEmpty()) {
     // Drives get plugged in and folders come and go: a gentle poll keeps
     // the sidebar honest without any background service.
-    m_systemDevice = QString::fromUtf8(QStorageInfo::root().device());
     connect(&m_mounts, &QFutureWatcherBase::finished, this, &Places::mountsRead);
     m_poll.setInterval(15000);
     connect(&m_poll, &QTimer::timeout, this, &Places::refresh);
     if (m_realHome)
         m_poll.start();
-    refresh();
+    // Read while the window's QML loads, and in full before the window is drawn: QML's first look waits for them.
+    m_first = QtConcurrent::run([this, locale = QLocale()] {
+        return Lists{homeFolders(locale), viewList(), parseBookmarks(readBookmarkLines(), m_home),
+                     QString::fromUtf8(QStorageInfo::root().device())};
+    });
+    refreshDevices();
+}
+
+Places::~Places() {
+    m_first.waitForFinished();
+}
+
+void Places::take() const {
+    if (!m_first.isValid())
+        return;
+    const Lists first = m_first.takeResult();
+    m_places = first.places;
+    m_views = first.views;
+    m_pinned = first.pinned;
+    m_systemDevice = first.systemDevice;
 }
 
 void Places::refresh() {
     refreshPlaces();
     refreshPinned();
     refreshDevices();
-    emit changed();
+}
+
+// The lists compare in order, so a reordered list is a changed one.
+void Places::setList(QVariantList &list, const QVariantList &next, void (Places::*announce)()) {
+    take();
+    if (next == list)
+        return;
+    list = next;
+    emit (this->*announce)();
 }
 
 QString Places::userDirectory(int location, const QString &fallback) const {
@@ -151,6 +184,11 @@ QString Places::userDirectory(int location, const QString &fallback) const {
 // at the top of their home (Work, omarchy, Dropbox) is one click away
 // without pinning it.
 void Places::refreshPlaces() {
+    setList(m_places, homeFolders(QLocale()), &Places::placesChanged);
+    setList(m_views, viewList(), &Places::viewsChanged);
+}
+
+QVariantList Places::homeFolders(const QLocale &locale) const {
     QVariantList places;
     auto add = [&](const QString &name, const QString &path, const QString &icon) {
         places << QVariantMap{{"name", name}, {"path", path}, {"icon", icon}};
@@ -165,7 +203,7 @@ void Places::refreshPlaces() {
     };
 
     QStringList names = QDir(m_home).entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::NoSort);
-    QCollator collator;
+    QCollator collator(locale);
     collator.setNumericMode(true);
     collator.setCaseSensitivity(Qt::CaseInsensitive);
     std::sort(names.begin(), names.end(), [&](const QString &a, const QString &b) { return collator.compare(a, b) < 0; });
@@ -173,13 +211,7 @@ void Places::refreshPlaces() {
         const QString path = m_home + "/" + name;
         add(displayName(name), path, icons.value(path, "folder"));
     }
-
-    m_places = places;
-
-    // Views: lists that aren't a folder of their own. The sidebar names
-    // them, so a language switch renames them at once.
-    m_views = {QVariantMap{{"path", FolderModel::recentPath()}, {"icon", "recent"}},
-               QVariantMap{{"path", QDir::cleanPath(FileOps::homeTrash() + "/files")}, {"icon", "trash"}}};
+    return places;
 }
 
 QString Places::bookmarksPath() const {
@@ -210,10 +242,11 @@ bool Places::writeBookmarkLines(const QStringList &lines) {
 }
 
 void Places::refreshPinned() {
-    m_pinned = parseBookmarks(readBookmarkLines(), m_home);
+    setList(m_pinned, parseBookmarks(readBookmarkLines(), m_home), &Places::pinnedChanged);
 }
 
 bool Places::isPinned(const QString &path) const {
+    take();
     const QString clean = QDir::cleanPath(path);
     for (const QVariant &p : m_pinned)
         if (p.toMap().value("path").toString() == clean)
@@ -235,7 +268,6 @@ QString Places::pin(const QString &path) {
     if (!writeBookmarkLines(lines))
         return tr("Couldn't save the pin to %1.").arg(bookmarksPath());
     refreshPinned();
-    emit changed();
     return {};
 }
 
@@ -247,10 +279,8 @@ void Places::unpin(const QString &path) {
         const QUrl url(line.section(' ', 0, 0));
         return url.isLocalFile() && QDir::cleanPath(url.toLocalFile()) == clean;
     }), lines.end());
-    if (lines.size() != before && writeBookmarkLines(lines)) {
+    if (lines.size() != before && writeBookmarkLines(lines))
         refreshPinned();
-        emit changed();
-    }
 }
 
 QVariantList Places::physicalDrives(const QList<Mount> &mounts, const QString &systemDevice) {
@@ -312,6 +342,7 @@ void Places::refreshDevices() {
 }
 
 void Places::mountsRead() {
+    take();
     QList<Mount> mounts = m_mounts.result();
     // What GIO can do with each drive is asked here, on the UI thread, where
     // GIO's volume monitor lives; it already knows, so asking is quick.
@@ -321,11 +352,7 @@ void Places::mountsRead() {
             mount.canUnmount = g_mount_can_unmount(gmount);
             g_object_unref(gmount);
         }
-    const QVariantList devices = physicalDrives(mounts, m_systemDevice);
-    if (devices != m_devices) {
-        m_devices = devices;
-        emit changed();
-    }
+    setList(m_devices, physicalDrives(mounts, m_systemDevice), &Places::devicesChanged);
     if (std::exchange(m_rereadMounts, false))
         refreshDevices();
 }
