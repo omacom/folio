@@ -3243,6 +3243,76 @@ private slots:
         QVERIFY(!backend.details().contains("width"));
     }
 
+    void detailsNameAFileByWhatItHoldsWhenItsNameSaysNothing()
+    {
+        // The details pane names a PDF whose name gives no type as a PDF, from a reading made off the UI thread.
+        QTemporaryDir dir;
+        const QString pdf = dir.filePath("report.download"), claimed = dir.filePath("report.zip");
+        write(pdf, "%PDF-1.4\n1 0 obj\n");
+        write(claimed, "%PDF-1.4\n1 0 obj\n");
+        const QMimeDatabase types;
+        const QString unnamed = "application/octet-stream";
+        const QString pdfName = types.mimeTypeForName("application/pdf").comment();
+        QVERIFY(!pdfName.isEmpty() && pdfName != types.mimeTypeForName(unnamed).comment());
+        Backend backend(dir.path());
+        backend.describe({{"path", pdf}, {"kind", "other"}, {"mime", unnamed}});
+        QVERIFY(backend.details().isEmpty());
+        QTRY_COMPARE(backend.details().value("mime").toString(), QString("application/pdf"));
+        QCOMPARE(backend.details().value("path").toString(), pdf);
+        // A name that said a type is believed: the file isn't read for one, alone or with its text.
+        backend.describe({{"path", claimed}, {"kind", "archive"}, {"mime", "application/zip"}});
+        QThreadPool::globalInstance()->waitForDone();
+        QCoreApplication::processEvents();
+        QVERIFY(backend.details().isEmpty());
+        write(dir.filePath("notes.txt"), "hello");
+        backend.describe({{"path", dir.filePath("notes.txt")}, {"kind", "text"}, {"mime", "text/plain"}});
+        QTRY_COMPARE(backend.details().value("text").toString(), QString("hello"));
+        QVERIFY(!backend.details().contains("mime"));
+
+        Theme theme(dir.filePath("theme"));
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        engine.rootContext()->setContextProperty("places", QVariantMap{{"devices", QVariantList()}, {"home", dir.path()}});
+        engine.rootContext()->setContextProperty("backend", &backend);
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "PreviewPane {\n"
+                          "    width: 320; height: 640\n"
+                          "    folderPane: QtObject {\n"
+                          "        property var current: ({})\n"
+                          "        property bool inTrash: false\n"
+                          "        property var paneBackend: ({path: ''})\n"
+                          "        property var paneFileOps: ({appsFor: path => [], defaultAppName: mime => mime === 'application/pdf' ? 'Reader' : ''})\n"
+                          "    }\n"
+                          "    function all(item) { return Array.from(item.children).reduce((found, child) => found.concat(all(child)), [item]) }\n"
+                          "    function said() { return all(this).filter(item => item.text !== undefined && item.visible).map(item => item.text).join('\\n') }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/PreviewPaneTypeTest.qml"));
+        std::unique_ptr<QObject> pane(component.create());
+        QVERIFY2(pane, qPrintable(component.errorString()));
+        const auto said = [&] {
+            QVariant result;
+            QMetaObject::invokeMethod(pane.get(), "said", Q_RETURN_ARG(QVariant, result));
+            return result.toString();
+        };
+        const auto select = [&](const QString &path, const QString &kind, const QString &mime) {
+            pane->property("folderPane").value<QObject *>()->setProperty(
+                "current", QVariantMap{{"path", path}, {"name", QFileInfo(path).fileName()}, {"isDir", false}, {"kind", kind},
+                                       {"mime", mime}, {"size", QFileInfo(path).size()}, {"modified", QFileInfo(path).lastModified()}});
+        };
+        // The type's name and the app its button names both follow the reading.
+        select(pdf, "other", unnamed);
+        QTRY_VERIFY2(said().contains(pdfName), qPrintable(said()));
+        QVERIFY2(said().contains("Open with Reader"), qPrintable(said()));
+        // The next item is never named by the reading made for the last one, also before its own is asked for.
+        select(claimed, "archive", "application/zip");
+        QCOMPARE(backend.details().value("mime").toString(), QString("application/pdf"));
+        QVERIFY2(!said().contains(pdfName) && !said().contains("Reader"), qPrintable(said()));
+        QTRY_VERIFY2(said().contains(types.mimeTypeForName("application/zip").comment()), qPrintable(said()));
+        QVERIFY2(!said().contains(pdfName) && !said().contains("Reader"), qPrintable(said()));
+    }
+
     void backendReadsTrashNotesOffTheUiThread()
     {
         // Finding a trashed item's note looks over every mounted drive, so
@@ -5479,6 +5549,40 @@ private slots:
         QVERIFY(qGray(page.pixel(page.width() - 3, page.height() - 3)) > 200);
     }
 
+    void thumbnailsFollowWhatAFileHoldsWhenItsNameSaysNothing()
+    {
+        // A picture or a PDF whose name gives no type is thumbnailed as what it holds, and a name that gives one is believed.
+        QTemporaryDir dir;
+        QImage picture(64, 32, QImage::Format_RGB32);
+        picture.fill(Qt::green);
+        const QString bare = dir.filePath("holiday"), odd = dir.filePath("holiday.oxQCuj"), zip = dir.filePath("holiday.zip");
+        for (const QString &copy : {bare, odd, zip})
+            QVERIFY(picture.save(copy, "PNG"));
+        QImage frame(40, 20, QImage::Format_RGB32);
+        frame.fill(Qt::blue);
+        QVERIFY(frame.save(dir.filePath("frame.png")));
+        write(dir.filePath("pdf.thumbnailer"),
+              "[Thumbnailer Entry]\nExec=/bin/cp \"" + dir.filePath("frame.png").toUtf8() + "\" %o\nMimeType=application/pdf;\n");
+        write(dir.filePath("report.download"), "%PDF-1.4\n1 0 obj\n");
+        write(dir.filePath("blob"), QByteArray("\0\1\2\3", 4));
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
+        const QString unnamed = "application/octet-stream";
+
+        // Qt's own reader draws the picture at the size asked for; the thumbnailer's frame comes as it was made.
+        QCOMPARE(thumbnails.load(bare, unnamed, 128).size(), QSize(128, 64));
+        QCOMPARE(thumbnails.load(odd, unnamed, 128).size(), QSize(128, 64));
+        QCOMPARE(thumbnails.load(dir.filePath("report.download"), unnamed, 128).size(), QSize(40, 20));
+        // The name said a type: the file isn't read to doubt it.
+        QVERIFY(thumbnails.load(zip, "application/zip", 128).isNull());
+        // Nothing can draw these bytes, so nothing failed.
+        QVERIFY(thumbnails.load(dir.filePath("blob"), unnamed, 128).isNull());
+        QVERIFY(!QFile::exists(dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(dir.filePath("blob")))));
+        // A pipe is told by its kind and never opened: with nobody writing, the open would wait for good.
+        const QString pipe = dir.filePath("events");
+        QCOMPARE(mkfifo(QFile::encodeName(pipe).constData(), 0600), 0);
+        QCOMPARE(FolderModel::typeByContent(pipe, unnamed), QString("inode/fifo"));
+    }
+
     void previewerPicksAViewerForEachType()
     {
         QCOMPARE(Previewer::viewerFor("image/png", false), QString("image"));
@@ -5507,6 +5611,50 @@ private slots:
         Previewer previewer;
         previewer.start(dir.filePath("blob.txt"), false, "name");
         QTRY_COMPARE(previewer.viewer(), QString("other"));
+    }
+
+    void previewerNamesAFileByWhatItHoldsWhenItsNameSaysNothing()
+    {
+        // A PDF or a text whose name gives no type is shown as what it holds, read off the UI thread like a text's opening.
+        QTemporaryDir dir;
+        const QString pdf = dir.filePath("report.download"), notes = dir.filePath("notes"), blob = dir.filePath("blob");
+        const QString claimed = dir.filePath("report.zip"), download = dir.filePath("paper.oxQCuj");
+        write(pdf, "%PDF-1.4\n1 0 obj\n");
+        write(notes, "hello\nworld\n");
+        write(download, "");
+        write(blob, QByteArray("\0\1\2\3", 4));
+        write(claimed, "%PDF-1.4\n1 0 obj\n");
+        Previewer previewer;
+        previewer.start(pdf, false, "name");
+        QCOMPARE(previewer.viewer(), QString("other"));
+        QTRY_COMPARE(previewer.viewer(), QString("pdf"));
+        QCOMPARE(previewer.item().value("mime").toString(), QString("application/pdf"));
+        QCOMPARE(previewer.item().value("kind").toString(), QString("pdf"));
+        QCOMPARE(previewer.type(), QMimeDatabase().mimeTypeForName("application/pdf").comment());
+
+        // What it holds is text: its opening is read too.
+        previewer.show(notes);
+        QTRY_COMPARE(previewer.text(), QString("hello\nworld\n"));
+        QCOMPARE(previewer.viewer(), QString("text"));
+
+        // A file shown while still empty and filled since is read again at its next showing.
+        previewer.show(download);
+        QThreadPool::globalInstance()->waitForDone();
+        QCoreApplication::processEvents();
+        QCOMPARE(previewer.viewer(), QString("other"));
+        previewer.show(notes);
+        write(download, "%PDF-1.4\n1 0 obj\n");
+        previewer.show(download);
+        QTRY_COMPARE(previewer.viewer(), QString("pdf"));
+
+        // Bytes nothing knows stay a plain file, and so does a name that said a type.
+        for (const QString &plain : {blob, claimed}) {
+            previewer.show(plain);
+            QThreadPool::globalInstance()->waitForDone();
+            QCoreApplication::processEvents();
+            QCOMPARE(previewer.viewer(), QString("other"));
+        }
+        QCOMPARE(previewer.item().value("mime").toString(), QString("application/zip"));
     }
 
     void previewerShowsOnlyWhatLaysOutQuickly()

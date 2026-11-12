@@ -136,6 +136,8 @@ public:
     // Recents and plugins' views: lists of their own, not folders.
     static bool isView(const QString &path) { return path == recentPath() || isPluginView(path); }
     static QString kindForMime(const QString &mime);
+    // The type of a file its extension could not name, from what it holds: this opens the file, so never on the UI thread.
+    static QString typeByContent(const QString &path, const QString &mime);
     // Everything under `root` whose name contains `query` (ignoring case),
     // named by its path from `root`. Stops at `limit` matches, at other
     // filesystems and at symlinks, and as soon as `stop` returns true.
