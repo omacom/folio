@@ -18,7 +18,7 @@ ApplicationWindow {
     minimumHeight: 360
     visible: true
     title: previewer.item.name || qsTr("Files")
-    color: theme.darkBackground
+    color: theme.glass < 1 ? "transparent" : theme.darkBackground
 
     Material.theme: theme.light ? Material.Light : Material.Dark
     Material.accent: theme.accent
@@ -67,15 +67,23 @@ ApplicationWindow {
     Item {
         anchors.fill: parent
 
+        // Under glass, the ground below the top bar.
+        Rectangle {
+            visible: theme.glass < 1
+            anchors { fill: parent; topMargin: topBar.height }
+            color: Qt.alpha(theme.darkBackground, theme.glass)
+        }
+
         ColumnLayout {
             anchors.fill: parent
             spacing: 0
 
             // What it is, where it sits in the folder, and the way out.
             Rectangle {
+                id: topBar
                 Layout.fillWidth: true
                 implicitHeight: 60
-                color: theme.background
+                color: Qt.alpha(theme.background, theme.glass)
 
                 RowLayout {
                     anchors.fill: parent
@@ -339,7 +347,7 @@ ApplicationWindow {
                 name: "folder"
                 size: 120
                 stroke: 1.1
-                color: theme.accent
+                color: theme.accentText
             }
             Text {
                 Layout.alignment: Qt.AlignHCenter
@@ -380,7 +388,7 @@ ApplicationWindow {
                 Text {
                     Layout.alignment: Qt.AlignHCenter
                     text: win.item.extension || ""
-                    color: theme.accent
+                    color: theme.accentText
                     font.weight: Font.DemiBold
                 }
                 Text {

@@ -21,7 +21,7 @@ ApplicationWindow {
         translator.language
         return activePane && activePane.paneBackend.title.length > 0 ? activePane.paneBackend.title : qsTr("Files")
     }
-    color: theme.background
+    color: theme.glass < 1 ? "transparent" : theme.background
 
     Material.theme: theme.light ? Material.Light : Material.Dark
     Material.accent: theme.accent
@@ -141,8 +141,16 @@ ApplicationWindow {
         Rectangle {
             width: parent.width
             height: parent.barHeight
-            color: theme.background
+            color: Qt.alpha(theme.background, theme.glass)
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Qt.alpha(theme.foreground, 0.12) }
+        }
+
+        // Under glass the sidebar, the panes and the lines between them share one ground, so no two layers stack.
+        Rectangle {
+            visible: theme.glass < 1
+            anchors { left: parent.left; top: parent.top; topMargin: parent.barHeight; bottom: parent.bottom }
+            width: parent.width - win.detailsWidth
+            color: Qt.alpha(theme.background, theme.glass)
         }
 
         RowLayout {

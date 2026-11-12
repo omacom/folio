@@ -63,7 +63,7 @@ Item {
         radius: Math.min(4, theme.radius)
         border.width: folderDrop.containsDrag ? 2 : 0
         border.color: theme.accent
-        color: row.current || folderDrop.containsDrag ? Qt.alpha(theme.accent, 0.18)
+        color: row.current || folderDrop.containsDrag ? Qt.alpha(theme.accent, theme.currentTint)
              : row.trail ? Qt.alpha(theme.foreground, 0.08)
              : hover.hovered ? Qt.alpha(theme.foreground, 0.05)
              : "transparent"
@@ -106,7 +106,7 @@ Item {
                 visible: !thumb.visible
                 name: row.glyph
                 size: 16
-                color: row.isDir ? theme.accent : theme.secondaryForeground
+                color: row.isDir ? theme.accentText : theme.secondaryForeground
             }
         }
         // The name and the date are aligned explicitly, so that they're
@@ -117,7 +117,7 @@ Item {
             Layout.minimumWidth: 120
             horizontalAlignment: Text.AlignLeft
             text: row.name
-            color: row.current ? theme.accent : theme.foreground
+            color: row.current ? theme.accentText : theme.foreground
             elide: Text.ElideMiddle
         }
         Text {

@@ -73,7 +73,7 @@ Item {
                     name: "audio"
                     size: 120
                     stroke: 1.2
-                    color: theme.accent
+                    color: theme.accentText
                 }
                 Text {
                     Layout.alignment: Qt.AlignHCenter
