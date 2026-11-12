@@ -9,6 +9,8 @@ Rectangle {
     property bool previewVisible: true
     property bool previewFits: true
     property string viewMode: "grid"
+    // Whether the list opens folders in place: the window's, shown here.
+    property bool treeView: false
     // Ctrl+L: the path as text to edit. Enter goes there (or connects to a
     // server's address), Escape cancels, Tab completes a folder name.
     property bool editing: false
@@ -17,6 +19,7 @@ Rectangle {
     signal closeRequested()
     signal togglePreview()
     signal cycleView()
+    signal treeToggled()
     signal editDone()
 
     function editPath() {
@@ -190,12 +193,25 @@ Rectangle {
         Item { implicitWidth: 16 }
         // Shows the current view; clicking moves to the next one.
         IconButton {
+            objectName: "viewButton"
             glyph: bar.viewMode
             // Names what a click does, like the buttons beside it.
             text: bar.viewMode === "grid" ? qsTr("Show as list")
                 : bar.viewMode === "list" ? qsTr("Show as columns")
                 : qsTr("Show as grid")
             onClicked: bar.cycleView()
+        }
+        // In the list: whether folders open in place (T), lit while they do.
+        IconButton {
+            objectName: "treeButton"
+            visible: bar.viewMode === "list"
+            glyph: "tree"
+            text: qsTr("Tree")
+            active: bar.treeView
+            checked: bar.treeView
+            Accessible.checkable: true
+            Accessible.checked: bar.treeView
+            onClicked: bar.treeToggled()
         }
         IconButton {
             id: sortButton

@@ -32,6 +32,7 @@ Rectangle {
     property var shortcuts: [
         ["← ↑ → ↓", qsTr("Move the selection")],
         [LayoutMirroring.enabled ? "← / →" : "→ / ←", qsTr("In list and columns: into a folder / back out")],
+        [LayoutMirroring.enabled ? "← / →" : "→ / ←", qsTr("With the tree on: open a folder in place / close it or step out")],
         // The keys in these few are mixed with words; the key names (Shift,
         // Alt, ⏎) stay as they are in every language.
         [qsTr("Shift+click / Shift+arrows"), qsTr("Select a range")],
@@ -63,6 +64,7 @@ Rectangle {
         ["Escape", qsTr("Stop the file work under way, or dismiss what went wrong")],
         [qsTr("Right-click / Alt+⏎ / Menu"), qsTr("Everything else, for files and for drives in the sidebar")],
         ["S / Shift+S", qsTr("Sort: name, kind, newest, oldest, size")],
+        ["T", qsTr("In the list: the tree, folders opening in place, on or off")],
         ["Ctrl+H", qsTr("Show hidden files")],
         ["F5", qsTr("Reload")],
         ["?", qsTr("Show these shortcuts")],

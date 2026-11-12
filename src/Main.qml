@@ -57,6 +57,8 @@ ApplicationWindow {
     // Columns on a first launch; after that, whichever view was used last.
     property string viewMode: "columns"
     property real zoom: 1
+    // Folders open in place in the list view, off until turned on.
+    property bool treeView: false
 
     // The pane keys, the sidebar and the details go to.
     property var activePane: leftPane
@@ -80,6 +82,7 @@ ApplicationWindow {
     Settings {
         property alias viewMode: win.viewMode
         property alias zoom: win.zoom
+        property alias treeView: win.treeView
     }
 
     // Ctrl+Alt+N: a second pane on the right, starting where the active

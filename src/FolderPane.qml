@@ -26,7 +26,40 @@ FocusScope {
     // remembered between launches; the right pane of a split starts with
     // the view of the pane it was split from.
     property string viewMode: host ? host.viewMode : "columns"
-    onViewModeChanged: if (host && !closable) host.viewMode = viewMode
+    onViewModeChanged: {
+        if (host && !closable)
+            host.viewMode = viewMode
+        if (viewMode !== "list")
+            leaveTree()
+    }
+    // Folders open in place are the list's own: the grid and the columns
+    // show the folder's items alone, so switching away closes them. The
+    // cursor goes to the folder its item was in, at the top.
+    function leaveTree() {
+        let row = backend.folder.indexOfPath(lastPath)
+        while (row >= 0 && backend.folder.parentRow(row) >= 0)
+            row = backend.folder.parentRow(row)
+        const path = row >= 0 ? backend.folder.get(row).path : lastPath
+        const rows = backend.folder.count
+        backend.folder.collapseAll()
+        if (backend.folder.count === rows)
+            return
+        lastPath = path
+        if (view.item && !cursorLetGo)
+            view.item.select(backend.folder.indexOfPath(path), true)
+    }
+    // Whether the list opens folders in place, shared by the window's panes
+    // and remembered with the view.
+    readonly property bool treeView: host ? !!host.treeView : false
+    // T and the tree button. The key says what it did in the banner, as
+    // the button can't be seen to light from the keyboard's side.
+    function toggleTree(say) {
+        if (!host)
+            return
+        host.treeView = !host.treeView
+        if (say)
+            backend.showNotice(host.treeView ? qsTr("Tree on") : qsTr("Tree off"))
+    }
     // How big the grid's tiles are, in steps (Ctrl+= / Ctrl+- / Ctrl+0, or
     // Ctrl+scroll), shared and remembered the same way as the view.
     property real zoom: host ? host.zoom : 1
@@ -198,6 +231,8 @@ FocusScope {
     // S steps through the sort orders, Shift+S back.
     Shortcut { sequence: "S"; enabled: pane.keys; onActivated: pathBar.stepSort(1) }
     Shortcut { sequence: "Shift+S"; enabled: pane.keys; onActivated: pathBar.stepSort(-1) }
+    // T turns the list's tree on and off; the grid and the columns have none.
+    Shortcut { sequence: "T"; enabled: pane.keys && pane.viewMode === "list"; onActivated: pane.toggleTree(true) }
     Shortcut { sequences: ["F5", "Refresh"]; enabled: pane.active; onActivated: { backend.folder.reload(); places.refresh(); plugins.refresh() } }
 
     // A drive being ejected can't be in use: a pane showing a folder on it
@@ -413,7 +448,7 @@ FocusScope {
             }
         }
         Component { id: gridView; FolderGrid { zoom: pane.zoom; onZoomRequested: (step) => pane.zoomBy(step) } }
-        Component { id: listView; FolderList { } }
+        Component { id: listView; FolderList { tree: pane.treeView } }
         Component { id: columnsView; FolderColumns { } }
     }
 
@@ -431,7 +466,9 @@ FocusScope {
         viewMode: pane.viewMode
         closable: pane.closable
         onTogglePreview: if (pane.host) pane.host.previewVisible = !pane.host.previewVisible
+        treeView: pane.treeView
         onCycleView: pane.cycleView()
+        onTreeToggled: pane.toggleTree(false)
         onCloseRequested: pane.closeRequested()
     }
 
