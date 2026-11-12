@@ -11,7 +11,9 @@
 #include <cstdio>
 #include <unistd.h>
 
-Previewer::Previewer(QObject *parent) : QObject(parent) {}
+Previewer::Previewer(QObject *parent) : Previewer(FileOps::openInDefaultApp, parent) {}
+
+Previewer::Previewer(Opener opener, QObject *parent) : QObject(parent), m_opener(std::move(opener)) {}
 
 QString Previewer::viewerFor(const QString &mime, bool isDir) {
     if (isDir)
@@ -196,11 +198,14 @@ void Previewer::previous() {
 }
 
 void Previewer::open() {
-    if (m_index >= 0)
+    if (m_index >= 0) {
         // The same lookup as opening from the folder: the type's default
         // app, or its parent type's.
-        if (const QString problem = FileOps::openInDefaultApp(m_entries.at(m_index).path); !problem.isEmpty())
+        if (const QString problem = m_opener(m_entries.at(m_index).path); !problem.isEmpty())
             qWarning("%s", qPrintable(problem));
+        else
+            emit opened();
+    }
 }
 
 void Previewer::setIndex(int index, bool report) {

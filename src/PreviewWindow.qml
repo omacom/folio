@@ -47,6 +47,12 @@ ApplicationWindow {
             win.view[name](arg)
     }
 
+    // Opened in its app, the file needs no preview: the window closes, as Quick Look's does.
+    Connections {
+        target: previewer
+        function onOpened() { Qt.quit() }
+    }
+
     Shortcut { sequences: ["Space", "Escape", "Q"]; context: Qt.ApplicationShortcut; onActivated: win.helpVisible ? win.helpVisible = false : Qt.quit() }
     Shortcut { sequence: "?"; context: Qt.ApplicationShortcut; onActivated: win.helpVisible = !win.helpVisible }
     // The folder's files run right to left when mirrored, so Left is next.

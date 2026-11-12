@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 #include <QObject>
 #include <QSocketNotifier>
 #include <QVariantMap>
@@ -30,6 +32,9 @@ class Previewer : public QObject {
 
 public:
     explicit Previewer(QObject *parent = nullptr);
+    // How a file is opened, for a test to put its own in the place of the default app: it gives what went wrong, or nothing.
+    using Opener = std::function<QString(const QString &)>;
+    explicit Previewer(Opener opener, QObject *parent = nullptr);
 
     // Shows the file right away, then lists its folder in the background so
     // the arrow keys can step to its neighbours.
@@ -69,10 +74,13 @@ public:
 signals:
     void changed();
     void listed();
+    // The item was handed to its app, and the preview has done its part.
+    void opened();
 
 private:
     void setIndex(int index, bool report);
 
+    Opener m_opener;
     QVector<FolderModel::Entry> m_entries;
     int m_index = -1;
     QString m_viewer;
