@@ -6754,6 +6754,90 @@ private slots:
         }
     }
 
+    void thumbnailIsKeptNoLargerThanItsViewDraws()
+    {
+        // A view that says the most it draws gets the picture no larger, in its own shape; one that says nothing, or draws larger, gets it as made.
+        QTemporaryDir dir;
+        const QString file = dir.filePath("notes.txt");
+        write(file, "one\ntwo\n");
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.filePath("none")});
+        QQmlEngine engine;
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent picture(&engine);
+        picture.setData("import QtQuick\nimport \"Format.js\" as Format\n"
+                        "Image { required property string path; required property var most\n"
+                        "        asynchronous: true; sourceSize: most\n"
+                        "        source: Format.page(path, 256, new Date(0), \"#1e1e1e\", \"#eeeeee\") }",
+                        QUrl::fromLocalFile(QFINDTESTDATA("../src/Format.js")));
+        auto shown = [&](const QVariant &most) {
+            std::unique_ptr<QObject> image(picture.createWithInitialProperties({{"path", file}, {"most", most}}));
+            const bool ready = image && QTest::qWaitFor([&] { return image->property("implicitWidth").toInt() > 0; }, 5000);
+            return ready ? QSize(image->property("implicitWidth").toInt(), image->property("implicitHeight").toInt()) : QSize();
+        };
+        const QSize made(218, 256);
+        QCOMPARE(shown(QVariant()), made);
+        QCOMPARE(shown(QSize(128, 92)), QSize(78, 92));
+        // A picture given a size is counted in the screen's own pixels, so as made it is that many of them.
+        QCOMPARE(shown(QSize(1000, 1000)) * qGuiApp->devicePixelRatio(), made);
+    }
+
+    void gridKeepsATextPageAtTheSizeItsTileDraws()
+    {
+        // A text file's page is kept at the size its tile draws it; a photo's thumbnail keeps all it has.
+        QTemporaryDir home, stage;
+        write(home.filePath("notes.txt"), "one\ntwo\n");
+        QVERIFY(QImage(400, 300, QImage::Format_RGB32).save(home.filePath("photo.png")));
+        Backend backend(home.path());
+        backend.navigate(home.path());
+        QTRY_COMPARE(backend.folder()->rowCount(), 2);
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        // The cache is kept out of the folder shown: made there, it would be listed as a third tile.
+        Thumbnails thumbnails(stage.filePath("cache"), {stage.filePath("none")});
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window {\n"
+                          "    width: 1003; height: 600; visible: true\n"
+                          "    FolderGrid { id: grid; anchors.fill: parent }\n"
+                          "    function picture(item) {\n"
+                          "        if (item.source !== undefined && String(item.source).startsWith('image://thumb/')) return item\n"
+                          "        for (const child of Array.from(item.children)) {\n"
+                          "            const found = picture(child)\n"
+                          "            if (found) return found\n"
+                          "        }\n"
+                          "        return null\n"
+                          "    }\n"
+                          "    function sizes() {\n"
+                          "        const said = []\n"
+                          "        for (let i = 0; i < grid.count; ++i) {\n"
+                          "            const tile = grid.itemAtIndex(i), image = tile ? picture(tile) : null\n"
+                          "            if (!image || image.status !== Image.Ready) return 'not ready ' + i\n"
+                          "            said.push(Math.floor(image.implicitWidth) + 'x' + Math.floor(image.implicitHeight))\n"
+                          "        }\n"
+                          "        return said.join(' ')\n"
+                          "    }\n"
+                          "    function zoomIn() { grid.zoom = 2 }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/GridPictureTest.qml"));
+        std::unique_ptr<QObject> window(component.create());
+        QVERIFY2(window, qPrintable(component.errorString()));
+        auto sizes = [&] {
+            QVariant result;
+            QMetaObject::invokeMethod(window.get(), "sizes", Q_RETURN_ARG(QVariant, result));
+            return result.toString();
+        };
+        QTRY_COMPARE(sizes(), QString("78x92 256x192"));
+        // Zoomed in, the page is kept at the zoom's whole step, here twice that; the photo's thumbnail is left as it's made.
+        QVERIFY(QMetaObject::invokeMethod(window.get(), "zoomIn"));
+        QTRY_COMPARE(sizes(), QString("156x184 512x384"));
+    }
+
     void themeFallsBack()
     {
         QTemporaryDir dir;

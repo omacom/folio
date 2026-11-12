@@ -357,7 +357,8 @@ namespace {
 
 class ThumbnailResponse : public QQuickImageResponse, public QRunnable {
 public:
-    ThumbnailResponse(const Thumbnails *thumbnails, const QString &id) : m_thumbnails(thumbnails), m_id(id) {
+    ThumbnailResponse(const Thumbnails *thumbnails, const QString &id, const QSize &most)
+        : m_thumbnails(thumbnails), m_id(id), m_most(most) {
         setAutoDelete(false);
     }
 
@@ -379,6 +380,9 @@ public:
             const QString path = QUrl::fromPercentEncoding(parts.mid(3).join('/').toUtf8());
             m_image = m_thumbnails->load(path, mime, qBound(64, size, 1024));
         }
+        // Kept no larger than the view draws it, and never enlarged: a page made at 256 pixels shows on a tile of 78 by 92.
+        if (!m_most.isEmpty() && (m_image.width() > m_most.width() || m_image.height() > m_most.height()))
+            m_image = m_image.scaled(m_most, Qt::KeepAspectRatio, Qt::SmoothTransformation);
         if (m_image.isNull())
             m_error = QStringLiteral("No thumbnail");
         emit finished();
@@ -394,6 +398,7 @@ public:
 private:
     const Thumbnails *m_thumbnails;
     QString m_id;
+    QSize m_most;
     QImage m_image;
     QString m_error;
     std::atomic_bool m_cancelled{false};
@@ -407,9 +412,9 @@ ThumbnailProvider::ThumbnailProvider(const Thumbnails *thumbnails) : m_thumbnail
     m_pool.setMaxThreadCount(qBound(2, QThread::idealThreadCount() / 2, 6));
 }
 
-// The size comes in the id; no view sets a sourceSize to request one.
-QQuickImageResponse *ThumbnailProvider::requestImageResponse(const QString &id, const QSize &) {
-    auto *response = new ThumbnailResponse(m_thumbnails, id);
+// The thumbnail's size comes in the id; a view's sourceSize is the most it draws, and the picture is kept no larger.
+QQuickImageResponse *ThumbnailProvider::requestImageResponse(const QString &id, const QSize &requestedSize) {
+    auto *response = new ThumbnailResponse(m_thumbnails, id, requestedSize);
     m_pool.start(response);
     return response;
 }
