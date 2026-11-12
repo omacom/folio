@@ -183,6 +183,8 @@ public:
     // inherits) when the pattern has a slash, else a glob for its name,
     // ignoring case. An empty filter fits everything.
     static bool fits(const QStringList &filter, const Entry &entry);
+    // The type of a file its extension could not name, from what it holds: this opens the file, so never on the UI thread.
+    static QString typeByContent(const QString &path, const QString &mime);
     // Everything under `root` whose name contains `query` (ignoring case),
     // named by its path from `root`. Stops at `limit` matches, at other
     // filesystems and at symlinks, and as soon as `stop` returns true.
