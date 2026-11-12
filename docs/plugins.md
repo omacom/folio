@@ -2,7 +2,7 @@
 
 A plugin adds something Folio doesn't know about on its own: a section in the
 sidebar, a status on one of its rows, entries in the right-click menu, rows
-in the details pane, or a view in the main pane. Tailscale, Dropbox and LocalSend come with
+in the details pane, or a view in the main pane. Tailscale, Dropbox, LocalSend and phones come with
 Folio as plugins, and they use nothing that isn't described here, so a plugin
 you write sits on equal footing with them.
 
@@ -23,7 +23,7 @@ in, or Folio won't run it.
 
 | Folder | What's there |
 | --- | --- |
-| `/usr/share/folio/plugins/<id>/` | Plugins installed by packages, including the three that come with Folio. |
+| `/usr/share/folio/plugins/<id>/` | Plugins installed by packages, including the four that come with Folio. |
 | `~/.local/share/folio/plugins/<id>/` (`$XDG_DATA_HOME`) | Your own. One with the same id replaces the packaged one entirely. |
 
 The folder's name is the plugin's id: lowercase letters, digits and dashes,

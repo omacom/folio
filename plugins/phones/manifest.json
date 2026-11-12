@@ -1,0 +1,6 @@
+{
+  "folio": 1,
+  "requires": ["gio"],
+  "poll": { "command": ["./phones"], "every": 5 },
+  "section": { "title": "Phones" }
+}
