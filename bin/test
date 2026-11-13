@@ -3,6 +3,6 @@ set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cmake -S "$ROOT" -B "$ROOT/build" -DCMAKE_BUILD_TYPE=Release >/dev/null
-cmake --build "$ROOT/build" --target folio_tests -j"$(nproc)"
+cmake --build "$ROOT/build" --target folio_tests stl_thumbnail_tests -j"$(nproc)"
 cd "$ROOT/build"
-QT_QPA_PLATFORM=offscreen ./folio_tests
+QT_QPA_PLATFORM=offscreen ctest --output-on-failure --no-tests=error "$@"

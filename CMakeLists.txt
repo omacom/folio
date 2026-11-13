@@ -13,6 +13,7 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 DBus Conc
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GIO REQUIRED IMPORTED_TARGET gio-2.0 gio-unix-2.0)
 find_package(ZLIB REQUIRED)
+add_subdirectory(tools/stl-thumbnailer)
 
 # Everything but main.cpp, shared by the app and the tests, so a new source
 # file in src/ needs no line here.
@@ -26,13 +27,20 @@ target_link_libraries(folio_core PUBLIC
 
 add_executable(folio src/main.cpp src/resources.qrc)
 target_link_libraries(folio PRIVATE folio_core)
+add_dependencies(folio folio-stl-thumbnailer)
 
 # The tests compile the same sources, run offscreen, and read the QML they
 # check straight from src/.
 add_executable(folio_tests tests/folio_tests.cpp)
 target_link_libraries(folio_tests PRIVATE folio_core Qt6::Test)
+add_dependencies(folio_tests folio-stl-thumbnailer)
 # The bundled plugins, which the tests run against stubs.
 target_compile_definitions(folio_tests PRIVATE FOLIO_PLUGINS="${CMAKE_SOURCE_DIR}/plugins")
 enable_testing()
 add_test(NAME folio_tests COMMAND folio_tests)
 set_tests_properties(folio_tests PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)
+
+add_executable(stl_thumbnail_tests tests/stl_thumbnail_tests.cpp)
+target_link_libraries(stl_thumbnail_tests PRIVATE folio_stl Qt6::Test)
+add_dependencies(stl_thumbnail_tests folio-stl-thumbnailer)
+add_test(NAME stl_thumbnail_tests COMMAND stl_thumbnail_tests)

@@ -4,6 +4,8 @@
 
 Files (`folio`) is Omarchy's file manager. It's one quiet window that follows your Omarchy theme and language, works from the keyboard, and never crawls your home folder in the background: folders are read when you open them, and thumbnails are made when a tile needs one, shared with every other app through `~/.cache/thumbnails`.
 
+STL models get transparent thumbnails from a small bundled CPU renderer, without a graphics driver or a separate 3D application. An explicit user thumbnailer takes precedence; an installed system thumbnailer handles files the bundled renderer declines.
+
 - **Three views**: a grid with real previews, a list, and Finder-style columns. Ctrl+1/2/3 switches.
 - **Space previews** pictures, video, audio, PDFs, text and Markdown at full size, in their own window.
 - **The sidebar** holds everything in your home folder, pinned folders (shared with GTK file dialogs), Recents, Trash with restore, your drives, and the machines on your tailnet, which open over SFTP.

@@ -4,6 +4,7 @@
 #include <QBuffer>
 #include <QDeadlineTimer>
 #include <QCryptographicHash>
+#include <QCoreApplication>
 #include <QtEndian>
 #include <zlib.h>
 #include <QDir>
@@ -152,12 +153,11 @@ void stop(QProcess &process, qint64 session) {
     process.waitForFinished(stoppedPatience);
 }
 
-Ran run(QProcess &process, const QString &program, const QStringList &args, int patience, const std::atomic_bool &quitting) {
+Ran run(QProcess &process, const QString &program, const QStringList &args, QDeadlineTimer deadline, const std::atomic_bool &quitting) {
     // A thumbnail asked for as Folio quits is never started.
-    if (quitting)
+    if (quitting || deadline.hasExpired())
         return Ran::Unjudged;
-    // One deadline for the start and the finish together.
-    const QDeadlineTimer deadline(patience);
+    // The caller's absolute deadline also covers an STL's system fallback.
     process.setChildProcessModifier([folio = ::getpid()] { keepInASession(folio); });
     process.start(program, args);
     // In slices, so quitting doesn't wait on a program slow to start (one on a stalled network mount, say).
@@ -250,11 +250,12 @@ const QHash<QString, QString> &packageFor() {
 
 } // namespace
 
-Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbnailerDirectories, int patience)
+Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbnailerDirectories, int patience, const QString &stlHelper)
     : m_cache(cacheDirectory.isEmpty()
                   ? QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + "/thumbnails"
                   : cacheDirectory),
-      m_patience(patience) {
+      m_patience(patience),
+      m_stlHelper(stlHelper.isNull() ? QCoreApplication::applicationDirPath() + "/folio-stl-thumbnailer" : stlHelper) {
     QStringList directories = thumbnailerDirectories;
     if (directories.isEmpty()) {
         // Later directories win, so the user's own thumbnailers override the
@@ -265,6 +266,7 @@ Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbna
             directories << base + "/thumbnailers";
     }
     QMimeDatabase mimes;
+    const QString userDirectory = QDir(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)).filePath("thumbnailers");
     for (const QString &directory : directories) {
         // A .thumbnailer file may name a type by an alias, as glycin names DDS pictures image/x-dds.
         QHash<QString, QString> named, aliased;
@@ -301,6 +303,10 @@ Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbna
         // Within one directory the file that names a type itself wins over one that names an alias of it.
         m_thumbnailers.insert(aliased);
         m_thumbnailers.insert(named);
+        if (QDir(directory).absolutePath() == QDir(userDirectory).absolutePath()) {
+            for (auto it = aliased.cbegin(); it != aliased.cend(); ++it) m_userThumbnailers.insert(it.key());
+            for (auto it = named.cbegin(); it != named.cend(); ++it) m_userThumbnailers.insert(it.key());
+        }
     }
     // An older Folio's failure markers (fail/folio, or a fail/folio-<n> with a lower number) are never read again, so
     // they are cleared away, on a worker since there may be thousands. A newer Folio's are left for it, so an installed
@@ -323,10 +329,26 @@ Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbna
 QString Thumbnails::missingPackage(const QString &mime) const {
     // Qt draws its own pictures in-process, an installed thumbnailer needs nothing more, and pdftoppm draws a PDF without one.
     if ((mime.startsWith("image/") && QImageReader::supportedMimeTypes().contains(mime.toLatin1()))
-        || m_thumbnailers.contains(mime)
+        || m_thumbnailers.contains(mime) || nativeStl(mime)
         || (mime == "application/pdf" && !QStandardPaths::findExecutable("pdftoppm").isEmpty()))
         return {};
     return packageFor().value(mime);
+}
+
+bool Thumbnails::nativeStl(const QString &mime) const {
+    if (mime != "model/stl" && mime != "model/x.stl-ascii" && mime != "model/x.stl-binary") return false;
+    if (m_userThumbnailers.contains(mime) || m_userThumbnailers.contains("model/stl")) return false;
+    const QFileInfo helper(m_stlHelper);
+    return !m_stlHelper.isEmpty() && helper.isFile() && helper.isExecutable();
+}
+
+QString Thumbnails::providerKey(const QString &mime, int pixels) const {
+    const QString fallback = m_thumbnailers.value(mime);
+    if (!nativeStl(mime)) return fallback;
+    const QFileInfo helper(m_stlHelper);
+    // A new helper, fallback or smaller size gets its turn after an earlier failure.
+    return QStringLiteral("stl-cpu-1:%1:%2:%3:%4\n%5").arg(m_stlHelper)
+        .arg(helper.size()).arg(helper.lastModified().toMSecsSinceEpoch()).arg(pixels).arg(fallback);
 }
 
 QString Thumbnails::cacheKey(const QString &path) {
@@ -380,7 +402,7 @@ QImage Thumbnails::load(const QString &path, const QString &mime, int size) cons
     const QString type = mime.endsWith("/*")
         ? QMimeDatabase().mimeTypeForFile(path, QMimeDatabase::MatchExtension).name()
         : mime;
-    const QString thumbnailer = m_thumbnailers.value(type);
+    const QString thumbnailer = providerKey(type, pixels);
     if (failedBefore(path, modified, thumbnailer))
         return {};
     // A file that cannot be read is not a broken one: nothing is tried, so nothing is remembered.
@@ -403,6 +425,17 @@ QImage Thumbnails::load(const QString &path, const QString &mime, int size) cons
 }
 
 QImage Thumbnails::generate(const QString &path, const QString &mime, int pixels, bool &attempted) const {
+    const QDeadlineTimer deadline(m_patience);
+    if (nativeStl(mime)) {
+        QImage image;
+        attempted = stlPicture(path, pixels, image, deadline);
+        if (!image.isNull()) return image;
+        if (m_quitting || deadline.hasExpired()) {
+            // A fallback not given a turn has not judged the file.
+            if (m_quitting || !m_thumbnailers.value(mime).isEmpty()) attempted = false;
+            return {};
+        }
+    }
     // A camera RAW with no installed thumbnailer, the desktop's own answer, shows the JPEG the camera embedded.
     if (RawEmbed::handles(mime) && !m_thumbnailers.contains(mime)) {
         attempted = true;
@@ -428,7 +461,7 @@ QImage Thumbnails::generate(const QString &path, const QString &mime, int pixels
     if (!command.isEmpty()) {
         // A thumbnailer that could not start has not judged the file, whatever a reader made of it first; a PDF is then left to pdftoppm.
         QImage image;
-        attempted = runThumbnailer(command, path, pixels, image);
+        attempted = runThumbnailer(command, path, pixels, image, deadline);
         if (attempted)
             return image;
     }
@@ -436,7 +469,7 @@ QImage Thumbnails::generate(const QString &path, const QString &mime, int pixels
     // CUPS) draws the first page.
     if (mime == "application/pdf" && !QStandardPaths::findExecutable("pdftoppm").isEmpty()) {
         QImage image;
-        attempted = pdfPage(path, pixels, image);
+        attempted = pdfPage(path, pixels, image, deadline);
         return image;
     }
     return {};
@@ -489,19 +522,29 @@ QImage Thumbnails::textPage(const QString &path, int pixels, const QColor &paper
     return page;
 }
 
-bool Thumbnails::pdfPage(const QString &path, int pixels, QImage &image) const {
+bool Thumbnails::pdfPage(const QString &path, int pixels, QImage &image, QDeadlineTimer deadline) const {
     QTemporaryDir scratch;
     if (!scratch.isValid())
         return false;
     QProcess process;
     const Ran ran = run(process, "pdftoppm", {"-f", "1", "-l", "1", "-singlefile", "-png", "-scale-to", QString::number(pixels),
-                                              path, scratch.filePath("page")}, m_patience, m_quitting);
+                                              path, scratch.filePath("page")}, deadline, m_quitting);
     if (ran == Ran::Finished)
         image = QImage(scratch.filePath("page.png"));
     return ran != Ran::Unjudged;
 }
 
-bool Thumbnails::runThumbnailer(const QString &command, const QString &path, int pixels, QImage &image) const {
+bool Thumbnails::stlPicture(const QString &path, int pixels, QImage &image, QDeadlineTimer deadline) const {
+    QTemporaryDir scratch;
+    if (!scratch.isValid()) return false;
+    const QString output = scratch.filePath("thumbnail.png");
+    QProcess process;
+    const Ran ran = run(process, m_stlHelper, {path, output, QString::number(pixels)}, deadline, m_quitting);
+    if (ran == Ran::Finished) image = QImage(output);
+    return ran != Ran::Unjudged;
+}
+
+bool Thumbnails::runThumbnailer(const QString &command, const QString &path, int pixels, QImage &image, QDeadlineTimer deadline) const {
     QTemporaryDir scratch;
     if (!scratch.isValid())
         return false;
@@ -517,7 +560,7 @@ bool Thumbnails::runThumbnailer(const QString &command, const QString &path, int
 
     QProcess process;
     process.setProcessChannelMode(QProcess::ForwardedErrorChannel);
-    const Ran ran = run(process, program, args, m_patience, m_quitting);
+    const Ran ran = run(process, program, args, deadline, m_quitting);
     if (ran == Ran::Finished)
         image = QImage(output);
     return ran != Ran::Unjudged;

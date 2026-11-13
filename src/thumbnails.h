@@ -2,10 +2,12 @@
 
 #include <QHash>
 #include <QDateTime>
+#include <QDeadlineTimer>
 #include <QImage>
 #include <QObject>
 #include <QQuickAsyncImageProvider>
 #include <QStringList>
+#include <QSet>
 #include <QThreadPool>
 #include <atomic>
 
@@ -21,9 +23,10 @@ class Thumbnails : public QObject {
     Q_OBJECT
 
 public:
-    // `patience` is how long a thumbnailer may take, in milliseconds; tests shorten it.
+    // `patience` covers a thumbnail and any fallback, in milliseconds. A null
+    // stlHelper finds the bundled companion; an explicit empty string disables it.
     explicit Thumbnails(const QString &cacheDirectory = {}, const QStringList &thumbnailerDirectories = {},
-                        int patience = 15000);
+                        int patience = 15000, const QString &stlHelper = {});
 
     // Returns a thumbnail no larger than `size` on its longest side, from the
     // cache when it is fresh, or a null image when none can be made.
@@ -34,8 +37,8 @@ public:
 
     static QString cacheKey(const QString &path);
     // The spec's fail/<program>-<version>: the number is raised when Folio learns to draw more, so old failures are tried
-    // again. 3: names with a thumbnailer's codes in them, and PDFs whose thumbnailer couldn't start, are drawn now.
-    static inline const QString failures = QStringLiteral("fail/folio-3");
+    // again. 4: a bundled CPU helper can draw STL files a system thumbnailer could not.
+    static inline const QString failures = QStringLiteral("fail/folio-4");
     static QString bucketFor(int size);
     // A text file's first lines set on a page in the given colors. Made
     // fresh each time rather than cached, since the colors follow the theme.
@@ -47,11 +50,14 @@ public:
 private:
     QString cachePath(const QString &path, int size) const;
     QString failPath(const QString &path) const;
+    bool nativeStl(const QString &mime) const;
+    QString providerKey(const QString &mime, int pixels) const;
     // Sets `attempted` when Qt's reader or a thumbnailer could take the file.
     QImage generate(const QString &path, const QString &mime, int pixels, bool &attempted) const;
     // Both answer whether the program judged the file: one that could not start, or was stopped as Folio quit, has not.
-    bool runThumbnailer(const QString &command, const QString &path, int pixels, QImage &image) const;
-    bool pdfPage(const QString &path, int pixels, QImage &image) const;
+    bool runThumbnailer(const QString &command, const QString &path, int pixels, QImage &image, QDeadlineTimer deadline) const;
+    bool pdfPage(const QString &path, int pixels, QImage &image, QDeadlineTimer deadline) const;
+    bool stlPicture(const QString &path, int pixels, QImage &image, QDeadlineTimer deadline) const;
     void remember(QImage image, const QString &path, int size, const QDateTime &modified) const;
     // A failure goes with the type's thumbnailer as it was then, none included: one installed since gets its turn.
     void rememberFailure(const QString &path, const QDateTime &modified, const QString &thumbnailer) const;
@@ -63,6 +69,8 @@ private:
     int m_patience;
     std::atomic_bool m_quitting{false};
     QHash<QString, QString> m_thumbnailers;
+    QSet<QString> m_userThumbnailers;
+    QString m_stlHelper;
 };
 
 // Serves image://thumb/<size>/<modified>/<mime>/<path> to QML on a thread pool.

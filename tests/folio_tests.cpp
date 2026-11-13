@@ -1,4 +1,5 @@
 #include <QClipboard>
+#include <QDataStream>
 #include <QDir>
 #include <QMimeData>
 #include <QPageSize>
@@ -5906,6 +5907,143 @@ private slots:
         // the one it names.
         write(dir.filePath("photo.heic"), "not a real heic");
         QCOMPARE(thumbnails.load(dir.filePath("photo.heic"), "image/*", 128).size(), QSize(64, 32));
+    }
+
+    void thumbnailsDrawStlWithoutAnExternalRenderer()
+    {
+        QTemporaryDir dir;
+        QByteArray stl(80, ' ');
+        QDataStream stream(&stl, QIODevice::Append);
+        stream.setByteOrder(QDataStream::LittleEndian);
+        stream.setFloatingPointPrecision(QDataStream::SinglePrecision);
+        stream << quint32(4);
+        const float faces[][9] = {{0,0,0, 0,1,0, 1,0,0}, {0,0,0, 1,0,0, 0,0,1},
+                                 {0,0,0, 0,0,1, 0,1,0}, {1,0,0, 0,1,0, 0,0,1}};
+        for (const auto &face : faces) {
+            stream << 0.f << 0.f << 0.f;
+            for (float coordinate : face) stream << coordinate;
+            stream << quint16(0);
+        }
+        const QString path = dir.filePath("part.stl");
+        write(path, stl);
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.filePath("no-thumbnailers")});
+        const QImage image = thumbnails.load(path, "model/stl", 256);
+        QVERIFY(!image.isNull());
+        QCOMPARE(image.size(), QSize(256, 256));
+        QVERIFY(QFile::exists(dir.filePath("cache/large/" + Thumbnails::cacheKey(path))));
+    }
+
+    void thumbnailsDoNotReuseStlWorkRefusalAtASmallerSize()
+    {
+        QTemporaryDir dir;
+        QByteArray stl(80, ' ');
+        QDataStream stream(&stl, QIODevice::Append);
+        stream.setByteOrder(QDataStream::LittleEndian);
+        stream.setFloatingPointPrecision(QDataStream::SinglePrecision);
+        stream << quint32(100);
+        for (int i = 0; i < 100; ++i)
+            stream << 0.f << 0.f << 1.f << 0.f << 0.f << 0.f << 10.f << 0.f << 0.f << 0.f << 10.f << 0.f << quint16(0);
+        const QString part = dir.filePath("part.stl");
+        write(part, stl);
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.filePath("no-thumbnailers")});
+        QVERIFY(thumbnails.load(part, "model/stl", 1024).isNull());
+        QCOMPARE(thumbnails.load(part, "model/stl", 128).size(), QSize(128,128));
+    }
+
+    void thumbnailsPreferUserStlThenCpuThenSystem()
+    {
+        QTemporaryDir dir;
+        const auto restore = dataHomeAt(dir.filePath("user"));
+        const QString user = dir.filePath("user/thumbnailers"), system = dir.filePath("system");
+        QVERIFY(QDir().mkpath(user)); QVERIFY(QDir().mkpath(system));
+        const QString part = dir.filePath("雪 50%off.stl"), helper = dir.filePath("cpu"), runs = dir.filePath("runs");
+        write(part, "fixture passed to each selected renderer");
+        QVERIFY(QImage(32,16,QImage::Format_RGB32).save(dir.filePath("cpu.png")));
+        QVERIFY(QImage(16,32,QImage::Format_RGB32).save(dir.filePath("system.png")));
+        write(helper, "#!/bin/sh\necho cpu >> \"" + runs.toUtf8() + "\"\ncp \""
+              + dir.filePath("cpu.png").toUtf8() + "\" \"$2\"\n");
+        QVERIFY(QFile::setPermissions(helper, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+        write(system + "/system.thumbnailer", "[Thumbnailer Entry]\nExec=/bin/cp \""
+              + dir.filePath("system.png").toUtf8() + "\" %o\nMimeType=model/stl;\n");
+        const auto load = [&](const QString &cache) {
+            return Thumbnails(dir.filePath(cache), {system,user}, 3000, helper).load(part,"model/stl",128);
+        };
+        QCOMPARE(load("native").size(), QSize(32,16));
+        QVERIFY(QFile::exists(runs)); QVERIFY(QFile::remove(runs));
+        // A canonical type declared through an alias is still an explicit user override.
+        write(user + "/custom.thumbnailer", "[Thumbnailer Entry]\nExec=/bin/cp \""
+              + dir.filePath("system.png").toUtf8() + "\" %o\nMimeType=model/x.stl-binary;\n");
+        QCOMPARE(load("user").size(), QSize(16,32));
+        QVERIFY(!QFile::exists(runs));
+        QVERIFY(QFile::remove(user + "/custom.thumbnailer"));
+        // Refusal, a missing PNG, and a damaged PNG all let the system renderer answer.
+        int declined = 0;
+        for (const QByteArray &body : {QByteArray("exit 1\n"), QByteArray("exit 0\n"), QByteArray("printf partial > \"$2\"\n")}) {
+            write(helper, "#!/bin/sh\n" + body);
+            QVERIFY(QFile::setPermissions(helper, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+            QCOMPARE(Thumbnails(dir.filePath("fallback-"+QString::number(++declined)), {system,user}, 3000, helper)
+                     .load(part,"model/stl",128).size(), QSize(16,32));
+        }
+        QVERIFY(QFile::remove(helper));
+        QCOMPARE(load("absent").size(), QSize(16,32));
+    }
+
+    void thumbnailsRetryStlWhenItsEffectiveProvidersChange()
+    {
+        QTemporaryDir dir;
+        const QString part = dir.filePath("part.stl"), helper = dir.filePath("cpu"), system = dir.filePath("system");
+        QVERIFY(QDir().mkpath(system)); write(part,"part");
+        const QString cache = dir.filePath("cache");
+        write(system + "/fallback.thumbnailer", "[Thumbnailer Entry]\nExec=/bin/false\nMimeType=model/stl;\n");
+        Thumbnails beforeInstall(cache,{system},3000,helper);
+        QVERIFY(beforeInstall.load(part,"model/stl",128).isNull());
+        QVERIFY(QFile::exists(dir.filePath("cache/" + Thumbnails::failures + "/" + Thumbnails::cacheKey(part))));
+        QVERIFY(QImage(40,20,QImage::Format_RGB32).save(dir.filePath("frame.png")));
+        const auto install = [&](const QByteArray &body) {
+            write(helper,"#!/bin/sh\n" + body);
+            return QFile::setPermissions(helper,QFile::ReadOwner|QFile::WriteOwner|QFile::ExeOwner);
+        };
+        QVERIFY(install("cp \""+dir.filePath("frame.png").toUtf8()+"\" \"$2\"\n"));
+        QCOMPARE(beforeInstall.load(part,"model/stl",128).size(),QSize(40,20));
+        // A CPU-only failure must not suppress a system provider installed later.
+        const QString second = dir.filePath("second-cache");
+        QVERIFY(QFile::remove(system + "/fallback.thumbnailer"));
+        QVERIFY(install("exit 1\n"));
+        QVERIFY(Thumbnails(second,{system},3000,helper).load(part,"model/stl",128).isNull());
+        write(system + "/fallback.thumbnailer", "[Thumbnailer Entry]\nExec=/bin/cp \""
+              + dir.filePath("frame.png").toUtf8() + "\" %o\nMimeType=model/stl;\n");
+        QCOMPARE(Thumbnails(second,{system},3000,helper).load(part,"model/stl",128).size(),QSize(40,20));
+        // Updating the executable also changes the effective route, with input and fallback unchanged.
+        const QString third = dir.filePath("third-cache");
+        QVERIFY(QFile::remove(system + "/fallback.thumbnailer"));
+        QVERIFY(Thumbnails(third,{system},3000,helper).load(part,"model/stl",128).isNull());
+        QVERIFY(install("cp \""+dir.filePath("frame.png").toUtf8()+"\" \"$2\"\n"));
+        QCOMPARE(Thumbnails(third,{system},3000,helper).load(part,"model/stl",128).size(),QSize(40,20));
+    }
+
+    void thumbnailsStlFallbackSharesTheJobDeadline()
+    {
+        QTemporaryDir dir;
+        const QString part=dir.filePath("part.stl"), helper=dir.filePath("cpu"), system=dir.filePath("system");
+        QVERIFY(QDir().mkpath(system)); write(part,"part");
+        const QString started=dir.filePath("fallback-started");
+        write(helper,"#!/bin/sh\nsleep 0.2\nexit 1\n");
+        QVERIFY(QFile::setPermissions(helper,QFile::ReadOwner|QFile::WriteOwner|QFile::ExeOwner));
+        write(system+"/fallback.thumbnailer", "[Thumbnailer Entry]\nExec=/bin/sh -c \"echo run > '"
+              + started.toUtf8()+"'; sleep 1\"\nMimeType=model/stl;\n");
+        Thumbnails thumbnails(dir.filePath("cache"),{system},350,helper);
+        QElapsedTimer clock; clock.start();
+        QVERIFY(thumbnails.load(part,"model/stl",128).isNull());
+        QVERIFY(QFile::exists(started));
+        QVERIFY2(clock.elapsed()<480,"The fallback restarted the job's time allowance");
+        QVERIFY(QFile::remove(started));
+        // A CPU process using up the whole allowance never starts the fallback,
+        // and an untried system renderer cannot cause a failure marker.
+        write(helper,"#!/bin/sh\nsleep 1\nexit 1\n");
+        Thumbnails expired(dir.filePath("expired"),{system},150,helper);
+        QVERIFY(expired.load(part,"model/stl",128).isNull());
+        QVERIFY(!QFile::exists(started));
+        QVERIFY(!QFile::exists(dir.filePath("expired/"+Thumbnails::failures+"/"+Thumbnails::cacheKey(part))));
     }
 
     void thumbnailsSetTextOnAPage()
