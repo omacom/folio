@@ -161,6 +161,8 @@ Plugins::Plugins(const QString &language, const QStringList &folders, const QStr
 
 Plugins::~Plugins() {
     // Closing Folio ends every command still running, with all it started.
+    for (const QString &plugin : m_watches.keys())
+        endWatch(plugin);
     *m_stop = true;
     m_pool.waitForDone();
     m_actions.waitForDone();
@@ -277,6 +279,13 @@ std::optional<Plugins::Manifest> Plugins::parseManifest(const QByteArray &json, 
         m.details = *command;
         m.detailsUnder = *under;
         m.detailsTypes = *types;
+    }
+
+    if (root.contains("watch")) {
+        const auto command = commandOf(root.value("watch").toObject().value("command"));
+        if (!command)
+            return fail("\"watch\" has no command");
+        m.watch = *command;
     }
     return m;
 }
@@ -533,6 +542,43 @@ void Plugins::apply(const QList<Manifest> &manifests) {
     }
     // What plugins that went away printed goes with them.
     m_outputs.removeIf([&](const auto &it) { return !polled.contains(it.key()); });
+
+    // A watch that's as it was carries on, so F5 or another language doesn't
+    // start it over; one that couldn't be started gets another go.
+    QSet<QString> watched;
+    for (const Manifest &m : std::as_const(m_manifests)) {
+        if (m.watch.isEmpty())
+            continue;
+        watched.insert(m.id);
+        const auto it = m_watches.constFind(m.id);
+        if (it != m_watches.constEnd() && it->command == m.watch && it->dir == m.dir
+            && (it->process || it->restart->isActive()))
+            continue;
+        endWatch(m.id);
+        Watch watch;
+        watch.command = m.watch;
+        watch.dir = m.dir;
+        watch.settle = new QTimer(this);
+        watch.settle->setSingleShot(true);
+        watch.settle->setInterval(watchSettle);
+        connect(watch.settle, &QTimer::timeout, this, [this, id = m.id] {
+            const auto held = m_watches.find(id);
+            if (held == m_watches.end() || !held->pending)
+                return;
+            held->pending = false;
+            held->settle->start();
+            askAgain(id);
+        });
+        watch.restart = new QTimer(this);
+        watch.restart->setSingleShot(true);
+        watch.restart->setInterval(watchRestart);
+        connect(watch.restart, &QTimer::timeout, this, [this, id = m.id] { startWatch(id); });
+        m_watches.insert(m.id, watch);
+        startWatch(m.id);
+    }
+    for (const QString &id : m_watches.keys())
+        if (!watched.contains(id))
+            endWatch(id);
     for (const QString &id : polled)
         if (m_pollAll || !before.contains(id))
             poll(id);
@@ -569,6 +615,10 @@ void Plugins::poll(const QString &plugin) {
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, plugin, dir = m->dir, command = m->poll] {
         watcher->deleteLater();
         m_polling.remove(plugin);
+        // Its watch said something changed meanwhile, which this poll may
+        // have been too early to see.
+        if (m_pollAgain.remove(plugin))
+            QTimer::singleShot(0, this, [this, plugin] { poll(plugin); });
         const Manifest *now = manifest(plugin);
         if (!now)
             return;
@@ -604,6 +654,127 @@ void Plugins::poll(const QString &plugin) {
         const Run run = execute(plugin, plugin.poll, environment, pollTimeout, stop.get());
         return Polled{run, run.ok() ? parseOutput(run.out) : std::nullopt};
     }));
+}
+
+void Plugins::startWatch(const QString &plugin) {
+    const Manifest *m = manifest(plugin);
+    const auto watch = m_watches.find(plugin);
+    if (!m || watch == m_watches.end() || watch->process)
+        return;
+    // Unlike the other commands this one isn't waited for, so it runs here
+    // and not in a pool: its lines come in as events.
+    auto *process = new QProcess(this);
+    if (!prepare(*process, *m, m->watch, environment(*m))) {
+        delete process;
+        return;
+    }
+    // A group of its own, so ending it ends everything it started too.
+    process->setChildProcessModifier([] { ::setpgid(0, 0); });
+    // Whether this is still the plugin's watch, and not one ended since.
+    auto current = [this, plugin, process] {
+        const auto it = m_watches.find(plugin);
+        return it != m_watches.end() && it->process == process ? &*it : nullptr;
+    };
+    // What a line says isn't read, only that it came.
+    connect(process, &QProcess::readyReadStandardOutput, this, [this, plugin, process] {
+        if (process->readAllStandardOutput().contains('\n'))
+            noticed(plugin);
+    });
+    // Standard error goes to Folio's, a line at a time, as other commands'.
+    connect(process, &QProcess::readyReadStandardError, this, [plugin, process, current] {
+        Watch *watch = current();
+        const QList<QByteArray> pieces = process->readAllStandardError().split('\n');
+        for (qsizetype i = 0; watch && i < pieces.size(); ++i) {
+            watch->error += pieces[i].left(std::max<qsizetype>(0, maxErrorLine - watch->error.size()));
+            if (i + 1 == pieces.size())
+                break;
+            const QString said = QString::fromUtf8(watch->error).trimmed();
+            watch->error.clear();
+            if (!said.isEmpty())
+                complain(plugin, said);
+        }
+    });
+    // One that can't be started isn't tried again until the plugins are
+    // read again; one that ends (what it watches went away) is, in a while.
+    connect(process, &QProcess::errorOccurred, this, [plugin, process, current](QProcess::ProcessError error) {
+        Watch *watch = current();
+        if (!watch || error != QProcess::FailedToStart)
+            return;
+        complain(plugin, process->program() + " couldn't be started: " + process->errorString());
+        watch->process = nullptr;
+        process->deleteLater();
+    });
+    connect(process, &QProcess::finished, this, [this, plugin, process, current] {
+        Watch *watch = current();
+        if (!watch)
+            return;
+        // Whatever it left running in the background goes with it.
+        if (watch->group > 0)
+            ::kill(-pid_t(watch->group), SIGKILL);
+        // Its last line may not have ended, and can say why it stopped.
+        const QString said = QString::fromUtf8(watch->error).trimmed();
+        if (!said.isEmpty())
+            complain(plugin, said);
+        // Said once each time the watch goes from working to ending.
+        if (!m_failingWatch.contains(plugin))
+            complain(plugin, QString("its watch ended, and is started again every %1 seconds").arg(watchRestart / 1000));
+        m_failingWatch.insert(plugin);
+        watch->process = nullptr;
+        watch->group = 0;
+        watch->error.clear();
+        process->deleteLater();
+        watch->restart->start();
+    });
+    watch->process = process;
+    process->start();
+    watch->group = process->processId();
+}
+
+void Plugins::endWatch(const QString &plugin) {
+    const Watch watch = m_watches.take(plugin);
+    m_failingWatch.remove(plugin);
+    delete watch.settle;
+    delete watch.restart;
+    if (!watch.process)
+        return;
+    watch.process->disconnect(this);
+    if (watch.group > 0)
+        ::kill(-pid_t(watch.group), SIGKILL);
+    watch.process->kill();
+    watch.process->waitForFinished(1000);
+    delete watch.process;
+}
+
+void Plugins::noticed(const QString &plugin) {
+    const auto watch = m_watches.find(plugin);
+    if (watch == m_watches.end())
+        return;
+    m_failingWatch.remove(plugin);
+    // The first line is acted on at once; those that follow close behind
+    // (a sync going through a folder) are acted on once, when the timer
+    // rings.
+    if (watch->settle->isActive()) {
+        watch->pending = true;
+        return;
+    }
+    watch->settle->start();
+    askAgain(plugin);
+}
+
+void Plugins::askAgain(const QString &plugin) {
+    const Manifest *m = manifest(plugin);
+    if (!m)
+        return;
+    if (!m->details.isEmpty()) {
+        forgetDetails(plugin);
+        emit detailsChanged();
+    }
+    // A poll already running may have been too early to see the change,
+    // so another follows it.
+    if (m_polling.contains(plugin))
+        m_pollAgain.insert(plugin);
+    else
+        poll(plugin);
 }
 
 QString Plugins::icon(const Manifest &plugin, const QString &name) const {
@@ -784,9 +955,9 @@ bool Plugins::describe(const QString &path, const QString &mime, const QDateTime
         asking = true;
         // Asked again while its command runs (another window, or the
         // folder read again), the caller waits for the same answer.
-        QList<Asker> &askers = m_asking[key];
-        askers << Asker{wanted, done};
-        if (askers.size() == 1)
+        const bool running = m_asking.contains(key);
+        m_asking[key] << Asker{wanted, done};
+        if (!running)
             ask(m, path, key);
     }
     return asking;
@@ -795,12 +966,15 @@ bool Plugins::describe(const QString &path, const QString &mime, const QDateTime
 void Plugins::ask(const Manifest &plugin, const QString &path, const QString &key) {
     auto *watcher = new QFutureWatcher<std::optional<Run>>(this);
     connect(watcher, &QFutureWatcherBase::finished, this,
-            [this, watcher, id = plugin.id, path, key, generation = m_detailsGeneration[plugin.id]] {
+            [this, watcher, id = plugin.id, path, key, generation = m_detailsGeneration] {
         watcher->deleteLater();
-        // What was said is forgotten meanwhile, so this answer may be
-        // older than the one that replaces it.
-        if (generation != m_detailsGeneration.value(id))
+        // Everything said was forgotten meanwhile (F5), so this answer may
+        // be older than the one that replaces it.
+        if (generation != m_detailsGeneration)
             return;
+        // Its plugin's state changed while it ran, so it may have been too
+        // early to see the change.
+        const bool early = m_askAgain.remove(key);
         const std::optional<Run> run = watcher->result();
         if (!run) {
             // Its first caller moved on before its turn; the next, if any,
@@ -827,37 +1001,55 @@ void Plugins::ask(const Manifest &plugin, const QString &path, const QString &ke
         if (m_details.size() >= 5000)
             m_details.clear();
         m_details.insert(key, said.array());
-        for (const Asker &asker : m_asking.take(key))
+        // An early answer is shown all the same, or a state that keeps
+        // changing would leave the file with none.
+        const QList<Asker> askers = m_asking.take(key);
+        for (const Asker &asker : askers)
             asker.done();
+        // A command run once more had nobody waiting, unless they asked
+        // since; whoever shows the file is told to read it again.
+        if (askers.isEmpty())
+            emit detailsChanged();
+        // After an early answer its command runs once more. Its callers
+        // have their answer and aren't kept; those who ask meanwhile wait
+        // for the next.
+        const Manifest *m = early ? manifest(id) : nullptr;
+        if (m && !m_asking.contains(key)) {
+            m_asking.insert(key, {});
+            ask(*m, path, key);
+        }
     });
     // Stepping through files faster than they're answered for queues
     // commands; those overtaken before their turn aren't run, so they
     // don't hold up the polls behind them.
     watcher->setFuture(QtConcurrent::run(&m_pool, [plugin, command = plugin.details + QStringList{path},
                                                    environment = environment(plugin),
-                                                   wanted = m_asking.value(key).first().wanted,
+                                                   wanted = m_asking.value(key).value(0).wanted,
                                                    stop = m_stop]() -> std::optional<Run> {
-        if (!wanted())
+        // One run once more after an early answer has no caller to ask.
+        if (wanted && !wanted())
             return {};
         return execute(plugin, command, environment, detailsTimeout, stop.get());
     }));
 }
 
 void Plugins::forgetDetails(const QString &plugin) {
-    // Answers on their way are dropped too, and their callers asked to ask
-    // again (detailsChanged), so nothing waits on them. Only the plugin's
-    // own: another's still running answer is as good as it was.
+    // Every plugin's: answers on their way are dropped too, and their
+    // callers asked to ask again (detailsChanged), so nothing waits on them.
     if (plugin.isEmpty()) {
         m_details.clear();
         m_asking.clear();
-        for (quint64 &generation : m_detailsGeneration)
-            ++generation;
+        m_askAgain.clear();
+        ++m_detailsGeneration;
         return;
     }
-    const auto its = [&](const auto &it) { return it.key().startsWith(plugin + '\n'); };
-    m_details.removeIf(its);
-    m_asking.removeIf(its);
-    ++m_detailsGeneration[plugin];
+    // One plugin's: a command still running is left to finish and run once
+    // more after, as a poll is. Dropping its answer each time would leave
+    // nothing to show while the plugin's state keeps changing.
+    m_details.removeIf([&](const auto &it) { return it.key().startsWith(plugin + '\n'); });
+    for (auto it = m_asking.cbegin(); it != m_asking.cend(); ++it)
+        if (it.key().startsWith(plugin + '\n'))
+            m_askAgain.insert(it.key());
 }
 
 void Plugins::run(const QString &itemPath, const Done &done) {
