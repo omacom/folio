@@ -137,7 +137,7 @@ private:
 
     quint32 intern(QByteArrayView text);
     QByteArrayView name(quint32 id) const;
-    // The name as the matcher reads it: folded first when it isn't ASCII.
+    // The name as the matcher reads it: what's past ASCII folded first.
     QByteArrayView text(quint32 id, QByteArray &folded) const;
     QByteArray joined(quint32 folder, QByteArrayView last) const;
     bool isDir(quint32 row) const { return m_kinds[row / 8] & (1 << (row % 8)); }

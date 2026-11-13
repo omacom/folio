@@ -40,6 +40,22 @@ static bool wordStart(QByteArrayView text, qsizetype at) {
     return at == 0 || isSeparator(text[at - 1]) || (lower(text[at]) != text[at] && lower(text[at - 1]) == text[at - 1]);
 }
 
+// A name that isn't ASCII, as the matcher reads it: what's past ASCII folded by Qt, ASCII left in its case, so a capital still starts a word.
+static QByteArray foldedPastAscii(QByteArrayView name) {
+    const QString text = QString::fromUtf8(name);
+    QString out;
+    qsizetype from = 0;
+    for (qsizetype at = 0; at <= text.size(); ++at) {
+        if (at < text.size() && text[at].unicode() >= 0x80)
+            continue;
+        out += text.sliced(from, at - from).toCaseFolded();
+        if (at < text.size())
+            out += text[at];
+        from = at + 1;
+    }
+    return out.toUtf8();
+}
+
 quint64 SearchMatcher::bitsOf(QByteArrayView text) {
     // a to z, then 0 to 9, then / - _ . space +; anything else is Unknown.
     static const char marks[] = "/-_. +";
@@ -367,7 +383,7 @@ quint32 SearchIndex::intern(QByteArrayView text) {
     // Folded first when it isn't ASCII, so the letters are the ones it's matched by.
     const bool ascii = std::all_of(text.begin(), text.end(), [](char c) { return uchar(c) < 0x80; });
     const quint64 bits = ascii ? SearchMatcher::bitsOf(text)
-                               : SearchMatcher::bitsOf(QString::fromUtf8(text).toCaseFolded().toUtf8()) | SearchMatcher::NotAscii;
+                               : SearchMatcher::bitsOf(foldedPastAscii(text)) | SearchMatcher::NotAscii;
     m_names.push_back({quint32((m_slabs.size() - 1) * SlabBytes + slab.size()), quint32(text.size()), bits});
     slab.append(text);
     m_lookup[at] = id;
@@ -430,7 +446,7 @@ QVector<FolderModel::Entry> SearchIndex::entries(const QVector<quint32> &rows, c
 QByteArrayView SearchIndex::text(quint32 id, QByteArray &folded) const {
     if (!(m_names[id].bits & SearchMatcher::NotAscii))
         return name(id);
-    folded = QString::fromUtf8(name(id)).toCaseFolded().toUtf8();
+    folded = foldedPastAscii(name(id));
     return folded;
 }
 

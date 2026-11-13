@@ -1393,6 +1393,25 @@ private slots:
         QCOMPARE(nearest.first().name, QString("beach.txt"));
     }
 
+    void searchStartsAWordAtACapitalInANameThatIsNotAscii()
+    {
+        // "büro" starts a word of MeinBüro, so it comes before a shorter name that only holds the letters.
+        QTemporaryDir dir;
+        write(dir.filePath("MeinBüro.txt"), "x");
+        write(dir.filePath("xbüro.txt"), "x");
+        SearchIndex index;
+        QVERIFY(index.walk(dir.path(), false));
+        QCOMPARE(index.answer("büro"), 2);
+        QCOMPARE(index.names(index.rows(0, 2)), QStringList({"MeinBüro.txt", "xbüro.txt"}));
+        // In ASCII alone it was so already.
+        write(dir.filePath("MeinBuero.txt"), "x");
+        write(dir.filePath("xbuero.txt"), "x");
+        SearchIndex plain;
+        QVERIFY(plain.walk(dir.path(), false));
+        QCOMPARE(plain.answer("buero"), 2);
+        QCOMPARE(plain.names(plain.rows(0, 2)), QStringList({"MeinBuero.txt", "xbuero.txt"}));
+    }
+
     void searchFollowsNoLinkThatTookAFoldersPlaceOnTheWay()
     {
         // A folder is listed, then swapped for a link while its own folders wait to be read: what the link leads to is not read under its name.
