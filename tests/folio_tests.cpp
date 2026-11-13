@@ -15,6 +15,8 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLocalServer>
+#include <QLocalSocket>
 #include <QProcess>
 #include <QQmlComponent>
 #include <QQmlContext>
@@ -5839,11 +5841,70 @@ private slots:
         write(command, "#!/bin/sh\ncat '" + response.toUtf8() + "'\n");
         QVERIFY(QFile::setPermissions(command, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
         write(response, "{\"int\":4}");
+        QLocalServer hyprland;
+        QVERIFY(hyprland.listen(dir.filePath("events.sock")));
 
-        Theme theme(dir.path(), nullptr, command);
+        Theme theme(dir.path(), nullptr, command, hyprland.fullServerName());
         QTRY_COMPARE(theme.radius(), 4);
+        QTRY_VERIFY(hyprland.hasPendingConnections());
+        QLocalSocket *events = hyprland.nextPendingConnection();
+        // A theme switch or an edit ends with Hyprland reading its config
+        // again, which it says on its event socket; other events don't count.
         write(response, "{\"int\":6}");
+        events->write("activewindow>>folio,Files\nconfigrel");
+        events->flush();
+        QTest::qWait(300);
+        QCOMPARE(theme.radius(), 4);
+        events->write("oaded>>\n");
         QTRY_COMPARE(theme.radius(), 6);
+    }
+
+    void themeReadsAgainWhenHyprlandReloadsMidRead()
+    {
+        // A reload while a read is still running may come after hyprctl
+        // answered, so the answer can be old: it's read once more.
+        QTemporaryDir dir;
+        const QString response = dir.filePath("response.json"), command = dir.filePath("hyprctl");
+        write(command, "#!/bin/sh\nr=$(cat '" + response.toUtf8() + "')\nsleep 0.3\necho \"$r\"\n");
+        QVERIFY(QFile::setPermissions(command, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+        write(response, "{\"int\":1}");
+        QLocalServer hyprland;
+        QVERIFY(hyprland.listen(dir.filePath("events.sock")));
+
+        Theme theme(dir.path(), nullptr, command, hyprland.fullServerName());
+        QTRY_VERIFY(hyprland.hasPendingConnections());
+        QLocalSocket *events = hyprland.nextPendingConnection();
+        QTRY_COMPARE(theme.radius(), 1);
+        emit qGuiApp->applicationStateChanged(Qt::ApplicationActive);
+        QTest::qWait(100);
+        write(response, "{\"int\":5}");
+        events->write("configreloaded>>\n");
+        events->flush();
+        QTRY_COMPARE(theme.radius(), 5);
+    }
+
+    void themeLeavesHyprctlAloneUntilSomethingChanges()
+    {
+        // Each read runs hyprctl, so it's run when the rounding may have
+        // changed, not on a timer for as long as Folio is open.
+        // Kept out of the theme folder, which Theme watches.
+        QTemporaryDir root;
+        QVERIFY(QDir(root.path()).mkpath("theme") && QDir(root.path()).mkpath("bin"));
+        const QString calls = root.filePath("bin/calls"), command = root.filePath("bin/hyprctl");
+        write(command, "#!/bin/sh\necho . >> '" + calls.toUtf8() + "'\necho '{\"int\":2}'\n");
+        QVERIFY(QFile::setPermissions(command, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+        QLocalServer hyprland;
+        QVERIFY(hyprland.listen(root.filePath("bin/events.sock")));
+
+        Theme theme(root.filePath("theme"), nullptr, command, hyprland.fullServerName());
+        QTRY_COMPARE(theme.radius(), 2);
+        const auto count = [&] {
+            QFile file(calls);
+            return file.open(QIODevice::ReadOnly) ? file.readAll().count('\n') : 0;
+        };
+        const qsizetype first = count();
+        QTest::qWait(1500);
+        QCOMPARE(count(), first);
     }
 
     void themeAsksForRoundingOnlyWhileActive()
@@ -5862,8 +5923,8 @@ private slots:
 
         Theme theme(themeDir, nullptr, command);
         QTRY_COMPARE(theme.radius(), 3);
-        // Away from Folio, a change goes unnoticed for longer than the poll,
-        // and it's picked up once Folio is back.
+        // Away from Folio, with no reload, a change goes unnoticed, and it's
+        // picked up once Folio is back.
         emit qGuiApp->applicationStateChanged(Qt::ApplicationInactive);
         // A read already under way may still finish (it's killed within
         // 500ms), so the change comes after it.
