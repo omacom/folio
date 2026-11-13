@@ -1375,12 +1375,30 @@ QStringList FileOps::trashDirs() {
     return dirs;
 }
 
-bool FileOps::inTrash(const QString &path) const {
+QString FileOps::trashFor(const QString &path) {
     const QString clean = QDir::cleanPath(path);
-    for (const QString &dir : trashDirs())
-        if (clean == dir + "/files" || clean.startsWith(dir + "/files/"))
-            return true;
-    return false;
+    const auto under = [&clean](const QString &files) { return clean == files || clean.startsWith(files + '/'); };
+    if (const QString home = homeTrash(); under(home + "/files"))
+        return home;
+    // Read from the path, not by asking every mounted drive: one that doesn't
+    // answer (a network share whose host is gone) would stall the window on
+    // every folder opened. Only the drive the path is on is asked where its
+    // top is.
+    const QString uid = QString::number(getuid());
+    for (const QString &marker : {"/.Trash-" + uid, "/.Trash/" + uid}) {
+        const qsizetype at = clean.indexOf(marker + "/files");
+        if (at < 0)
+            continue;
+        const QString dir = clean.left(at + marker.size());
+        const QString top = at == 0 ? QStringLiteral("/") : clean.left(at);
+        if (under(dir + "/files") && QStorageInfo(top).rootPath() == top)
+            return dir;
+    }
+    return {};
+}
+
+bool FileOps::inTrash(const QString &path) const {
+    return !trashFor(path).isEmpty();
 }
 
 QString FileOps::infoFileFor(const QString &trashedPath) {
@@ -1390,10 +1408,8 @@ QString FileOps::infoFileFor(const QString &trashedPath) {
     // happens to be called "info".
     const QFileInfo item(trashedPath);
     const QString folder = QDir::cleanPath(item.absolutePath());
-    for (const QString &dir : trashDirs())
-        if (folder == QDir::cleanPath(dir + "/files"))
-            return dir + "/info/" + item.fileName() + ".trashinfo";
-    return {};
+    const QString dir = trashFor(folder);
+    return !dir.isEmpty() && folder == dir + "/files" ? dir + "/info/" + item.fileName() + ".trashinfo" : QString();
 }
 
 QString FileOps::originalPath(const QString &trashedPath) {
@@ -1410,7 +1426,7 @@ QString FileOps::originalPath(const QString &trashedPath) {
         const QString trashDir = QFileInfo(QFileInfo(trashedPath).absolutePath()).absolutePath();
         const QString top = trashDir.contains("/.Trash/") ? trashDir.section("/.Trash/", 0, 0)
                                                           : QFileInfo(trashDir).absolutePath();
-        return QDir(top).filePath(path);
+        return QDir(top.isEmpty() ? QStringLiteral("/") : top).filePath(path);
     }
     return {};
 }

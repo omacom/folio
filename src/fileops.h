@@ -233,6 +233,8 @@ public:
     static QString homeTrash();
     // The trash folders: the home one, then each mounted drive's own.
     static QStringList trashDirs();
+    // The trash folder whose files `path` is among, or empty.
+    static QString trashFor(const QString &path);
     // For an item directly in a trash's files folder: its note. Empty for
     // anything else, such as what's inside a trashed folder, which has none.
     static QString infoFileFor(const QString &trashedPath);

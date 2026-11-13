@@ -781,6 +781,51 @@ private slots:
         QVERIFY(!QFileInfo::exists(data.filePath("Trash/files/album")));
     }
 
+    void fileOpsKnowsTheTrashFromThePath()
+    {
+        // The home trash's files folder and what's below it are the trash;
+        // so is a drive's own .Trash-<uid> or .Trash/<uid> at its top, but
+        // not a folder by that name further down.
+        QTemporaryDir dir, data;
+        const auto restore = dataHomeAt(data.path());
+        const QString home = data.filePath("Trash");
+        QDir().mkpath(home + "/files/album");
+        QDir().mkpath(home + "/info");
+        FileOps ops;
+        QVERIFY(ops.inTrash(home + "/files"));
+        QVERIFY(ops.inTrash(home + "/files/album"));
+        QVERIFY(!ops.inTrash(home));
+        QVERIFY(!ops.inTrash(home + "/info"));
+        QVERIFY(!ops.inTrash(dir.path()));
+        QCOMPARE(FileOps::infoFileFor(home + "/files/album"), home + "/info/album.trashinfo");
+        QCOMPARE(FileOps::infoFileFor(home + "/files/album/a.jpg"), QString());
+
+        const QString uid = QString::number(getuid());
+        QVERIFY(ops.inTrash("/.Trash-" + uid + "/files/x"));
+        QVERIFY(ops.inTrash("/.Trash/" + uid + "/files"));
+        QCOMPARE(FileOps::infoFileFor("/.Trash-" + uid + "/files/x"), "/.Trash-" + uid + "/info/x.trashinfo");
+        QDir().mkpath(dir.filePath(".Trash-" + uid + "/files/x"));
+        QVERIFY(!ops.inTrash(dir.filePath(".Trash-" + uid + "/files/x")));
+        QCOMPARE(FileOps::infoFileFor(dir.filePath(".Trash-" + uid + "/files/x")), QString());
+    }
+
+    void fileOpsRestoresFromTheRootDrivesTrashToTheTop()
+    {
+        // A drive's own trash notes paths from the top of the drive; for /
+        // that top is /, not the folder Folio was started in. Needs a
+        // throwaway / (bwrap --tmpfs /, or a CI container), and never
+        // touches a /.Trash that's already there.
+        const QString uid = QString::number(getuid());
+        const QString dir = "/.Trash/" + uid;
+        if (!QFileInfo(QStringLiteral("/")).isWritable() || QFileInfo::exists(QStringLiteral("/.Trash")))
+            QSKIP("needs a writable / without a .Trash");
+        QVERIFY(QDir().mkpath(dir + "/files") && QDir().mkpath(dir + "/info"));
+        const auto gone = qScopeGuard([] { QDir(QStringLiteral("/.Trash")).removeRecursively(); });
+        write(dir + "/files/a.txt", "a");
+        write(dir + "/info/a.txt.trashinfo", "[Trash Info]\nPath=docs/a.txt\n");
+        QCOMPARE(FileOps::originalPath(dir + "/files/a.txt"), QString("/docs/a.txt"));
+    }
+
     void folderPaneKeysAreNotBoundTwice()
     {
         // Two shortcuts on one key, both on, make Qt call neither: the key
