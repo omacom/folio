@@ -44,6 +44,10 @@ FocusScope {
     // the folder. By path: Recents can list two files of the same name.
     property string lastPath: ""
     property string loadedPath: ""
+    // The query the rows last answered, the cursor's item when a search began (its end puts the cursor back there), and the best match an answer put the cursor on.
+    property string loadedQuery: ""
+    property string searchedFrom: ""
+    property string answerTop: ""
     // Set when a click on empty space lets go of the cursor: a re-read or a
     // switch of view leaves it let go of, until it moves again or another
     // folder arrives.
@@ -280,19 +284,35 @@ FocusScope {
             const pending = backend.takeSelection()
             const same = backend.folder.path === pane.loadedPath
             pane.loadedPath = backend.folder.path
+            // An answer to another query is another list: the cursor goes to its best match, and when the search ends, back to the item it left.
+            const query = backend.folder.query
+            const asked = same && query !== pane.loadedQuery
+            if (asked && pane.loadedQuery === "")
+                pane.searchedFrom = pane.lastPath
+            if (asked && query === "")
+                pane.lastPath = pane.searchedFrom
+            pane.loadedQuery = query
+            const answer = asked && query !== ""
             const row = backend.folder.indexOfPath(pane.lastPath)
+            // Nothing is selected but the cursor's item, or that item is gone and nothing is selected.
+            const own = backend.folder.selectedCount === 1 ? backend.folder.selectedPaths()[0] === pane.lastPath : backend.folder.selectedCount === 0 && row < 0
+            // The cursor an answer put on its best match stays on the best match as the search reads on, until it's moved to another item.
+            const riding = same && !asked && query !== "" && !pane.cursorLetGo && pane.lastPath === pane.answerTop && own
             if (pending || !same)
                 pane.cursorLetGo = false
             if (pending)
                 view.item.select(backend.folder.indexOf(pending), false)
             else if (!same)
                 view.item.select(-1, false)
+            else if (answer || riding)
+                view.item.select(-1, answer)
             else if (!pane.cursorLetGo)
                 view.item.select(row >= 0 ? row : Math.min(view.item.currentIndex, backend.folder.count - 1), true)
             // Remembered here too: put on the row it was already on, the
             // cursor doesn't signal a move, and an item from the folder
             // before would stay remembered.
             pane.lastPath = backend.folder.get(view.item.currentIndex).path || ""
+            pane.answerTop = answer || riding ? pane.lastPath : pane.answerTop
         }
     }
 

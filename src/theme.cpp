@@ -8,8 +8,15 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
+#include <QSocketNotifier>
 #include <QStandardPaths>
+#include <cerrno>
 #include <cmath>
+#include <cstring>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
+#include <utility>
 
 namespace {
 
@@ -89,6 +96,8 @@ Theme::Theme(const QString &directory, QObject *parent, const QString &hyprctl)
     connect(&m_roundingProcess, &QProcess::errorOccurred, this, [this] { m_roundingTimeout.stop(); });
     connect(&m_roundingProcess, &QProcess::finished, this, [this](int code, QProcess::ExitStatus status) {
         m_roundingTimeout.stop();
+        if (std::exchange(m_roundingPending, false))
+            QMetaObject::invokeMethod(this, &Theme::refreshRounding, Qt::QueuedConnection);
         const auto value = QJsonDocument::fromJson(m_roundingProcess.readAllStandardOutput()).object().value("int");
         if (code != 0 || status != QProcess::NormalExit || !value.isDouble() || value.toInt(-1) < 0)
             return;
@@ -97,25 +106,35 @@ Theme::Theme(const QString &directory, QObject *parent, const QString &hyprctl)
             emit changed();
         }
     });
-    m_roundingPoll.setInterval(1000);
-    connect(&m_roundingPoll, &QTimer::timeout, this, &Theme::refreshRounding);
     if (!m_hyprctl.isEmpty()) {
-        m_roundingPoll.start();
-        // The rounding only needs following while Folio is in use, and it's
-        // read again the moment Folio is back.
+        // Hyprland names each config reload; a value set any other way is read when Folio is back in use.
         connect(qGuiApp, &QGuiApplication::applicationStateChanged, this, [this](Qt::ApplicationState state) {
-            if (state == Qt::ApplicationActive) {
-                refreshRounding();
-                m_roundingPoll.start();
-            } else {
-                m_roundingPoll.stop();
-            }
+            m_inUse = state == Qt::ApplicationActive;
+            m_hyprlandAgain.stop();
+            if (!m_inUse)
+                return;
+            // Hyprland hangs up on a reader that fell behind, so a watch that ended is taken up again here.
+            if (m_hyprlandEvents < 0)
+                watchHyprland();
+            refreshRounding();
         });
+        // Hung up on while Folio stays in use, it connects again after a pause and reads the rounding: a reload may have gone by untold.
+        m_hyprlandAgain.setSingleShot(true);
+        m_hyprlandAgain.setInterval(watchAgainAfter);
+        connect(&m_hyprlandAgain, &QTimer::timeout, this, [this] {
+            if (m_hyprlandEvents < 0)
+                watchHyprland();
+            if (m_hyprlandEvents >= 0)
+                refreshRounding();
+        });
+        // Subscribed before the first ask, so a reload during that ask isn't missed.
+        watchHyprland();
     }
     reload();
 }
 
 Theme::~Theme() {
+    closeHyprlandEvents();
     if (m_roundingProcess.state() != QProcess::NotRunning) {
         m_roundingProcess.kill();
         m_roundingProcess.waitForFinished(1000);
@@ -123,10 +142,90 @@ Theme::~Theme() {
 }
 
 void Theme::refreshRounding() {
-    if (m_hyprctl.isEmpty() || m_roundingProcess.state() != QProcess::NotRunning)
+    if (m_hyprctl.isEmpty())
+        return;
+    // An answer already on its way may predate the change, so ask once more after it.
+    m_roundingPending = m_roundingProcess.state() != QProcess::NotRunning;
+    if (m_roundingPending)
         return;
     m_roundingProcess.start(m_hyprctl, {"-j", "getoption", "decoration:rounding"});
     m_roundingTimeout.start();
+}
+
+// Hyprland's event socket, read as a plain Unix socket since Qt Network isn't linked.
+void Theme::watchHyprland() {
+    const QByteArray runtime = qgetenv("XDG_RUNTIME_DIR"), instance = qgetenv("HYPRLAND_INSTANCE_SIGNATURE");
+    if (runtime.isEmpty() || instance.isEmpty())
+        return;
+    const QByteArray path = runtime + "/hypr/" + instance + "/.socket2.sock";
+    sockaddr_un address{};
+    address.sun_family = AF_UNIX;
+    if (path.size() >= qsizetype(sizeof address.sun_path))
+        return;
+    std::memcpy(address.sun_path, path.constData(), path.size());
+    m_hyprlandEvents = ::socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+    if (m_hyprlandEvents < 0 || ::connect(m_hyprlandEvents, reinterpret_cast<const sockaddr *>(&address), sizeof address) != 0) {
+        closeHyprlandEvents();
+        // No answer: tried again after each pause, as one try alone would leave the corners untold; leaving Folio stops the tries.
+        m_hyprlandAgain.start();
+        return;
+    }
+    m_hyprlandNotifier = new QSocketNotifier(m_hyprlandEvents, QSocketNotifier::Read, this);
+    connect(m_hyprlandNotifier, &QSocketNotifier::activated, this, &Theme::readHyprlandEvents);
+}
+
+void Theme::readHyprlandEvents() {
+    char chunk[4096];
+    bool reloaded = false, closed = false;
+    for (qsizetype read = 0; read < eventsATurn; read += sizeof chunk) {
+        const ssize_t got = ::read(m_hyprlandEvents, chunk, sizeof chunk);
+        if (got < 0 && errno == EINTR)
+            continue;
+        if (got < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+            break;
+        if (got <= 0) {
+            closed = true;
+            break;
+        }
+        QByteArrayView piece(chunk, got);
+        // The rest of a line too long to want is dropped up to its end, never read as a line of its own.
+        if (m_hyprlandLineTooLong) {
+            const qsizetype end = piece.indexOf('\n');
+            if (end < 0)
+                continue;
+            piece = piece.sliced(end + 1);
+            m_hyprlandLineTooLong = false;
+        }
+        m_hyprlandLine.append(piece);
+        // Sample input: "activewindow>>kitty,~\nconfigreloaded>>\n"; only a whole configreloaded line counts.
+        for (qsizetype end; (end = m_hyprlandLine.indexOf('\n')) >= 0; m_hyprlandLine.remove(0, end + 1))
+            reloaded |= QByteArrayView(m_hyprlandLine).first(end) == "configreloaded>>";
+        if (m_hyprlandLine.size() > longestEventLine) {
+            m_hyprlandLine.clear();
+            m_hyprlandLineTooLong = true;
+        }
+    }
+    if (reloaded)
+        refreshRounding();
+    // Hung up on, or Hyprland is gone: a try after a pause while Folio is in use, and without an answer the corners keep their last rounding.
+    if (closed) {
+        closeHyprlandEvents();
+        if (m_inUse)
+            m_hyprlandAgain.start();
+    }
+}
+
+void Theme::closeHyprlandEvents() {
+    if (m_hyprlandNotifier) {
+        m_hyprlandNotifier->setEnabled(false);
+        m_hyprlandNotifier->deleteLater();
+        m_hyprlandNotifier = nullptr;
+    }
+    if (m_hyprlandEvents >= 0)
+        ::close(m_hyprlandEvents);
+    m_hyprlandEvents = -1;
+    m_hyprlandLine.clear();
+    m_hyprlandLineTooLong = false;
 }
 
 QColor Theme::color(const QString &key) const {

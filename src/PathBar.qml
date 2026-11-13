@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import "Format.js" as Format
 
 // The breadcrumb path from the left edge; view buttons on the right. Back and
 // forward are keys (Alt+← / Alt+→) and the mouse's thumb buttons.
@@ -41,15 +42,9 @@ Rectangle {
     // S and Shift+S, through the sort menu's orders.
     function stepSort(by) { sortMenu.step(by) }
     function endSearch() {
-        searchDelay.stop()
         searchField.text = ""
         backend.folder.query = ""
         editDone()
-    }
-    Timer {
-        id: searchDelay
-        interval: 150
-        onTriggered: backend.folder.query = searchField.text.trim()
     }
     // Going to another folder ends the search there.
     Connections {
@@ -93,11 +88,13 @@ Rectangle {
             visible: bar.searching && !bar.editing
             font.pixelSize: 14
             // Room at the end for where it searches; padding isn't mirrored.
-            leftPadding: LayoutMirroring.enabled ? scope.implicitWidth + 24 : 12
-            rightPadding: LayoutMirroring.enabled ? 12 : scope.implicitWidth + 24
-            // Where it searches, at the end of the field. Unlike a
-            // placeholder, it stays while typing. Plugins' views have
-            // nothing below them.
+            leftPadding: LayoutMirroring.enabled ? scope.width + 24 : 12
+            rightPadding: LayoutMirroring.enabled ? 12 : scope.width + 24
+            // What the query keeps of a narrow field, some twenty letters: the status is cut short before it takes that.
+            readonly property int queryRoom: 160
+            // The padding at the query's end of the field, and the status's margin and its gap from the query at the other.
+            readonly property int besideStatus: 12 + 24
+            // Where it searches and, once answered, how many match: unlike a placeholder it stays while typing.
             Text {
                 id: scope
                 // Recents, Trash and plugins' views are named in C++, which
@@ -109,14 +106,25 @@ Rectangle {
                 anchors.right: parent.right
                 anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
-                text: backend.path.startsWith("plugin:") ? qsTr("Search %1").arg(here) : qsTr("Search %1 and below").arg(here)
+                // What the field has left beside the query's room; in a field with room for both, the whole status as before.
+                width: Math.max(0, Math.min(implicitWidth, searchField.width - searchField.besideStatus - searchField.queryRoom))
+                elide: Text.ElideRight
+                // With no room at all it isn't drawn: cut to nothing, it could still leave its ellipsis beside the query.
+                visible: width > 0
+                text: backend.path.startsWith("plugin:") ? qsTr("Search %1").arg(here)
+                    : backend.folder.query.length > 0 && backend.folder.matches >= 0
+                    // Sorted another way than best first, the rows are the best of the matches, and it says so.
+                    ? Format.matches(backend.folder.matches, here, backend.folder.reading,
+                                     backend.folder.sortMode !== "name" && backend.folder.matches > backend.folder.count ? backend.folder.count : -1,
+                                     backend.folder.mostRead)
+                    : qsTr("Search %1 and below").arg(here)
                 color: theme.secondaryForeground
                 font.pixelSize: 12
             }
-            onTextEdited: searchDelay.restart()
+            // Each key asks at once: the model answers from the names it holds, and keys typed while it reads them are taken together when the read ends.
+            onTextEdited: backend.folder.query = text.trim()
             // Enter or ↓ goes to the results, leaving the search up.
             function toResults() {
-                searchDelay.stop()
                 backend.folder.query = text.trim()
                 if (backend.folder.query === "")
                     bar.endSearch()

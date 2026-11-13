@@ -1,6 +1,9 @@
+#include <atomic>
 #include <QClipboard>
+#include <QCollator>
 #include <QDir>
 #include <QEventLoopLocker>
+#include <QMetaProperty>
 #include <QMimeData>
 #include <QPageSize>
 #include <QPainter>
@@ -22,17 +25,28 @@
 #include <QQmlPropertyMap>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QScopeGuard>
+#include <QSemaphore>
 #include <QSettings>
 #include <QSignalSpy>
+#include <QSocketNotifier>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QUrl>
 #include <QtConcurrent>
 #include <QtTest>
 #include <fcntl.h>
+#include <malloc.h>
+#include <cstring>
+#include <random>
+#include <linux/sockios.h>
+#include <poll.h>
 #include <signal.h>
+#include <sys/ioctl.h>
 #include <sys/resource.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/un.h>
 #include <unistd.h>
 
 #include "backend.h"
@@ -43,6 +57,7 @@
 #include "places.h"
 #include "plugins.h"
 #include "previewer.h"
+#include "searchindex.h"
 #include "theme.h"
 #include "thumbnails.h"
 #include "translator.h"
@@ -446,6 +461,56 @@ static int lastWindowClosed()
     return qScopeGuard([old] { qputenv("PATH", old); });
 }
 
+// Longer than a search holds before it shows what it has (150 ms) and asks once more (100 ms).
+static constexpr int PastTheSearchHold = 400;
+
+// Holds each walk of a search after its `at`th folder until let go, and counts the walks and the folders they read.
+struct WalksHeld {
+    QSemaphore reached, go;
+    std::atomic<int> walks{0}, folders{0};
+    // A held walk keeps one thread of the shared pool and the answers beside it take another.
+    static constexpr int WalkAndAnswers = 2;
+    const int threads = QThreadPool::globalInstance()->maxThreadCount();
+    explicit WalksHeld(qsizetype at = 1)
+    {
+        // A machine with one processor gives the pool one thread.
+        QThreadPool::globalInstance()->setMaxThreadCount(std::max(threads, WalkAndAnswers));
+        SearchIndex::afterFolder = [this, at](qsizetype read) {
+            ++folders;
+            walks += read == 1;
+            if (read == at) {
+                reached.release();
+                go.acquire();
+                go.release();
+            }
+        };
+    }
+    void letGo() { go.release(); }
+    ~WalksHeld()
+    {
+        go.release();
+        QThreadPool::globalInstance()->waitForDone();
+        SearchIndex::afterFolder = {};
+        QThreadPool::globalInstance()->setMaxThreadCount(threads);
+    }
+};
+
+// Holds every thread of the shared pool until it goes, so what a model starts meanwhile waits its turn.
+struct PoolHeld {
+    QSemaphore gate;
+    const int threads = QThreadPool::globalInstance()->maxThreadCount();
+    PoolHeld()
+    {
+        for (int i = 0; i < threads; ++i)
+            QThreadPool::globalInstance()->start([this] { gate.acquire(); });
+    }
+    ~PoolHeld()
+    {
+        gate.release(threads);
+        QThreadPool::globalInstance()->waitForDone();
+    }
+};
+
 // Whether a process has ended. Killed, it can stay a zombie until whoever
 // adopted it reaps it, which in a container's bare PID 1 is never.
 static bool ended(pid_t pid)
@@ -494,6 +559,8 @@ private slots:
     {
         // No test ever reaches the real udisks, which would change real disks.
         fakeDisks({});
+        // No test follows the Hyprland of the session it's run from.
+        qunsetenv("HYPRLAND_INSTANCE_SIGNATURE");
     }
 
     void folderListsDirectoriesFirstWithoutHidden()
@@ -536,11 +603,646 @@ private slots:
         QCOMPARE(names(QLocale("en_US")), QStringList({"åsa.txt", "zeta.txt"}));
     }
 
+    void folderSharesEachTypeAcrossAListing()
+    {
+        // A listing holds one string per type and extension, and no room for entries it never read.
+        QTemporaryDir dir;
+        for (const char *name : {"a.txt", "b.txt", "c.TXT", "d.png", "e.png", "README", "f"})
+            write(dir.filePath(name), "x");
+        QDir(dir.path()).mkdir("sub");
+        QString error;
+        const auto entries = FolderModel::list(dir.path(), false, "name", &error);
+        QCOMPARE(entries.size(), 8);
+        QCOMPARE(entries.capacity(), entries.size());
+        QHash<QString, const FolderModel::Entry *> first;
+        for (const auto &e : entries) {
+            const auto *seen = first.value(e.extension + '\n' + e.mime);
+            if (!seen) {
+                first.insert(e.extension + '\n' + e.mime, &e);
+                continue;
+            }
+            QVERIFY2(e.mime.constData() == seen->mime.constData(), qPrintable(e.name));
+            QVERIFY2(e.kind.constData() == seen->kind.constData(), qPrintable(e.name));
+            QVERIFY2(e.extension.isEmpty() || e.extension.constData() == seen->extension.constData(), qPrintable(e.name));
+        }
+        QVERIFY(entries.at(1).mime.constData() == entries.at(3).mime.constData());
+        QCOMPARE(entries.at(0).extension, QString());
+        QCOMPARE(entries.at(3).extension, QString("TXT"));
+    }
+
+    void folderTypesOnlyWhatsAskedFor()
+    {
+        QTemporaryDir dir;
+        int all = 0;
+        oddEntries(dir, &all);
+        if (QTest::currentTestFailed())
+            return;
+        constexpr int lookedUp = 4; // the link to a file, the link to the folder, the broken link and the pipe
+
+        // Listed untyped, only what the folder's listing can't tell has a type yet; asked, each entry is as typed listing has it.
+        QString error;
+        for (const QString &sort : FolderModel::sortModes()) {
+            const auto untyped = FolderModel::list(dir.path(), true, sort, &error, {}, QLocale(), false);
+            const auto whole = FolderModel::list(dir.path(), true, sort, &error);
+            QCOMPARE(untyped.size(), all);
+            const auto typedCount = std::count_if(untyped.cbegin(), untyped.cend(), [](const auto &e) { return !e.mime.isNull(); });
+            QCOMPARE(typedCount, sort == "kind" ? untyped.size() : lookedUp);
+            for (int i = 0; i < whole.size(); ++i) {
+                QCOMPARE(untyped.at(i).path, whole.at(i).path);
+                QCOMPARE(untyped.at(i).isDir, whole.at(i).isDir);
+                if (!untyped.at(i).unread) {
+                    QCOMPARE(untyped.at(i).size, whole.at(i).size);
+                    QCOMPARE(untyped.at(i).modified, whole.at(i).modified);
+                }
+                const auto asked = FolderModel::typed(untyped.at(i));
+                QCOMPARE(asked.kind, whole.at(i).kind);
+                QCOMPARE(asked.mime, whole.at(i).mime);
+                QCOMPARE(asked.extension, whole.at(i).extension);
+                QCOMPARE(asked.extension.isNull(), whole.at(i).extension.isNull());
+            }
+        }
+
+        // Through the model, a row's type roles, and the types get() gives, match a whole entry.
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setShowHidden(true);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), all);
+        const QMimeDatabase mimes;
+        for (int row = 0; row < model.count(); ++row) {
+            const QModelIndex at = model.index(row);
+            const auto whole = FolderModel::entryFor(QFileInfo(at.data(FolderModel::PathRole).toString()), mimes);
+            QCOMPARE(at.data(FolderModel::NameRole).toString(), whole.name);
+            QCOMPARE(at.data(FolderModel::IsDirRole).toBool(), whole.isDir);
+            QCOMPARE(at.data(FolderModel::KindRole).toString(), whole.kind);
+            QCOMPARE(at.data(FolderModel::MimeRole).toString(), whole.mime);
+            QCOMPARE(at.data(FolderModel::ExtensionRole).toString(), whole.extension);
+            QCOMPARE(at.data(FolderModel::ExtensionRole).toString().isNull(), whole.extension.isNull());
+            const QVariantMap map = model.get(row);
+            QCOMPARE(map.value("kind").toString(), whole.kind);
+            QCOMPARE(map.value("mime").toString(), whole.mime);
+            QCOMPARE(map.value("extension").toString(), whole.extension);
+        }
+    }
+
+    void aRowsTypeIsReadFromItsNameOnce()
+    {
+        // Asked again, a row's type roles give the type kept from the first ask: read from the name again, its extension would be another string.
+        QTemporaryDir files, folder, pipe;
+        write(files.filePath("photo.jpg"), "x");
+        for (int i = 0; i < FolderModel::typesKept; ++i)
+            write(files.filePath(QString("z%1.txt").arg(i)), "x");
+        QVERIFY(QDir(folder.path()).mkdir("photo.jpg"));
+        QCOMPARE(::mkfifo(QFile::encodeName(pipe.filePath("photo.jpg")).constData(), 0600), 0);
+        const QString plugin = "plugin:types";
+
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        const auto type = [&](int role, int row = 0) { return model.index(row).data(role).toString(); };
+        // Seen once, a folder, a pipe and a plugin's item of the file's name are remembered, to be shown later while the file's type is kept.
+        model.setItems({QVariantMap{{"name", "photo.jpg"}, {"path", "plugin:types/a"}, {"subtitle", "Windows"}}});
+        for (const QString &path : {folder.path(), pipe.path(), plugin}) {
+            model.setPath(path);
+            QVERIFY(loaded.wait(5000));
+            QCOMPARE(model.count(), 1);
+        }
+        model.setPath(files.path());
+        QVERIFY(loaded.wait(5000));
+        QCOMPARE(model.count(), FolderModel::typesKept + 1);
+        QCOMPARE(type(FolderModel::NameRole), QString("photo.jpg"));
+        const QString first = type(FolderModel::ExtensionRole);
+        QCOMPARE(first, QString("JPG"));
+        QCOMPARE(type(FolderModel::MimeRole), QString("image/jpeg"));
+        QCOMPARE(type(FolderModel::KindRole), QString("image"));
+        QVERIFY(type(FolderModel::ExtensionRole).constData() == first.constData());
+
+        // With one name fewer than a model keeps asked after it, it is still the one kept; one more, and it is read again, the same.
+        for (int row = 1; row < FolderModel::typesKept; ++row)
+            QCOMPARE(type(FolderModel::ExtensionRole, row), QString("TXT"));
+        QVERIFY(type(FolderModel::ExtensionRole).constData() == first.constData());
+        QCOMPARE(type(FolderModel::ExtensionRole, FolderModel::typesKept), QString("TXT"));
+        const QString again = type(FolderModel::ExtensionRole);
+        QVERIFY(again.constData() != first.constData());
+        QCOMPARE(again, first);
+        QCOMPARE(type(FolderModel::MimeRole), QString("image/jpeg"));
+
+        // The remembered rows of that name, shown before anything is read again, are not given the file's type.
+        model.setPath(folder.path());
+        QCOMPARE(model.count(), 1);
+        QCOMPARE(type(FolderModel::NameRole), QString("photo.jpg"));
+        QCOMPARE(type(FolderModel::MimeRole), QString("inode/directory"));
+        QCOMPARE(type(FolderModel::KindRole), QString("folder"));
+        QCOMPARE(type(FolderModel::ExtensionRole), QString());
+        model.setPath(pipe.path());
+        QCOMPARE(model.count(), 1);
+        QCOMPARE(type(FolderModel::NameRole), QString("photo.jpg"));
+        QCOMPARE(type(FolderModel::MimeRole), QString("inode/fifo"));
+        QCOMPARE(type(FolderModel::ExtensionRole), QString("JPG"));
+        model.setPath(plugin);
+        QCOMPARE(model.count(), 1);
+        QCOMPARE(type(FolderModel::NameRole), QString("photo.jpg"));
+        QCOMPARE(type(FolderModel::KindRole), QString("item"));
+        QCOMPARE(type(FolderModel::ExtensionRole), QString("Windows"));
+
+        // Back in the folder, and after it is read again and found as it was, the type is the one kept; found changed, it is read again.
+        model.setPath(files.path());
+        QVERIFY(type(FolderModel::ExtensionRole).constData() == again.constData());
+        QVERIFY(loaded.wait(5000));
+        QVERIFY(type(FolderModel::ExtensionRole).constData() == again.constData());
+        write(files.filePath("zz.txt"), "x");
+        model.reload();
+        QTRY_COMPARE_WITH_TIMEOUT(model.count(), FolderModel::typesKept + 2, 5000);
+        const QString anew = type(FolderModel::ExtensionRole);
+        QVERIFY(anew.constData() != again.constData());
+        QCOMPARE(anew, again);
+    }
+
+    void folderReadsSizesAndDatesOfTheFirstRowsOnly()
+    {
+        // Listed for the model, a big folder reads the sizes and dates of its first window, by date or size every one.
+        QTemporaryDir big, small;
+        constexpr int files = 3000, folders = 5, all = files + folders;
+        for (int i = 0; i < files; ++i)
+            write(big.filePath(QString("f%1.txt").arg(i)), QByteArray(i % 7, 'x'));
+        for (int i = 0; i < folders; ++i)
+            QDir(big.path()).mkdir(QString("d%1").arg(i));
+        for (int i = 0; i < 10; ++i)
+            write(small.filePath(QString("%1.txt").arg(i)), "x");
+        QString error;
+        for (const QString &sort : FolderModel::sortModes()) {
+            const auto entries = FolderModel::list(big.path(), false, sort, &error, {}, QLocale(), false);
+            const bool bySize = sort == "modified" || sort == "oldest" || sort == "size";
+            const auto read = std::count_if(entries.cbegin(), entries.cend(), [](const auto &e) { return !e.unread; });
+            QCOMPARE(read, bySize ? all : FolderModel::firstRows);
+            // In sorted order: the first rows are the ones read.
+            for (int row = 0; row < entries.size(); ++row)
+                QCOMPARE(entries.at(row).unread, !bySize && row >= FolderModel::firstRows);
+            const auto few = FolderModel::list(small.path(), false, sort, &error, {}, QLocale(), false);
+            QCOMPARE(std::count_if(few.cbegin(), few.cend(), [](const auto &e) { return e.unread; }), 0);
+        }
+    }
+
+    void folderReadsALaterRowWhenAViewAsks()
+    {
+        QTemporaryDir dir;
+        constexpr int later = 10;
+        for (int i = 0; i < FolderModel::firstRows + later; ++i)
+            write(dir.filePath(QString("f%1.txt").arg(i, 4, 10, QChar('0'))), QByteArray(i % 9, 'x'));
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QTRY_COMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+
+        // Asked, a row not read yet answers nothing, never 0 B or 1970; every row asked in one turn is read in one batch.
+        QSignalSpy changed(&model, &QAbstractItemModel::dataChanged);
+        QSignalSpy counts(&model, &FolderModel::countChanged);
+        for (int row = FolderModel::firstRows; row < model.count(); ++row) {
+            QVERIFY(!model.index(row).data(FolderModel::SizeRole).isValid());
+            QVERIFY(!model.index(row).data(FolderModel::ModifiedRole).isValid());
+        }
+        QVERIFY(!model.get(FolderModel::firstRows).value("size").isValid());
+        QVERIFY(!model.get(FolderModel::firstRows).value("modified").isValid());
+        QCOMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+        QCoreApplication::sendPostedEvents(&model, QEvent::MetaCall);
+        QCOMPARE(model.findChildren<QFutureWatcherBase *>().size(), 1);
+
+        // One batch tells its rows in one step, never some of them first.
+        QTRY_VERIFY(changed.count() > 0);
+        QCOMPARE(changed.count(), later);
+        const QMimeDatabase mimes;
+        for (int i = 0; i < later; ++i) {
+            const int row = FolderModel::firstRows + i;
+            QCOMPARE(changed.at(i).at(0).toModelIndex().row(), row);
+            QCOMPARE(changed.at(i).at(1).toModelIndex().row(), row);
+            QCOMPARE(changed.at(i).at(2).value<QList<int>>(), QList<int>({FolderModel::SizeRole, FolderModel::ModifiedRole}));
+            const QModelIndex at = model.index(row);
+            const auto whole = FolderModel::entryFor(QFileInfo(at.data(FolderModel::PathRole).toString()), mimes);
+            QCOMPARE(at.data(FolderModel::SizeRole).toLongLong(), whole.size);
+            QCOMPARE(at.data(FolderModel::ModifiedRole).toDateTime(), whole.modified);
+            QCOMPARE(model.get(row).value("size").toLongLong(), whole.size);
+        }
+        // The get() answered without a size is taken again.
+        QCOMPARE(counts.count(), 1);
+        // Read once, a row stays read: asking again reads nothing.
+        const auto batches = model.findChildren<QFutureWatcherBase *>().size();
+        QVERIFY(model.index(FolderModel::firstRows).data(FolderModel::SizeRole).isValid());
+        QCoreApplication::sendPostedEvents(&model, QEvent::MetaCall);
+        QCOMPARE(model.findChildren<QFutureWatcherBase *>().size(), batches);
+    }
+
+    void folderShowsNothingForAFileGoneBeforeItsRead()
+    {
+        // Deleted between the listing and its row's read: no 0 B and no 1970 while the re-read that drops it comes.
+        QTemporaryDir dir;
+        for (int i = 0; i < FolderModel::firstRows + 10; ++i)
+            write(dir.filePath(QString("f%1.txt").arg(i, 4, 10, QChar('0'))), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QTRY_COMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+        const int row = FolderModel::firstRows + 4;
+        const QString path = model.index(row).data(FolderModel::PathRole).toString();
+        QVERIFY(QFile::remove(path));
+        QSignalSpy changed(&model, &QAbstractItemModel::dataChanged);
+        QVERIFY(!model.index(row).data(FolderModel::SizeRole).isValid());
+        QCoreApplication::sendPostedEvents(&model, QEvent::MetaCall);
+        QCOMPARE(model.findChildren<QFutureWatcherBase *>().size(), 1);
+        QTRY_COMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+        QCOMPARE(changed.count(), 0);
+        const int still = model.indexOfPath(path);
+        QVERIFY(still < 0 || !model.index(still).data(FolderModel::SizeRole).isValid());
+    }
+
+    void folderDropsWhatItReadForAFolderLeft()
+    {
+        QTemporaryDir a, b;
+        for (int i = 0; i < FolderModel::firstRows + 10; ++i)
+            write(a.filePath(QString("f%1.txt").arg(i, 4, 10, QChar('0'))), "x");
+        write(b.filePath("one.txt"), "x");
+        const int row = FolderModel::firstRows + 5;
+        {
+            FolderModel model;
+            QSignalSpy loaded(&model, &FolderModel::loaded);
+            model.setPath(a.path());
+            QVERIFY(loaded.wait(3000));
+            QTRY_COMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+
+            // Asked, then left and come back to before the read is in: what it read is for a listing that's gone.
+            QSignalSpy changed(&model, &QAbstractItemModel::dataChanged);
+            QVERIFY(!model.index(row).data(FolderModel::SizeRole).isValid());
+            QCoreApplication::sendPostedEvents(&model, QEvent::MetaCall);
+            QCOMPARE(model.findChildren<QFutureWatcherBase *>().size(), 1);
+            model.setPath(b.path());
+            model.setPath(a.path());
+            QTRY_COMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+            QVERIFY(!model.loading());
+            for (const auto &signal : std::as_const(changed))
+                QVERIFY(!signal.at(2).value<QList<int>>().contains(FolderModel::SizeRole));
+        }
+
+        // A model gone with a read on its way leaves the read nothing to land on.
+        auto model = std::make_unique<FolderModel>();
+        model->setPath(a.path());
+        QTRY_VERIFY(!model->loading());
+        QTRY_COMPARE(model->findChildren<QFutureWatcherBase *>().size(), 0);
+        QVERIFY(!model->index(row).data(FolderModel::SizeRole).isValid());
+        QCoreApplication::sendPostedEvents(model.get(), QEvent::MetaCall);
+        QCOMPARE(model->findChildren<QFutureWatcherBase *>().size(), 1);
+        model.reset();
+        QThreadPool::globalInstance()->waitForDone();
+        QCoreApplication::processEvents();
+    }
+
+    void folderTellsASnapshotWaitingBehindABatchThatReadNothing()
+    {
+        // With the folder's parent renamed away a row reads nothing, and the folder itself, which is watched, never changes.
+        QTemporaryDir dir;
+        const QString parent = dir.filePath("parent"), away = dir.filePath("away"), folder = parent + "/folder";
+        QVERIFY(QDir().mkpath(folder));
+        const int nothing = FolderModel::firstRows + 1, snapshot = FolderModel::firstRows + 2, all = FolderModel::firstRows + 10;
+        for (int i = 0; i < all; ++i)
+            write(folder + QString("/f%1.txt").arg(i, 4, 10, QChar('0')), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(folder);
+        QVERIFY(loaded.wait(3000));
+        QTRY_COMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+
+        // The first batch reads nothing; a snapshot taken before it lands is read by the next.
+        QSignalSpy counts(&model, &FolderModel::countChanged);
+        QVERIFY(QFile::rename(parent, away));
+        QVERIFY(!model.index(nothing).data(FolderModel::SizeRole).isValid());
+        QCoreApplication::sendPostedEvents(&model, QEvent::MetaCall);
+        QCOMPARE(model.findChildren<QFutureWatcherBase *>().size(), 1);
+        QThreadPool::globalInstance()->waitForDone();
+        QVERIFY(QFile::rename(away, parent));
+        QVERIFY(!model.get(snapshot).value("size").isValid());
+        QTRY_VERIFY(model.index(snapshot).data(FolderModel::SizeRole).isValid());
+        QCOMPARE(counts.count(), 1);
+        // No re-read stood in for it: the folder was listed once and holds every row.
+        QCOMPARE(loaded.count(), 1);
+        QCOMPARE(model.count(), all);
+    }
+
+    void folderLetsARowBeAskedAgainAfterAReReadCouldNotReadIt()
+    {
+        if (geteuid() == 0)
+            QSKIP("Root can read every file.");
+        // A folder that may be listed and not searched gives its names and no sizes: a re-read lists the same rows and reads none.
+        QTemporaryDir dir;
+        const QString folder = dir.filePath("folder");
+        QVERIFY(QDir().mkpath(folder));
+        constexpr int files = 3, row = 1;
+        for (int i = 0; i < files; ++i)
+            write(folder + QString("/f%1.txt").arg(i), "x");
+        const auto whole = QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner;
+        QVERIFY(QFile::setPermissions(folder, QFile::ReadOwner));
+        const auto restore = qScopeGuard([&] { QFile::setPermissions(folder, whole); });
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded), resets(&model, &FolderModel::modelReset);
+        model.setPath(folder);
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), files);
+        QTRY_COMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+        resets.clear();
+
+        // The row is asked for, and a re-read takes the asking over and can't read it either.
+        QVERIFY(!model.index(row).data(FolderModel::SizeRole).isValid());
+        model.reload();
+        QVERIFY(loaded.wait(3000));
+        QTRY_COMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+        // The same rows were kept: a reset would have let every asking go by itself.
+        QCOMPARE(resets.count(), 0);
+        QVERIFY(!model.index(row).data(FolderModel::SizeRole).isValid());
+
+        // Asked for again, it is read: its answer lands with no turn of the event loop, where a re-read for the folder's own change could stand in.
+        QVERIFY(QFile::setPermissions(folder, whole));
+        QCoreApplication::sendPostedEvents(&model, QEvent::MetaCall);
+        const auto watchers = model.findChildren<QFutureWatcherBase *>();
+        QCOMPARE(watchers.size(), 1);
+        QThreadPool::globalInstance()->waitForDone();
+        QCoreApplication::sendPostedEvents(watchers.constFirst());
+        QVERIFY(model.index(row).data(FolderModel::SizeRole).isValid());
+    }
+
+    void folderTellsAViewOfARowAnotherViewReadBehindItsReRead()
+    {
+        if (geteuid() == 0)
+            QSKIP("Root can read every file.");
+        QTemporaryDir dir;
+        const QString folder = dir.filePath("folder");
+        QVERIFY(QDir().mkpath(folder));
+        constexpr int files = 3, row = 1;
+        for (int i = 0; i < files; ++i)
+            write(folder + QString("/f%1.txt").arg(i), "x");
+        const auto whole = QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner;
+        QVERIFY(QFile::setPermissions(folder, QFile::ReadOwner));
+        const auto restore = qScopeGuard([&] { QFile::setPermissions(folder, whole); });
+        QThreadPool *pool = QThreadPool::globalInstance();
+        FolderModel first, second;
+        QSignalSpy loaded(&first, &FolderModel::loaded);
+        first.setPath(folder);
+        QVERIFY(loaded.wait(3000));
+        QTRY_COMPARE(first.findChildren<QFutureWatcherBase *>().size(), 0);
+        // A second view shares the listing the first one left.
+        second.setPath(folder);
+        QCOMPARE(second.count(), files);
+        QTRY_COMPARE(second.findChildren<QFutureWatcherBase *>().size(), 0);
+
+        // The first view asks for a row, and its re-read owes the row and can't read it: the answer waits, not landed.
+        QSignalSpy told(&first, &FolderModel::dataChanged), resets(&first, &FolderModel::modelReset);
+        QVERIFY(!first.index(row).data(FolderModel::SizeRole).isValid());
+        first.reload();
+        pool->waitForDone();
+        // Meanwhile the second view reads the row, in place in the listing both show.
+        QVERIFY(QFile::setPermissions(folder, whole));
+        QVERIFY(!second.index(row).data(FolderModel::SizeRole).isValid());
+        QCoreApplication::sendPostedEvents(&second, QEvent::MetaCall);
+        QCOMPARE(second.findChildren<QFutureWatcherBase *>().size(), 1);
+        pool->waitForDone();
+        QCoreApplication::sendPostedEvents(second.findChildren<QFutureWatcherBase *>().constFirst());
+        QVERIFY(second.index(row).data(FolderModel::SizeRole).isValid());
+        QCOMPARE(told.count(), 0);
+
+        // The re-read lands with the row unread: the first view is told of the row it is owed, once, and keeps its rows.
+        QCOMPARE(first.findChildren<QFutureWatcherBase *>().size(), 1);
+        QCoreApplication::sendPostedEvents(first.findChildren<QFutureWatcherBase *>().constFirst());
+        QCOMPARE(resets.count(), 0);
+        QCOMPARE(told.count(), 1);
+        QCOMPARE(told.at(0).at(0).toModelIndex().row(), row);
+        QVERIFY(first.index(row).data(FolderModel::SizeRole).isValid());
+    }
+
+    void folderReadsARowAskedForAndNotReadAtItsNextReRead()
+    {
+        if (geteuid() == 0)
+            QSKIP("Root can read every file.");
+        // The row is past the ones every listing reads: only having been asked for gets it read again.
+        QTemporaryDir dir;
+        const QString folder = dir.filePath("folder");
+        QVERIFY(QDir().mkpath(folder));
+        const int files = FolderModel::firstRows + 10, row = FolderModel::firstRows + 5;
+        for (int i = 0; i < files; ++i)
+            write(folder + QString("/f%1.txt").arg(i, 4, 10, QChar('0')), "x");
+        const auto whole = QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner;
+        QVERIFY(QFile::setPermissions(folder, QFile::ReadOwner));
+        const auto restore = qScopeGuard([&] { QFile::setPermissions(folder, whole); });
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded), told(&model, &FolderModel::dataChanged);
+        model.setPath(folder);
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), files);
+        QTRY_COMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+
+        // Asked for while nothing in the folder can be looked up: the read finds nothing, and no row is told.
+        QVERIFY(!model.index(row).data(FolderModel::SizeRole).isValid());
+        QCoreApplication::sendPostedEvents(&model, QEvent::MetaCall);
+        QCOMPARE(model.findChildren<QFutureWatcherBase *>().size(), 1);
+        QTRY_COMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+        QCOMPARE(told.count(), 0);
+
+        // The folder is read again once it can be looked into: the row is read with it and told, with no view asking.
+        QVERIFY(QFile::setPermissions(folder, whole));
+        model.reload();
+        QVERIFY(loaded.wait(3000));
+        QTRY_COMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+        int tellings = 0;
+        for (const auto &call : told)
+            tellings += call.at(0).toModelIndex().row() == row;
+        QCOMPARE(tellings, 1);
+        QVERIFY(model.index(row).data(FolderModel::SizeRole).isValid());
+    }
+
+    void folderShowsAFileThatGrewAfterItsRowWasRead()
+    {
+        QTemporaryDir dir;
+        for (int i = 0; i < FolderModel::firstRows + 10; ++i)
+            write(dir.filePath(QString("f%1.txt").arg(i, 4, 10, QChar('0'))), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QTRY_COMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+        // One row read with the listing, one read when asked, one never read.
+        const int first = 3, asked = FolderModel::firstRows + 2, never = FolderModel::firstRows + 7;
+        QSignalSpy changed(&model, &QAbstractItemModel::dataChanged);
+        QVERIFY(!model.index(asked).data(FolderModel::SizeRole).isValid());
+        QTRY_COMPARE(changed.count(), 1);
+        QCOMPARE(model.index(asked).data(FolderModel::SizeRole).toLongLong(), 1);
+
+        // Both grow, and get a date of their own; the re-read tells those two rows and resets nothing.
+        const QDateTime when = QDateTime::fromSecsSinceEpoch(1700000000);
+        for (int row : {first, asked, never}) {
+            QFile file(model.index(row).data(FolderModel::PathRole).toString());
+            QVERIFY(file.open(QIODevice::Append));
+            file.write("grown");
+            file.flush();
+            QVERIFY(file.setFileTime(when, QFileDevice::FileModificationTime));
+        }
+        changed.clear();
+        QSignalSpy resets(&model, &QAbstractItemModel::modelReset);
+        model.reload();
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(resets.count(), 0);
+        QSet<int> told;
+        for (const auto &signal : std::as_const(changed)) {
+            QCOMPARE(signal.at(0).toModelIndex().row(), signal.at(1).toModelIndex().row());
+            QCOMPARE(signal.at(2).value<QList<int>>(), QList<int>({FolderModel::SizeRole, FolderModel::ModifiedRole}));
+            told << signal.at(0).toModelIndex().row();
+        }
+        QCOMPARE(told, QSet<int>({first, asked}));
+        for (int row : {first, asked}) {
+            QCOMPARE(model.index(row).data(FolderModel::SizeRole).toLongLong(), 6);
+            QCOMPARE(model.index(row).data(FolderModel::ModifiedRole).toDateTime(), when);
+        }
+    }
+
+    void folderAsksEveryRowIntoAWholeListing()
+    {
+        // Every row asked for, the model holds what a whole listing does, in the same order, by name and by kind.
+        QTemporaryDir dir;
+        int all = 0;
+        oddEntries(dir, &all);
+        if (QTest::currentTestFailed())
+            return;
+        const QMimeDatabase mimes;
+        for (const QString &sort : {QStringLiteral("name"), QStringLiteral("kind")}) {
+            FolderModel model;
+            QSignalSpy loaded(&model, &FolderModel::loaded);
+            model.setShowHidden(true);
+            model.setSortMode(sort);
+            model.setPath(dir.path());
+            QVERIFY(loaded.wait(3000));
+            QCOMPARE(model.count(), all);
+            QTRY_COMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+            int unread = 0;
+            for (int row = 0; row < model.count(); ++row)
+                unread += !model.index(row).data(FolderModel::ModifiedRole).isValid();
+            QVERIFY(unread > 0);
+            QCoreApplication::sendPostedEvents(&model, QEvent::MetaCall);
+            QTRY_COMPARE(model.findChildren<QFutureWatcherBase *>().size(), 0);
+            QString error;
+            const auto whole = FolderModel::list(dir.path(), true, sort, &error);
+            QCOMPARE(whole.size(), all);
+            for (int row = 0; row < model.count(); ++row) {
+                const QModelIndex at = model.index(row);
+                const auto &e = whole.at(row);
+                QCOMPARE(at.data(FolderModel::PathRole).toString(), e.path);
+                QCOMPARE(at.data(FolderModel::NameRole).toString(), e.name);
+                QCOMPARE(at.data(FolderModel::IsDirRole).toBool(), e.isDir);
+                QCOMPARE(at.data(FolderModel::SizeRole).toLongLong(), e.size);
+                QCOMPARE(at.data(FolderModel::ModifiedRole).toDateTime(), e.modified);
+                QCOMPARE(at.data(FolderModel::KindRole).toString(), e.kind);
+                QCOMPARE(at.data(FolderModel::MimeRole).toString(), e.mime);
+                QCOMPARE(at.data(FolderModel::ExtensionRole).toString(), e.extension);
+                QCOMPARE(at.data(FolderModel::ExtensionRole).toString().isNull(), e.extension.isNull());
+                QCOMPARE(model.get(row).value("size").toLongLong(), e.size);
+                QCOMPARE(model.get(row).value("modified").toDateTime(), e.modified);
+            }
+        }
+    }
+
+    void folderRowShowsNoSizeOrDateUntilRead()
+    {
+        // As a view draws it: a row past the first window shows no size, no date and asks for no thumbnail, then the real ones.
+        QTemporaryDir dir;
+        for (int i = 0; i < FolderModel::firstRows + 10; ++i)
+            write(dir.filePath(QString("p%1.png").arg(i, 4, 10, QChar('0'))), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+
+        QQmlEngine engine;
+        QQmlComponent rows(&engine);
+        rows.setData("import QtQml\nimport \"Format.js\" as Format\n"
+                     "Instantiator { required property var folder; model: folder\n"
+                     "    delegate: QtObject { required property string path; required property string mime\n"
+                     "        required property var size; required property var modified\n"
+                     "        readonly property string line: Format.size(size) + \"|\" + Format.when(modified)\n"
+                     "        readonly property string thumb: Format.thumb(path, mime, 128, modified)\n"
+                     "        readonly property string page: Format.page(path, 256, modified, \"#101010\", \"#f0f0f0\")\n"
+                     "        property var thumbs: []\n"
+                     "        property var pages: []\n"
+                     "        Component.onCompleted: { thumbs.push(thumb); pages.push(page) }\n"
+                     "        onThumbChanged: thumbs.push(thumb)\n"
+                     "        onPageChanged: pages.push(page) } }",
+                     QUrl::fromLocalFile(QFINDTESTDATA("../src/Format.js")));
+        std::unique_ptr<QObject> view(rows.createWithInitialProperties({{"folder", QVariant::fromValue(&model)}}));
+        QVERIFY2(view, qPrintable(rows.errorString()));
+        QObject *read = nullptr, *later = nullptr;
+        QMetaObject::invokeMethod(view.get(), "objectAt", Q_RETURN_ARG(QObject *, read), Q_ARG(int, 0));
+        QMetaObject::invokeMethod(view.get(), "objectAt", Q_RETURN_ARG(QObject *, later), Q_ARG(int, FolderModel::firstRows + 5));
+        QVERIFY(read && later);
+        QVERIFY(read->property("line").toString().startsWith("1 B|"));
+        QCOMPARE(later->property("line").toString(), QString("|"));
+        QCOMPARE(later->property("thumb").toString(), QString());
+
+        QTRY_VERIFY(later->property("line").toString().startsWith("1 B|"));
+        const QDateTime modified = QFileInfo(dir.filePath(QString("p%1.png").arg(FolderModel::firstRows + 5, 4, 10, QChar('0')))).lastModified();
+        QVERIFY(later->property("line").toString().size() > 4);
+        const QString thumb = later->property("thumb").toString();
+        QVERIFY(thumb.startsWith(QString("image://thumb/128/%1/").arg(modified.toMSecsSinceEpoch())));
+        // The thumbnail is asked for once, with its date, and so is a text file's page.
+        QCOMPARE(later->property("thumbs").toStringList(), QStringList({QString(), thumb}));
+        const QString page = later->property("page").toString();
+        QVERIFY(page.startsWith(QString("image://thumb/page/256/%1/").arg(modified.toMSecsSinceEpoch())));
+        QCOMPARE(later->property("pages").toStringList(), QStringList({QString(), page}));
+
+        // Details without a size name the type alone.
+        QQmlComponent summary(&engine);
+        summary.setData("import QtQml\nimport \"Format.js\" as Format\n"
+                        "QtObject { readonly property string unread: Format.summary({path: \"/p.png\", isDir: false, mime: \"image/png\"}, \"\")\n"
+                        "    readonly property string read: Format.summary({path: \"/p.png\", isDir: false, mime: \"image/png\", size: 0}, \"\")\n"
+                        "    readonly property string undated: Format.thumb(\"/p.png\", \"image/png\", 256, null) }",
+                        QUrl::fromLocalFile(QFINDTESTDATA("../src/Format.js")));
+        std::unique_ptr<QObject> details(summary.create());
+        QVERIFY2(details, qPrintable(summary.errorString()));
+        QCOMPARE(details->property("unread").toString(), QString("image/png"));
+        QCOMPARE(details->property("read").toString(), QString("image/png · 0 B"));
+        // A caller with no time to give, as the preview's strip of a folder's pictures, still gets its picture.
+        QCOMPARE(details->property("undated").toString(), QString("image://thumb/256/0/image%2Fpng/%2Fp.png"));
+    }
+
     void folderReportsMissingFolders()
     {
         QString error;
         QVERIFY(FolderModel::list("/definitely/not/here", false, "name", &error).isEmpty());
         QVERIFY(!error.isEmpty());
+    }
+
+    void folderTypesFilesByNameAndTheRestByWhatTheyAre()
+    {
+        QTemporaryDir dir;
+        write(dir.filePath("CMakeLists.txt"), "x");
+        write(dir.filePath("notes.txt"), "x");
+        QVERIFY(QFile::link("notes.txt", dir.filePath("link.md")));
+        QVERIFY(QFile::link(dir.path(), dir.filePath("folder.png")));
+        QVERIFY(QFile::link("/dev/null", dir.filePath("device.txt")));
+
+        const QMimeDatabase mimes;
+        const auto mime = [&](const char *name) { return FolderModel::entryFor(QFileInfo(dir.filePath(name)), mimes).mime; };
+        QCOMPARE(mime("CMakeLists.txt"), QString("text/x-cmake"));
+        QCOMPARE(mime("notes.txt"), QString("text/plain"));
+        QCOMPARE(mime("link.md"), QString("text/markdown"));
+        QCOMPARE(mime("folder.png"), QString("inode/directory"));
+        // Not a regular file, whatever its name says.
+        QCOMPARE(mime("device.txt"), QString("inode/chardevice"));
+    }
+
+    void folderTypesAFileByWhatItsListingRead()
+    {
+        // A file swapped for a pipe after its listing read it keeps the type it was read as: no second look.
+        QTemporaryDir dir;
+        write(dir.filePath("notes.txt"), "x");
+        QFileInfo info(dir.filePath("notes.txt"));
+        QVERIFY(info.isFile());
+        QVERIFY(QFile::remove(dir.filePath("notes.txt")));
+        QCOMPARE(::mkfifo(QFile::encodeName(dir.filePath("notes.txt")).constData(), 0600), 0);
+        QCOMPARE(FolderModel::entryFor(info, QMimeDatabase()).mime, QString("text/plain"));
     }
 
     void folderSummaryCountsAndPeeks()
@@ -559,6 +1261,48 @@ private slots:
         // The folder counts just count, the hidden only when they show.
         QCOMPARE(FolderModel::itemCount(dir.path(), false), 4);
         QCOMPARE(FolderModel::itemCount(dir.path(), true), 5);
+    }
+
+    void folderSummaryPeeksWithoutSortingEveryName()
+    {
+        // Written in neither name order nor its reverse, so a listing in creation order, either way, gives the wrong two.
+        QTemporaryDir dir;
+        QDir(dir.path()).mkdir(".shots.png");
+        for (int i = 20; i > 0; --i)
+            write(dir.filePath(QString("note%1.txt").arg(i)), "x");
+        for (const char *name : {"photo10.jpg", "\xc3\x89lan.png", "Photo9.JPG", "photo9.jpg"})
+            write(dir.filePath(QString::fromUtf8(name)), "x");
+        QVERIFY(QFile::link(dir.filePath("missing"), dir.filePath("gone")));
+        QCOMPARE(::mkfifo(QFile::encodeName(dir.filePath("pipe")).constData(), 0600), 0);
+
+        // Name order is a case-sensitive compare: capitals first, photo10 before photo9, accents after z.
+        FolderModel::Entry entry;
+        entry.path = dir.path();
+        FolderModel::summarize(entry, false);
+        QCOMPARE(entry.itemCount, 26);
+        QCOMPARE(entry.peek, QStringList({dir.filePath("Photo9.JPG"), dir.filePath("photo10.jpg")}));
+        // A folder named like a picture peeks like one.
+        FolderModel::summarize(entry, true);
+        QCOMPARE(entry.itemCount, 27);
+        QCOMPARE(entry.peek, QStringList({dir.filePath(".shots.png"), dir.filePath("Photo9.JPG")}));
+
+        // A big folder is counted without holding every name at once.
+        constexpr int files = 20000;
+        constexpr long allowedKib = 4096; // about a fifth of what sorting 20,000 names holds
+        QTemporaryDir big;
+        for (int i = 0; i < files; ++i)
+            write(big.filePath(QString("f%1.txt").arg(i)), "x");
+        entry.path = big.path();
+        malloc_trim(0);
+        constexpr char resetPeak[] = "5"; // what /proc/self/clear_refs takes to set VmHWM back to the current VmRSS
+        QFile clear("/proc/self/clear_refs");
+        QVERIFY(clear.open(QIODevice::WriteOnly));
+        QVERIFY(clear.write(resetPeak) == 1);
+        clear.close();
+        const long resident = residentKib("VmRSS:");
+        FolderModel::summarize(entry, false);
+        QCOMPARE(entry.itemCount, files);
+        QVERIFY2(residentKib("VmHWM:") - resident < allowedKib, "summarizing held every name");
     }
 
     void folderModelLoadsInTheBackground()
@@ -628,6 +1372,1639 @@ private slots:
         QCOMPARE(found.first().name, QString("real/match.txt"));
     }
 
+    void searchAsksAboutFoldersAndShownRowsOnly()
+    {
+        // One stat for each folder a search opens and one for each match it shows, none for any other file.
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("a/b");
+        QDir(dir.path()).mkpath("c");
+        for (int i = 0; i < 50; ++i) {
+            write(dir.filePath(QString("a/b/file%1.txt").arg(i)), "x");
+            write(dir.filePath(QString("c/note%1.md").arg(i)), "x");
+        }
+        write(dir.filePath("beach.txt"), "x");
+        write(dir.filePath("a/b/Beach.jpg"), "x");
+        SearchIndex index;
+        QVERIFY(index.walk(dir.path(), false));
+        QCOMPARE(index.size(), 105);
+        QCOMPARE(index.counts.opens, 4);
+        QCOMPARE(index.counts.stats, index.counts.opens);
+        QCOMPARE(index.find("BEACH", "name", 1000).size(), 2);
+        QCOMPARE(index.counts.stats, index.counts.opens + 2);
+        // Nearest first when there are more than the limit.
+        const auto nearest = index.find("beach", "name", 1);
+        QCOMPARE(nearest.size(), 1);
+        QCOMPARE(nearest.first().name, QString("beach.txt"));
+    }
+
+    void searchKeepsTheNearestNamesOfATreeTooBig()
+    {
+        // A walk keeps so many names and no more, the nearest, and the search says how many it read.
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("deep/deeper");
+        for (int i = 0; i < 3; ++i) {
+            write(dir.filePath(QString("near%1.txt").arg(i)), "x");
+            write(dir.filePath(QString("deep/far%1.txt").arg(i)), "x");
+            write(dir.filePath(QString("deep/deeper/farther%1.txt").arg(i)), "x");
+        }
+        const auto restore = qScopeGuard([] {
+            QThreadPool::globalInstance()->waitForDone();
+            SearchIndex::mostRows = SearchIndex::MostRows;
+        });
+        // Four names in the root, four in deep, three in deeper: at eleven nothing is left unread.
+        SearchIndex::mostRows = 11;
+        SearchIndex whole;
+        QVERIFY(whole.walk(dir.path(), false));
+        QCOMPARE(whole.size(), 11);
+        QVERIFY(!whole.cut());
+        QCOMPARE(whole.answer("farther"), 3);
+        // At six, the root's four and two of deep's: nothing of deeper.
+        SearchIndex::mostRows = 6;
+        SearchIndex index;
+        QVERIFY(index.walk(dir.path(), false));
+        QCOMPARE(index.size(), 6);
+        QVERIFY(index.cut());
+        QCOMPARE(index.answer("near"), 3);
+        QCOMPARE(index.answer("farther"), 0);
+        // Full, the walk ends at once: of two folders waiting, the first is opened to find a name too many and the second is left.
+        QTemporaryDir pair;
+        for (const char *folder : {"a", "b"}) {
+            QDir(pair.path()).mkdir(folder);
+            write(pair.filePath(QString("%1/file.txt").arg(folder)), "x");
+        }
+        SearchIndex::mostRows = 2;
+        SearchIndex ended;
+        QVERIFY(ended.walk(pair.path(), false));
+        QVERIFY(ended.cut());
+        QCOMPARE(ended.size(), 2);
+        QCOMPARE(ended.counts.opens, 2);
+
+        SearchIndex::mostRows = 6;
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.mostRead(), -1);
+        model.setQuery("near");
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QCOMPARE(model.matches(), 3);
+        QCOMPARE(model.mostRead(), 6);
+        // The search over, there is nothing left to say of it, at once; and a tree read whole says nothing.
+        model.setQuery("");
+        QCOMPARE(model.mostRead(), -1);
+        QVERIFY(QThreadPool::globalInstance()->waitForDone(5000));
+        SearchIndex::mostRows = SearchIndex::MostRows;
+        model.setQuery("far");
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QCOMPARE(model.matches(), 6);
+        QCOMPARE(model.mostRead(), -1);
+    }
+
+    void searchStartsAWordAtACapitalInANameThatIsNotAscii()
+    {
+        // "büro" starts a word of MeinBüro, so it comes before a shorter name that only holds the letters.
+        QTemporaryDir dir;
+        write(dir.filePath("MeinBüro.txt"), "x");
+        write(dir.filePath("xbüro.txt"), "x");
+        SearchIndex index;
+        QVERIFY(index.walk(dir.path(), false));
+        QCOMPARE(index.answer("büro"), 2);
+        QCOMPARE(index.names(index.rows(0, 2)), QStringList({"MeinBüro.txt", "xbüro.txt"}));
+        // In ASCII alone it was so already.
+        write(dir.filePath("MeinBuero.txt"), "x");
+        write(dir.filePath("xbuero.txt"), "x");
+        SearchIndex plain;
+        QVERIFY(plain.walk(dir.path(), false));
+        QCOMPARE(plain.answer("buero"), 2);
+        QCOMPARE(plain.names(plain.rows(0, 2)), QStringList({"MeinBuero.txt", "xbuero.txt"}));
+    }
+
+    void searchFollowsNoLinkThatTookAFoldersPlaceOnTheWay()
+    {
+        // A folder is listed, then swapped for a link while its own folders wait to be read: what the link leads to is not read under its name.
+        QTemporaryDir dir, elsewhere;
+        QDir(dir.path()).mkpath("album/inner");
+        write(dir.filePath("album/inner/photo.txt"), "x");
+        QDir(elsewhere.path()).mkpath("inner");
+        write(elsewhere.filePath("inner/secret.txt"), "x");
+        const auto restore = qScopeGuard([] { SearchIndex::afterFolder = {}; });
+        bool swapped = false;
+        // Two folders read are the root and album: album/inner is next.
+        SearchIndex::afterFolder = [&](qsizetype read) {
+            if (read == 2)
+                swapped = QDir().rename(dir.filePath("album"), dir.filePath("album.was")) && QFile::link(elsewhere.path(), dir.filePath("album"));
+        };
+        SearchIndex index;
+        QVERIFY(index.walk(dir.path(), false));
+        QVERIFY(swapped);
+        QCOMPARE(index.size(), 2);
+        QCOMPARE(index.answer("secret"), 0);
+        QCOMPARE(index.answer("photo"), 0);
+    }
+
+    void searchReadsTheFolderItsPathLedToAtFirst()
+    {
+        // The folder searched is reached through a link, turned to another folder once its own names are read: the tree read stays the first one.
+        QTemporaryDir dir, elsewhere, links;
+        QDir(dir.path()).mkdir("album");
+        QDir(elsewhere.path()).mkdir("album");
+        write(dir.filePath("album/photo.txt"), "x");
+        write(elsewhere.filePath("album/secret.txt"), "x");
+        const QString shown = links.filePath("shown");
+        QVERIFY(QFile::link(dir.path(), shown));
+        const auto restore = qScopeGuard([] { SearchIndex::afterFolder = {}; });
+        bool turned = false;
+        // One folder read is the root: album is next.
+        SearchIndex::afterFolder = [&](qsizetype read) {
+            if (read == 1)
+                turned = QFile::remove(shown) && QFile::link(elsewhere.path(), shown);
+        };
+        SearchIndex index;
+        QVERIFY(index.walk(shown, false));
+        QVERIFY(turned);
+        QCOMPARE(index.size(), 2);
+        QCOMPARE(index.answer("photo"), 1);
+        QCOMPARE(index.answer("secret"), 0);
+    }
+
+    void searchAnswersALaterKeyBeforeItsFoldersAreReadAgain()
+    {
+        // The first letter reads the folders below; every letter after is answered from what was read, and the folders are read again behind it.
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("Photos/2024");
+        write(dir.filePath("Photos/2024/beach.jpg"), "x");
+        write(dir.filePath("beacon.txt"), "x");
+        write(dir.filePath(".beach"), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QVERIFY(!model.searchIndex());
+        model.setQuery("b");
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QVERIFY(QThreadPool::globalInstance()->waitForDone(5000));
+        const std::weak_ptr<const SearchIndex> held = model.searchIndex();
+        QCOMPARE(held.lock()->counts.walks, 1);
+        {
+            // The second read of the folders is held at its first: the key's answer has landed all the same, from the first read.
+            WalksHeld walks;
+            loaded.clear();
+            model.setQuery("be");
+            QVERIFY(loaded.wait(3000));
+            QVERIFY(walks.reached.tryAcquire(1, 3000));
+            QCOMPARE(model.count(), 2);
+            QVERIFY(model.searchIndex() == held.lock());
+            QCOMPARE(walks.walks.load(), 1);
+            // Keys typed while that read is held are answered too, and start no read beside it: one more follows it.
+            for (const auto &[query, matches] : {std::pair{"bea", 2}, std::pair{"beaco", 1}}) {
+                loaded.clear();
+                model.setQuery(query);
+                QVERIFY(loaded.wait(3000));
+                QCOMPARE(model.count(), matches);
+            }
+            QCOMPARE(walks.walks.load(), 1);
+            // Let go, the held read lands with the answer to the last key, and one read more follows for the two keys.
+            loaded.clear();
+            walks.letGo();
+            QVERIFY(loaded.wait(3000));
+            QCOMPARE(model.count(), 1);
+            QTRY_COMPARE(loaded.size(), 2);
+            QVERIFY(QThreadPool::globalInstance()->waitForDone(5000));
+            QCOMPARE(walks.walks.load(), 2);
+        }
+        QTRY_VERIFY(held.expired());
+        QCOMPARE(model.count(), 1);
+        QVERIFY(model.searchIndex()->bytes() > 0);
+        const std::weak_ptr<const SearchIndex> second = model.searchIndex();
+        model.setQuery("");
+        QVERIFY(!model.searchIndex());
+        QTRY_VERIFY(second.expired());
+
+        // The next search, and showing hidden files, read the folders again.
+        write(dir.filePath("Photos/beach2.jpg"), "x");
+        model.setQuery("beach");
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QCOMPARE(model.count(), 2);
+        model.setShowHidden(true);
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QCOMPARE(model.count(), 3);
+        QCOMPARE(model.searchIndex()->counts.walks, 1);
+    }
+
+    void searchFindsAtTheNextKeyAFileMadeSinceItsFoldersWereRead()
+    {
+        // Only the open folder is watched: a file made in a folder below it is found at the next key, with no refresh.
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("src");
+        write(dir.filePath("src/notes.txt"), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        model.setQuery("b");
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QVERIFY(QThreadPool::globalInstance()->waitForDone(5000));
+        QVERIFY(model.searchIndex());
+        QCOMPARE(model.count(), 0);
+        write(dir.filePath("src/budget.txt"), "x");
+        model.setQuery("bu");
+        QTRY_COMPARE(model.count(), 1);
+        QCOMPARE(model.get(0).value("name").toString(), QString("src/budget.txt"));
+    }
+
+    void searchListsTheBestMatchesFirst()
+    {
+        // Best first: the name itself, a name that starts with it, a word that does, its letters in order; of equals a folder, then the shorter path.
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("deep/down/frame");
+        QDir(dir.path()).mkpath("src/frame_old");
+        write(dir.filePath("for_a_meeting.txt"), "x");
+        write(dir.filePath("src/render_frame.rs"), "x");
+        write(dir.filePath("frame_new.txt"), "x");
+        write(dir.filePath("Frame notes.txt"), "x");
+        write(dir.filePath("frog.txt"), "x");
+        SearchIndex index;
+        QVERIFY(index.walk(dir.path(), false));
+        QCOMPARE(index.answer("frame"), 6);
+        QStringList order;
+        for (quint32 row : index.rows(0, 10))
+            order << QString::fromUtf8(index.path(row));
+        QCOMPARE(order, QStringList({"deep/down/frame", "src/frame_old", "frame_new.txt", "Frame notes.txt",
+                                     "src/render_frame.rs", "for_a_meeting.txt"}));
+        // Each name is matched once, and a longer query only among these.
+        const qsizetype names = index.counts.names;
+        QCOMPARE(index.answer("framen"), 3);
+        QCOMPARE(index.counts.names, names + 6);
+    }
+
+    void searchShowsItsMatchesAWindowAtATime()
+    {
+        // Matches show a window at a time, each looked at only when it's shown, and none is cut off.
+        QTemporaryDir dir;
+        for (int i = 0; i < 1100; ++i)
+            write(dir.filePath(QString("match%1.txt").arg(i)), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.matches(), -1);
+        model.setQuery("match");
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QCOMPARE(model.matches(), 1100);
+        QCOMPARE(model.count(), 350);
+        QCOMPARE(model.get(0).value("name").toString(), QString("match0.txt"));
+        QCOMPARE(model.get(349).value("name").toString(), QString("match349.txt"));
+        const auto index = model.searchIndex();
+        QCOMPARE(index->counts.stats, index->counts.opens + 350);
+        for (int shown : {700, 1050, 1100}) {
+            QVERIFY(model.canFetchMore({}));
+            model.fetchMore({});
+            QTRY_COMPARE(model.count(), shown);
+        }
+        QVERIFY(!model.canFetchMore({}));
+        QCOMPARE(model.get(1099).value("name").toString(), QString("match1099.txt"));
+        QCOMPARE(index->counts.stats, index->counts.opens + 1100);
+        // Another order puts the best matches in it, as many as ever.
+        model.setSortMode("size");
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 1000);
+        QVERIFY(!model.canFetchMore({}));
+        model.setSortMode("name");
+        QVERIFY(loaded.wait(3000));
+    }
+
+    void searchSelectAllTakesEveryMatch()
+    {
+        // Select All is of the matches, not of the rows scrolled to so far, and it's whole at once: a copy pressed next takes them all.
+        QTemporaryDir dir;
+        for (int i = 0; i < 500; ++i)
+            write(dir.filePath(QString("match%1.txt").arg(i)), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        model.setQuery("match");
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QCOMPARE(model.count(), 350);
+        model.selectAll();
+        QCOMPARE(model.selectedCount(), 500);
+        const QStringList all = model.selectedPaths();
+        QCOMPARE(all.size(), 500);
+        QCOMPARE(QSet<QString>(all.cbegin(), all.cend()).size(), 500);
+        for (const QString &path : all)
+            QVERIFY2(QFileInfo::exists(path), qPrintable(path));
+        // The rows come as before, a window at a time, and are selected as they come.
+        QCOMPARE(model.count(), 350);
+        model.fetchMore({});
+        QTRY_COMPARE(model.count(), 500);
+        QVERIFY(model.isSelected(420));
+        QCOMPARE(model.selectedPaths(), all);
+
+        // One taken out again, among the rows or past them, leaves the rest.
+        model.setQuery("atch");
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 350);
+        model.selectAll();
+        model.toggleSelected(3);
+        QCOMPARE(model.selectedCount(), 499);
+        QCOMPARE(model.selectedPaths().size(), 499);
+        model.selectOnly(3);
+        QCOMPARE(model.selectedPaths().size(), 1);
+    }
+
+    void searchReadAgainKeepsWhatSelectAllTook()
+    {
+        // F5, or a change in the folder, reads a search again: the matches selected past the rows stay selected, less the ones gone.
+        QTemporaryDir dir;
+        for (int i = 0; i < 500; ++i)
+            write(dir.filePath(QString("match%1.txt").arg(i)), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        model.setQuery("match");
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        model.selectAll();
+        const QString last = model.selectedPaths().constLast();
+        QVERIFY(QFile::remove(last));
+        model.reload();
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 350);
+        QCOMPARE(model.matches(), 499);
+        QCOMPARE(model.selectedCount(), 499);
+        QCOMPARE(model.selectedPaths().size(), 499);
+        QVERIFY(!model.selectedPaths().contains(last));
+    }
+
+    void searchKeepsItsSelectionWhileItsReadAgain()
+    {
+        // A landed search read again answers on while its folders are walked anew: rows, count and selection never change, and the new walk takes over whole.
+        QTemporaryDir dir;
+        for (const char *folder : {"a", "b", "c"}) {
+            QDir(dir.path()).mkdir(folder);
+            for (int i = 0; i < 150; ++i)
+                write(dir.filePath(QString("%1/match%2.txt").arg(folder).arg(i)), "x");
+        }
+        for (int i = 0; i < 50; ++i)
+            write(dir.filePath(QString("match%1.txt").arg(i)), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        model.setQuery("match");
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        model.fetchMore({});
+        QTRY_COMPARE(model.count(), 500);
+        model.selectAll();
+        const QStringList all = model.selectedPaths();
+        QCOMPARE(all.size(), 500);
+
+        WalksHeld walks(2);
+        loaded.clear();
+        const auto before = model.searchIndex();
+        model.reload();
+        QVERIFY(walks.reached.tryAcquire(1, 3000));
+        QTest::qWait(PastTheSearchHold);
+        QVERIFY(loaded.isEmpty());
+        QVERIFY(!model.reading() && !model.loading());
+        QCOMPARE(model.count(), 500);
+        QCOMPARE(model.matches(), 500);
+        QCOMPARE(model.selectedCount(), 500);
+        QCOMPARE(model.selectedPaths(), all);
+        QCOMPARE(model.searchIndex(), before);
+        walks.letGo();
+        QVERIFY(loaded.wait(3000));
+        QTRY_VERIFY(!model.loading());
+        QVERIFY(model.searchIndex() != before);
+        QCOMPARE(loaded.count(), 1);
+        QCOMPARE(model.count(), 500);
+        QCOMPARE(model.matches(), 500);
+        QCOMPARE(model.selectedCount(), 500);
+        QCOMPARE(model.selectedPaths().size(), 500);
+    }
+
+    void searchSelectAllWhileStillReadingTakesEveryMatchSoFar()
+    {
+        // Select All while the first walk still reads takes every match found so far, not the window of rows, and keeps them once it lands.
+        QTemporaryDir dir;
+        for (int i = 0; i < 400; ++i)
+            write(dir.filePath(QString("match%1.txt").arg(i)), "x");
+        for (const char *folder : {"a", "b"}) {
+            QDir(dir.path()).mkdir(folder);
+            for (int i = 0; i < 50; ++i)
+                write(dir.filePath(QString("%1/match%2.txt").arg(folder).arg(i)), "x");
+        }
+        WalksHeld walks;
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        model.setQuery("match");
+        QVERIFY(walks.reached.tryAcquire(1, 3000));
+        QVERIFY(loaded.wait(3000));
+        QVERIFY(model.reading());
+        QCOMPARE(model.matches(), 400);
+        QCOMPARE(model.count(), 350);
+        model.selectAll();
+        QCOMPARE(model.selectedCount(), 400);
+        QCOMPARE(model.selectedPaths().size(), 400);
+        walks.letGo();
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QCOMPARE(model.matches(), 500);
+        QCOMPARE(model.selectedCount(), 400);
+        QCOMPARE(model.selectedPaths().size(), 400);
+    }
+
+    void searchReadAgainDuringADownloadKeepsItsRows()
+    {
+        // Asked for again and again as files land: one walk runs at a time and one more follows it, and the rows never drop or say they're still reading.
+        QTemporaryDir dir;
+        // Nothing below the searched folder is watched, so the asks are the ones made here.
+        QVERIFY(QDir(dir.path()).mkdir("landing"));
+        for (int i = 0; i < 20; ++i)
+            write(dir.filePath(QString("match%1.txt").arg(i)), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        model.setQuery("match");
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QCOMPARE(model.count(), 20);
+        QSignalSpy reading(&model, &FolderModel::readingChanged);
+        int fewest = model.count();
+        connect(&model, &FolderModel::countChanged, &model, [&] { fewest = std::min(fewest, model.count()); });
+        WalksHeld walks(2);
+        model.reload();
+        QVERIFY(walks.reached.tryAcquire(1, 3000));
+        // Written after the held walk read both folders: the walk that follows it finds them.
+        for (int i = 20; i < 26; ++i) {
+            write(dir.filePath(QString("landing/match%1.txt").arg(i)), "x");
+            model.reload();
+        }
+        QTest::qWait(PastTheSearchHold);
+        QCOMPARE(model.count(), 20);
+        walks.letGo();
+        QTRY_COMPARE(model.count(), 26);
+        QTRY_VERIFY(!model.loading());
+        QVERIFY(QThreadPool::globalInstance()->waitForDone(5000));
+        QCOMPARE(walks.walks.load(), 2);
+        QCOMPARE(fewest, 20);
+        QVERIFY(reading.isEmpty());
+        QCOMPARE(model.matches(), 26);
+    }
+
+    void searchChangedDuringItsFirstReadIsReadAgain()
+    {
+        // A change while the first walk still reads doesn't start it over: it lands as it is, and the folders are read once more beside it.
+        QTemporaryDir dir;
+        QDir(dir.path()).mkdir("a");
+        write(dir.filePath("match.txt"), "x");
+        write(dir.filePath("a/match.txt"), "x");
+        WalksHeld walks(2);
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        model.setQuery("match");
+        QVERIFY(walks.reached.tryAcquire(1, 3000));
+        // In a folder the held walk has read already, below the one watched: the ask is this one alone.
+        write(dir.filePath("a/match too.txt"), "x");
+        model.reload();
+        QTest::qWait(PastTheSearchHold);
+        QCOMPARE(walks.walks.load(), 1);
+        walks.letGo();
+        QTRY_COMPARE(model.matches(), 3);
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QVERIFY(QThreadPool::globalInstance()->waitForDone(5000));
+        QCOMPARE(walks.walks.load(), 2);
+    }
+
+    void searchTypedOnDuringItsFirstReadAnswersTheLastKey()
+    {
+        // Keys typed while the first walk still reads start no walk beside it, and what lands is the answer to the last of them.
+        QTemporaryDir dir;
+        QDir(dir.path()).mkdir("a");
+        write(dir.filePath("render.txt"), "x");
+        write(dir.filePath("a/render too.txt"), "x");
+        write(dir.filePath("a/reel.txt"), "x");
+        // Matches the key before the last and not the last, so an answer to the wrong one shows.
+        write(dir.filePath("a/siren.txt"), "x");
+        // Declared ahead of the model, which announces a count as it ends.
+        QList<int> counts;
+        WalksHeld walks(2);
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        model.setQuery("r");
+        QVERIFY(walks.reached.tryAcquire(1, 3000));
+        for (const char *typed : {"re", "ren", "rend"})
+            model.setQuery(typed);
+        QCOMPARE(walks.walks.load(), 1);
+        const auto names = [&model] {
+            QStringList names;
+            for (int row = 0; row < model.count(); ++row)
+                names << model.get(row).value("name").toString();
+            names.sort();
+            return names;
+        };
+        const QStringList rend = {"a/render too.txt", "render.txt"};
+        // An earlier key's answer holds more than the last key's two, so no count seen on the way may pass two.
+        connect(&model, &FolderModel::matchesChanged, &model, [&counts, &model] { counts << model.matches(); });
+        walks.letGo();
+        QTRY_COMPARE(model.matches(), 2);
+        QCOMPARE(names(), rend);
+        // The three keys asked for one more read of the folders between them, not one each, and it answers the last key too.
+        QVERIFY(QThreadPool::globalInstance()->waitForDone(5000));
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QCOMPARE(walks.walks.load(), 2);
+        QCOMPARE(model.matches(), 2);
+        QCOMPARE(names(), rend);
+        QVERIFY(!counts.isEmpty());
+        QCOMPARE(*std::max_element(counts.cbegin(), counts.cend()), 2);
+    }
+
+    void searchReadAgainTakesOverOnceItHasAnswered()
+    {
+        // A walk read again is whole before it has answered: until its answer lands, the count and Select All are the old walk's, never the rows alone.
+        QTemporaryDir dir;
+        for (int i = 0; i < 500; ++i)
+            write(dir.filePath(QString("match%1.txt").arg(i)), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        model.setQuery("match");
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QCOMPARE(model.count(), 350);
+        QThreadPool *pool = QThreadPool::globalInstance();
+        QVERIFY(pool->waitForDone(5000));
+        const auto before = model.searchIndex();
+        model.reload();
+        QVERIFY(pool->waitForDone(5000));
+        {
+            PoolHeld held;
+            // The walk's end is taken in here: only then is the answer it asks for on its way, and it waits behind the held pool.
+            QVERIFY(!model.loading());
+            QTRY_VERIFY(model.loading());
+            QCOMPARE(model.searchIndex(), before);
+            model.selectAll();
+            QCOMPARE(model.matches(), 500);
+            QCOMPARE(model.selectedCount(), 500);
+            QCOMPARE(model.selectedPaths().size(), 500);
+        }
+        QTRY_VERIFY(model.searchIndex() != before);
+        QCOMPARE(model.matches(), 500);
+        QCOMPARE(model.selectedCount(), 500);
+    }
+
+    void searchSelectAllAfterAKeystrokeTakenBackTakesEveryMatch()
+    {
+        // A letter typed and taken back before its answer landed leaves the walk on the longer query: Select All asks it again, and takes all the count names.
+        QTemporaryDir dir;
+        for (int i = 0; i < 500; ++i)
+            write(dir.filePath(QString("match%1.txt").arg(i)), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        model.setQuery("match");
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QCOMPARE(model.count(), 350);
+        QThreadPool *pool = QThreadPool::globalInstance();
+        QVERIFY(pool->waitForDone(5000));
+        // Answered on its thread, and not landed: nothing here lets the events through.
+        model.setQuery("match1");
+        QVERIFY(pool->waitForDone(5000));
+        {
+            PoolHeld held;
+            model.setQuery("match");
+            QCOMPARE(model.matches(), 500);
+            model.selectAll();
+            QCOMPARE(model.selectedCount(), 500);
+            QCOMPARE(model.selectedPaths().size(), 500);
+        }
+        QTRY_VERIFY(!model.loading());
+        QCOMPARE(model.selectedCount(), 500);
+    }
+
+    void searchReadAgainKeepsWhatWasSelectedOnItsWay()
+    {
+        // Rows selected while a search read again is on its way: the one its new rows leave out stays selected while it still matches, and the one gone goes.
+        QTemporaryDir dir;
+        for (int i = 0; i < 500; ++i)
+            write(dir.filePath(QString("match%1.txt").arg(i)), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        model.setQuery("match");
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QCOMPARE(model.count(), 350);
+        QThreadPool *pool = QThreadPool::globalInstance();
+        QVERIFY(pool->waitForDone(5000));
+        const QString kept = model.get(348).value("path").toString(), gone = model.get(349).value("path").toString();
+        // Two better matches push both rows past the 350 shown, and one of the two is deleted.
+        QVERIFY(QDir(dir.path()).mkdir("sub"));
+        write(dir.filePath("match"), "x");
+        write(dir.filePath("sub/match"), "x");
+        QVERIFY(QFile::remove(gone));
+        const auto before = model.searchIndex();
+        model.reload();
+        QVERIFY(pool->waitForDone(5000));
+        {
+            PoolHeld held;
+            // The walk's end is taken in here with nothing selected: only then is the answer it asks for on its way, and it waits behind the held pool.
+            QVERIFY(!model.loading());
+            QTRY_VERIFY(model.loading());
+            QCOMPARE(model.searchIndex(), before);
+            model.selectRows({348, 349});
+            QCOMPARE(model.selectedCount(), 2);
+        }
+        QTRY_VERIFY(model.searchIndex() != before);
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QCOMPARE(model.count(), 350);
+        QCOMPARE(model.matches(), 501);
+        for (int row = 0; row < model.count(); ++row)
+            QVERIFY(model.get(row).value("path").toString() != kept);
+        QCOMPARE(model.selectedPaths(), QStringList({kept}));
+        QCOMPARE(model.selectedCount(), 1);
+    }
+
+    void searchHidingHiddenFilesStartsOver()
+    {
+        // Hidden files shown or hidden end the search's walk: what it read answers nothing more, and the rows are the new walk's.
+        QTemporaryDir dir;
+        write(dir.filePath("match.txt"), "x");
+        write(dir.filePath(".match hidden.txt"), "x");
+        FolderModel model;
+        model.setShowHidden(true);
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        model.setQuery("match");
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QCOMPARE(model.count(), 2);
+        const auto before = model.searchIndex();
+        WalksHeld walks;
+        model.setShowHidden(false);
+        QVERIFY(walks.reached.tryAcquire(1, 3000));
+        QVERIFY(model.searchIndex() != before);
+        QCOMPARE(model.matches(), -1);
+        QVERIFY(model.reading());
+        walks.letGo();
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QCOMPARE(model.count(), 1);
+        QCOMPARE(model.get(0).value("name").toString(), QString("match.txt"));
+    }
+
+    void searchEndedStopsItsReadAgain()
+    {
+        // A search ended while its folders are read again stops that walk where it is.
+        QTemporaryDir dir;
+        for (const char *folder : {"a", "b", "c"}) {
+            QDir(dir.path()).mkdir(folder);
+            write(dir.filePath(QString("%1/match.txt").arg(folder)), "x");
+        }
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        model.setQuery("match");
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QCOMPARE(model.count(), 3);
+        WalksHeld walks;
+        model.reload();
+        QVERIFY(walks.reached.tryAcquire(1, 3000));
+        model.setQuery("");
+        walks.letGo();
+        QVERIFY(QThreadPool::globalInstance()->waitForDone(5000));
+        QCOMPARE(walks.folders.load(), 1);
+    }
+
+    void searchSaysHowManyMatchAndHowManyItShows()
+    {
+        // The number shown goes into the sentence before the folder's name, so a name that holds a placeholder is shown as it is.
+        QQmlEngine engine;
+        QQmlComponent said(&engine);
+        said.setData("import QtQml\nimport \"Format.js\" as Format\n"
+                     "QtObject { readonly property string whole: Format.matches(12, \"%2 %1\", false, -1)\n"
+                     "    readonly property string cut: Format.matches(12, \"%2 %1\", false, 5)\n"
+                     "    readonly property string soFar: Format.matches(12, \"%2 %1\", true, -1)\n"
+                     "    readonly property string nearest: Format.matches(12, \"%2 %1\", false, -1, 7)\n"
+                     "    readonly property string nearestCut: Format.matches(12, \"%3 %2 %1\", false, 5, 7)\n"
+                     "    readonly property string stillReading: Format.matches(12, \"%2 %1\", true, -1, 7)\n"
+                     "    readonly property string allRead: Format.matches(12, \"%2 %1\", false, -1, -1) }",
+                     QUrl::fromLocalFile(QFINDTESTDATA("../src/Format.js")));
+        std::unique_ptr<QObject> text(said.create());
+        QVERIFY2(text, qPrintable(said.errorString()));
+        QCOMPARE(text->property("whole").toString(), QString("12 matches in %2 %1 and below"));
+        QCOMPARE(text->property("cut").toString(), QString("12 matches in %2 %1 and below, the best 5 shown"));
+        QCOMPARE(text->property("soFar").toString(), QString("12 matches so far, still reading %2 %1 and below"));
+        // A tree too big to read whole says how many of its names were read, once it's done reading.
+        QCOMPARE(text->property("nearest").toString(), QString("12 matches in %2 %1 and below, only the nearest 7 items read"));
+        // Sorted another way too, it says both: which rows are shown and how many names were read.
+        QCOMPARE(text->property("nearestCut").toString(), QString("12 matches in %3 %2 %1 and below, the best 5 shown, only the nearest 7 items read"));
+        QCOMPARE(text->property("stillReading").toString(), text->property("soFar").toString());
+        QCOMPARE(text->property("allRead").toString(), text->property("whole").toString());
+    }
+
+    void searchStatusSaysHowManyNamesWereRead()
+    {
+        // The path bar hands the status how many names the search read of a tree too big, and nothing of one read whole.
+        QTemporaryDir home;
+        Theme theme(home.filePath("theme"));
+        QQmlEngine engine;
+        QQmlComponent stubs(&engine);
+        stubs.setData("import QtQml\n"
+                      "QtObject {\n"
+                      "    property string language: \"en\"\n"
+                      "    property string path: \"/a\"\n"
+                      "    property var crumbs: [{ name: \"A\", path: \"/a\" }]\n"
+                      "    property QtObject folder: QtObject {\n"
+                      "        property string query: \"q\"; property int matches: 12; property int count: 12; property int mostRead: 7\n"
+                      "        property bool reading: false; property string sortMode: \"name\"\n"
+                      "    }\n"
+                      "}\n", QUrl());
+        std::unique_ptr<QObject> stub(stubs.create());
+        QVERIFY2(stub, qPrintable(stubs.errorString()));
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("backend", stub.get());
+        engine.rootContext()->setContextProperty("translator", stub.get());
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window {\n"
+                          "    width: 900; height: 80; visible: true\n"
+                          "    PathBar { id: bar; anchors.fill: parent }\n"
+                          "    function said() {\n"
+                          "        let found = \"\"\n"
+                          "        const walk = item => {\n"
+                          "            for (const child of item.children) {\n"
+                          "                if (child instanceof Text && child.text.includes('12 matches'))\n"
+                          "                    found = child.text\n"
+                          "                walk(child)\n"
+                          "            }\n"
+                          "        }\n"
+                          "        walk(bar)\n"
+                          "        return found\n"
+                          "    }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/PathBarTest.qml"));
+        std::unique_ptr<QObject> window(component.create());
+        QVERIFY2(window, qPrintable(component.errorString()));
+        const auto said = [&] {
+            QVariant text;
+            QMetaObject::invokeMethod(window.get(), "said", Q_RETURN_ARG(QVariant, text));
+            return text.toString();
+        };
+        QTRY_COMPARE(said(), QString("12 matches in A and below, only the nearest 7 items read"));
+        stub->property("folder").value<QObject *>()->setProperty("mostRead", -1);
+        QTRY_COMPARE(said(), QString("12 matches in A and below"));
+    }
+
+    void searchAsksAtEveryKey()
+    {
+        // A key typed in the search field is the query at once, with no pause in the typing to wait for.
+        QTemporaryDir home;
+        Theme theme(home.filePath("theme"));
+        QQmlEngine engine;
+        QQmlComponent stubs(&engine);
+        stubs.setData("import QtQml\n"
+                      "QtObject {\n"
+                      "    property string language: \"en\"\n"
+                      "    property string path: \"/a\"\n"
+                      "    property var crumbs: [{ name: \"A\", path: \"/a\" }]\n"
+                      "    property QtObject folder: QtObject {\n"
+                      "        property string query; property int matches: -1; property int count: 0; property int mostRead: -1\n"
+                      "        property bool reading: false; property string sortMode: \"name\"\n"
+                      "    }\n"
+                      "}\n", QUrl());
+        std::unique_ptr<QObject> stub(stubs.create());
+        QVERIFY2(stub, qPrintable(stubs.errorString()));
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("backend", stub.get());
+        engine.rootContext()->setContextProperty("translator", stub.get());
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window {\n"
+                          "    width: 900; height: 80; visible: true\n"
+                          "    PathBar { id: bar; anchors.fill: parent }\n"
+                          "    function search() { bar.search() }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/PathBarTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowFocused(window));
+        QMetaObject::invokeMethod(window, "search");
+        const auto query = [&] { return stub->property("folder").value<QObject *>()->property("query").toString(); };
+        QTest::keyClick(window, Qt::Key_R);
+        QCOMPARE(query(), QString("r"));
+        QTest::keyClick(window, Qt::Key_E);
+        QCOMPARE(query(), QString("re"));
+        // A space at the end asks nothing new, and the letter after it is asked with the space.
+        QTest::keyClick(window, Qt::Key_Space);
+        QCOMPARE(query(), QString("re"));
+        QTest::keyClick(window, Qt::Key_D);
+        QCOMPARE(query(), QString("re d"));
+        QTest::keyClick(window, Qt::Key_Backspace);
+        QTest::keyClick(window, Qt::Key_Backspace);
+        QTest::keyClick(window, Qt::Key_Backspace);
+        QCOMPARE(query(), QString("r"));
+    }
+
+    void searchLetsGoOfTheSelectionInTheTurnItsAnswerLands()
+    {
+        // A key leaves what is selected alone until its answer is here: the mark goes with its rows, not a frame or two ahead of them.
+        QTemporaryDir dir;
+        QVERIFY(QDir(dir.path()).mkpath("a"));
+        for (const char *name : {"river.txt", "stone.txt", "a/reed.txt"})
+            write(dir.filePath(name), "x");
+        // Declared ahead of the model, which announces as it ends.
+        QList<int> selectedAtLanding;
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QTRY_VERIFY(!model.loading());
+        model.selectOnly(model.indexOfPath(dir.filePath("stone.txt")));
+        QCOMPARE(model.selectedPaths(), QStringList{dir.filePath("stone.txt")});
+        connect(&model, &FolderModel::loaded, &model, [&selectedAtLanding, &model] { selectedAtLanding << model.selectedCount(); });
+        model.setQuery("r");
+        QCOMPARE(model.selectedPaths(), QStringList{dir.filePath("stone.txt")});
+        QTRY_COMPARE(model.matches(), 2);
+        QVERIFY(!selectedAtLanding.isEmpty());
+        QCOMPARE(*std::max_element(selectedAtLanding.cbegin(), selectedAtLanding.cend()), 0);
+        QCOMPARE(model.selectedCount(), 0);
+        QTRY_VERIFY(!model.reading() && !model.loading());
+
+        // A match selected is let go by the next key's answer too, though it still matches.
+        model.selectOnly(model.indexOfPath(dir.filePath("a/reed.txt")));
+        selectedAtLanding.clear();
+        model.setQuery("ree");
+        QCOMPARE(model.selectedPaths(), QStringList{dir.filePath("a/reed.txt")});
+        QTRY_COMPARE(model.matches(), 1);
+        QVERIFY(!selectedAtLanding.isEmpty());
+        QCOMPARE(model.selectedCount(), 0);
+        QTRY_VERIFY(!model.reading() && !model.loading());
+
+        // What is selected after the key, on the rows still shown, is not the key's to let go, were it the same item again: it stays while it matches.
+        model.setQuery("r");
+        QTRY_COMPARE(model.matches(), 2);
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        model.selectOnly(model.indexOfPath(dir.filePath("river.txt")));
+        model.setQuery("ri");
+        model.selectOnly(model.indexOfPath(dir.filePath("a/reed.txt")));
+        model.selectOnly(model.indexOfPath(dir.filePath("river.txt")));
+        QTRY_COMPARE(model.matches(), 1);
+        QCOMPARE(model.selectedPaths(), QStringList{dir.filePath("river.txt")});
+
+        // The same through a toggle: taken off and put back after the key, it stays.
+        model.setQuery("r");
+        QTRY_COMPARE(model.matches(), 2);
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        model.selectOnly(model.indexOfPath(dir.filePath("river.txt")));
+        model.setQuery("ri");
+        model.toggleSelected(model.indexOfPath(dir.filePath("river.txt")));
+        QCOMPARE(model.selectedCount(), 0);
+        model.toggleSelected(model.indexOfPath(dir.filePath("river.txt")));
+        QTRY_COMPARE(model.matches(), 1);
+        QCOMPARE(model.selectedPaths(), QStringList{dir.filePath("river.txt")});
+
+        // The same selection asked for again after the key, with nothing changed, is not the key's to let go either.
+        model.setQuery("r");
+        QTRY_COMPARE(model.matches(), 2);
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        model.selectAll();
+        QCOMPARE(model.selectedCount(), 2);
+        selectedAtLanding.clear();
+        model.setQuery("re");
+        model.selectAll();
+        QTRY_VERIFY(!selectedAtLanding.isEmpty());
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QCOMPARE(model.matches(), 2);
+        QCOMPARE(model.selectedCount(), 2);
+        QCOMPARE(*std::min_element(selectedAtLanding.cbegin(), selectedAtLanding.cend()), 2);
+
+        // Asked for again, it is still cut to what the answer matches.
+        selectedAtLanding.clear();
+        model.setQuery("ri");
+        model.selectAll();
+        QTRY_VERIFY(!selectedAtLanding.isEmpty());
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QCOMPARE(model.matches(), 1);
+        QCOMPARE(model.selectedPaths(), QStringList{dir.filePath("river.txt")});
+    }
+
+    void searchKeepsAFoldersCountFromOneAnswerToTheNext()
+    {
+        // A folder two answers both list shows its count in the turn the second lands, and is counted again all the same; with hidden files shown or hidden since, it shows none until it is counted.
+        QTemporaryDir dir;
+        QVERIFY(QDir(dir.path()).mkpath("a/render/.hidden"));
+        for (const char *name : {"a/render/one.txt", "a/render/two.txt", "a/render/.hidden/three.txt", "a/reed.txt", "river.txt", "rock.txt"})
+            write(dir.filePath(name), "x");
+        const QString render = dir.filePath("a/render");
+        // Declared ahead of the model, which announces as it ends.
+        QList<int> countAtLanding;
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QTRY_VERIFY(!model.loading());
+        const auto count = [&model, &render] { return model.get(model.indexOfPath(render)).value("itemCount").toInt(); };
+        connect(&model, &FolderModel::loaded, &model, [&countAtLanding, count] { countAtLanding << count(); });
+        model.setQuery("r");
+        QTRY_COMPARE(count(), 2);
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QVERIFY(model.indexOfPath(dir.filePath("rock.txt")) >= 0);
+
+        countAtLanding.clear();
+        model.setQuery("re");
+        QTRY_VERIFY(!countAtLanding.isEmpty());
+        QCOMPARE(model.indexOfPath(dir.filePath("rock.txt")), -1);
+        QCOMPARE(countAtLanding.first(), 2);
+        QTRY_VERIFY(!model.reading() && !model.loading());
+
+        // Changed since: the count it had shows when the rows land, and the one it has now once it is counted.
+        write(dir.filePath("a/render/three.txt"), "x");
+        countAtLanding.clear();
+        model.setQuery("r");
+        QTRY_VERIFY(!countAtLanding.isEmpty());
+        QCOMPARE(countAtLanding.first(), 2);
+        QTRY_COMPARE(count(), 3);
+        QTRY_VERIFY(!model.reading() && !model.loading());
+
+        // Hidden files shown: what was counted without them says nothing of the folder now.
+        countAtLanding.clear();
+        model.setShowHidden(true);
+        QTRY_COMPARE(count(), 4);
+        QVERIFY(!countAtLanding.contains(3));
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        // And the count made with them is kept by the next answer.
+        countAtLanding.clear();
+        model.setQuery("re");
+        QTRY_VERIFY(!countAtLanding.isEmpty());
+        QCOMPARE(model.indexOfPath(dir.filePath("rock.txt")), -1);
+        QCOMPARE(countAtLanding.first(), 4);
+    }
+
+    void searchEndedShowsTheFolderAndSaysSoInOneTurn()
+    {
+        // The search's end puts the folder's remembered rows up and says so at once, so a view has its cursor on a row in the frame that shows them.
+        QTemporaryDir dir;
+        QVERIFY(QDir(dir.path()).mkpath("a"));
+        for (const char *name : {"river.txt", "stone.txt", "a/reed.txt"})
+            write(dir.filePath(name), "x");
+        // Declared ahead of the model, which announces as it ends.
+        QList<QPair<int, int>> rowsAndSelectedAtLanding;
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QTRY_VERIFY(!model.loading());
+        model.setQuery("r");
+        QTRY_COMPARE(model.matches(), 2);
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        model.selectOnly(model.indexOfPath(dir.filePath("river.txt")));
+        loaded.clear();
+        model.setQuery("");
+        // No turn of the event loop has passed.
+        QCOMPARE(loaded.count(), 1);
+        QCOMPARE(model.count(), 3);
+        QCOMPARE(model.selectedCount(), 0);
+        QVERIFY(model.indexOfPath(dir.filePath("stone.txt")) >= 0);
+        // The selection went with the search's rows; the same item selected again on the folder's is kept by the read that follows.
+        model.selectOnly(model.indexOfPath(dir.filePath("river.txt")));
+        QTRY_COMPARE(loaded.count(), 2);
+        QCOMPARE(model.selectedPaths(), QStringList{dir.filePath("river.txt")});
+
+        // Sorted another way meanwhile, the folder isn't remembered: the search's rows and what is selected on them, a row of the folder too, stay until the folder's rows land, and go in that turn.
+        QTRY_VERIFY(!model.loading());
+        model.setQuery("r");
+        QTRY_COMPARE(model.matches(), 2);
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        model.setSortMode("kind");
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        model.selectOnly(model.indexOfPath(dir.filePath("river.txt")));
+        connect(&model, &FolderModel::loaded, &model, [&rowsAndSelectedAtLanding, &model] { rowsAndSelectedAtLanding.append({model.count(), model.selectedCount()}); });
+        loaded.clear();
+        model.setQuery("");
+        QCOMPARE(loaded.count(), 0);
+        QCOMPARE(model.count(), 2);
+        QCOMPARE(model.selectedPaths(), QStringList{dir.filePath("river.txt")});
+        QTRY_VERIFY(!rowsAndSelectedAtLanding.isEmpty());
+        QCOMPARE(rowsAndSelectedAtLanding.first(), qMakePair(3, 0));
+    }
+
+    void searchPutsTheCursorOnItsBestMatchAndBackWhereItWas()
+    {
+        // Each answer to another query has the cursor on its first row, and the search's end has it back on the item it left, in the turn the folder's rows return.
+        QTemporaryDir home, kept;
+        // Opening a folder makes it the working directory, which the tests after this one count on.
+        const QString before = QDir::currentPath();
+        const auto restore = qScopeGuard([before] { QDir::setCurrent(before); });
+        // The window remembers its view in QSettings; here that file lands beside the test's folder, not in it and not in the user's.
+        QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, kept.path());
+        QVERIFY(QDir(home.path()).mkpath("box"));
+        for (const char *name : {"apple.txt", "apricot.txt", "grape.txt", "pear.txt", "plum pudding.txt", "box/grape juice.txt", "box/grapefruit.txt", "box/plum.txt"})
+            write(home.filePath(name), "x");
+        Theme theme(kept.filePath("theme"));
+        Translator translator(kept.filePath("language"), sourceFolder() + "/i18n");
+        Places places(home.path());
+        Plugins plugins("en", {}, kept.filePath("folio.conf"));
+        Backend backend(home.path());
+        backend.setPlugins(&plugins);
+        FileOps ops;
+        QQmlEngine engine;
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("places", &places);
+        engine.rootContext()->setContextProperty("plugins", &plugins);
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("fileOps", &ops);
+        QQmlComponent component(&engine, QUrl::fromLocalFile(sourceFolder() + "/Main.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowFocused(window));
+        QTRY_VERIFY(window->property("settled").toBool());
+        backend.open(home.path());
+        FolderModel *folder = backend.folder();
+        QTRY_COMPARE(folder->count(), 6);
+        QTRY_VERIFY(!folder->loading());
+        // The view that lists the folder, whichever the window opened with.
+        std::function<QQuickItem *(QQuickItem *)> find = [&find](QQuickItem *item) -> QQuickItem * {
+            const QByteArray type = item->metaObject()->className();
+            if (type.startsWith("FolderGrid") || type.startsWith("FolderList") || type.startsWith("FolderColumns"))
+                return item;
+            for (QQuickItem *child : item->childItems())
+                if (QQuickItem *found = find(child))
+                    return found;
+            return nullptr;
+        };
+        QQuickItem *view = find(window->contentItem());
+        QVERIFY(view);
+        const auto cursor = [view] { return view->property("currentIndex").toInt(); };
+        const int pear = folder->indexOfPath(home.filePath("pear.txt"));
+        QCOMPARE(pear, 4);
+        QVERIFY(QMetaObject::invokeMethod(view, "select", Q_ARG(QVariant, pear), Q_ARG(QVariant, false)));
+        QCOMPARE(cursor(), pear);
+
+        QSignalSpy loaded(folder, &FolderModel::loaded);
+        folder->setQuery("grape");
+        // Until the answer is here nothing moves: the cursor and its mark are on the row they were on.
+        QCOMPARE(cursor(), pear);
+        QVERIFY(folder->isSelected(pear));
+        QTRY_COMPARE(folder->matches(), 3);
+        QCOMPARE(cursor(), 0);
+        QVERIFY(folder->isSelected(0));
+        QCOMPARE(folder->selectedCount(), 1);
+        QTRY_VERIFY(!folder->reading() && !folder->loading());
+
+        // A key taken back is answered by the same rows, with the cursor on the first of them again.
+        QVERIFY(QMetaObject::invokeMethod(view, "select", Q_ARG(QVariant, 2), Q_ARG(QVariant, false)));
+        loaded.clear();
+        folder->setQuery("grap");
+        QCOMPARE(cursor(), 2);
+        QTRY_VERIFY(!loaded.isEmpty());
+        QCOMPARE(folder->count(), 3);
+        QCOMPARE(cursor(), 0);
+        QVERIFY(folder->isSelected(0));
+        QTRY_VERIFY(!folder->reading() && !folder->loading());
+
+        // The end: the folder's rows and the cursor on the item it left, with no turn of the event loop between.
+        folder->setQuery("");
+        QCOMPARE(folder->count(), 6);
+        QCOMPARE(cursor(), pear);
+        QVERIFY(folder->isSelected(pear));
+        QCOMPARE(folder->selectedCount(), 1);
+        // The folder read behind its remembered rows leaves the cursor there.
+        QTRY_VERIFY(!folder->loading());
+        QCOMPARE(cursor(), pear);
+
+        // Sorted another way meanwhile, the folder isn't remembered: the cursor is back on its item in the turn the folder's rows land.
+        const QString sorted = folder->sortMode();
+        folder->setQuery("grape");
+        QTRY_COMPARE(folder->matches(), 3);
+        QTRY_VERIFY(!folder->reading() && !folder->loading());
+        folder->setSortMode(sorted == "kind" ? "name" : "kind");
+        QTRY_VERIFY(!folder->reading() && !folder->loading());
+        folder->setQuery("");
+        QCOMPARE(folder->count(), 3);
+        QTRY_COMPARE(folder->count(), 6);
+        QCOMPARE(cursor(), folder->indexOfPath(home.filePath("pear.txt")));
+        QVERIFY(folder->isSelected(cursor()));
+        QCOMPARE(folder->selectedCount(), 1);
+        folder->setSortMode(sorted);
+        QTRY_VERIFY(!folder->loading());
+        QCOMPARE(cursor(), pear);
+
+        // What is selected while an answer is on its way is kept by it: the cursor goes to the first row and the selection stays.
+        folder->setQuery("ap");
+        folder->toggleSelected(folder->indexOfPath(home.filePath("apple.txt")));
+        folder->toggleSelected(folder->indexOfPath(home.filePath("apricot.txt")));
+        QCOMPARE(folder->selectedCount(), 3);
+        loaded.clear();
+        QTRY_VERIFY(!loaded.isEmpty());
+        QCOMPARE(cursor(), 0);
+        QCOMPARE(folder->selectedCount(), 2);
+        QVERIFY(folder->selectedPaths().contains(home.filePath("apricot.txt")));
+        QTRY_VERIFY(!folder->reading() && !folder->loading());
+        folder->setQuery("");
+        QCOMPARE(cursor(), pear);
+        QTRY_VERIFY(!folder->loading());
+
+        // A search that ends on the item it began on keeps that item selected through the folder's read.
+        const int grape = folder->indexOfPath(home.filePath("grape.txt"));
+        QVERIFY(QMetaObject::invokeMethod(view, "select", Q_ARG(QVariant, grape), Q_ARG(QVariant, false)));
+        folder->setQuery("grape");
+        QTRY_COMPARE(folder->matches(), 3);
+        QCOMPARE(folder->indexOfPath(home.filePath("grape.txt")), 0);
+        QTRY_VERIFY(!folder->reading() && !folder->loading());
+        folder->setQuery("");
+        QCOMPARE(cursor(), grape);
+        QTRY_VERIFY(!folder->loading());
+        QVERIFY(folder->isSelected(grape));
+        QCOMPARE(cursor(), grape);
+
+        // An answer given while the folders below are still read has the cursor on its first row, and the better match found later takes the cursor with the top.
+        {
+            WalksHeld walks;
+            folder->setQuery("plum");
+            QVERIFY(walks.reached.tryAcquire(1, 3000));
+            QTRY_COMPARE(folder->matches(), 1);
+            QVERIFY(folder->reading());
+            QCOMPARE(cursor(), 0);
+            QCOMPARE(folder->selectedPaths(), QStringList{home.filePath("plum pudding.txt")});
+            walks.letGo();
+            QTRY_COMPARE(folder->matches(), 2);
+            QCOMPARE(folder->indexOfPath(home.filePath("box/plum.txt")), 0);
+            QCOMPARE(cursor(), 0);
+            QCOMPARE(folder->selectedPaths(), QStringList{home.filePath("box/plum.txt")});
+            QTRY_VERIFY(!folder->reading() && !folder->loading());
+        }
+        // Still on the best match, the cursor goes on with the top when a better one turns up later.
+        write(home.filePath("plum.txt"), "x");
+        QTRY_COMPARE(folder->matches(), 3);
+        QCOMPARE(folder->indexOfPath(home.filePath("plum.txt")), 0);
+        QCOMPARE(cursor(), 0);
+        QCOMPARE(folder->selectedPaths(), QStringList{home.filePath("plum.txt")});
+        // Its best match gone, the cursor is on the new top and goes on with it.
+        QVERIFY(QFile::remove(home.filePath("plum.txt")));
+        QTRY_COMPARE(folder->matches(), 2);
+        QCOMPARE(cursor(), 0);
+        QCOMPARE(folder->selectedPaths(), QStringList{home.filePath("box/plum.txt")});
+        write(home.filePath("plum.txt"), "x");
+        QTRY_COMPARE(folder->matches(), 3);
+        QCOMPARE(folder->indexOfPath(home.filePath("plum.txt")), 0);
+        QCOMPARE(cursor(), 0);
+        QCOMPARE(folder->selectedPaths(), QStringList{home.filePath("plum.txt")});
+        // Deselected, its item keeps the cursor when a better match turns up, as in any folder read again.
+        QVERIFY(QFile::remove(home.filePath("plum.txt")));
+        QTRY_COMPARE(folder->matches(), 2);
+        QCOMPARE(cursor(), 0);
+        folder->toggleSelected(0);
+        QCOMPARE(folder->selectedCount(), 0);
+        write(home.filePath("plum.txt"), "x");
+        QTRY_COMPARE(folder->matches(), 3);
+        QCOMPARE(folder->indexOfPath(home.filePath("plum.txt")), 0);
+        QCOMPARE(cursor(), 1);
+        QCOMPARE(folder->selectedPaths(), QStringList{home.filePath("box/plum.txt")});
+        // Asked again with nothing selected, the cursor is back on the top.
+        folder->toggleSelected(1);
+        for (const char *query : {"plu", "plum"}) {
+            loaded.clear();
+            folder->setQuery(query);
+            QTRY_VERIFY(!loaded.isEmpty());
+            QTRY_VERIFY(!folder->reading() && !folder->loading());
+        }
+        QCOMPARE(folder->matches(), 3);
+        QCOMPARE(cursor(), 0);
+        QCOMPARE(folder->selectedPaths(), QStringList{home.filePath("plum.txt")});
+        // With more selected beside it, the cursor stays with its item and the selection is kept.
+        folder->toggleSelected(folder->indexOfPath(home.filePath("plum pudding.txt")));
+        write(home.filePath("a plum.txt"), "x");
+        QTRY_COMPARE(folder->matches(), 4);
+        QCOMPARE(folder->selectedCount(), 2);
+        QCOMPARE(cursor(), folder->indexOfPath(home.filePath("plum.txt")));
+        // With one item left selected that isn't the cursor's, the selection is kept and the cursor stays with its item.
+        folder->toggleSelected(folder->indexOfPath(home.filePath("plum.txt")));
+        write(home.filePath("plum 0.txt"), "x");
+        QTRY_COMPARE(folder->matches(), 5);
+        QCOMPARE(folder->selectedPaths(), QStringList{home.filePath("plum pudding.txt")});
+        QCOMPARE(cursor(), folder->indexOfPath(home.filePath("plum.txt")));
+        // Moved to another item, the cursor stays with that item when the rows are read again.
+        const int pudding = folder->indexOfPath(home.filePath("plum pudding.txt"));
+        QVERIFY(QMetaObject::invokeMethod(view, "select", Q_ARG(QVariant, pudding), Q_ARG(QVariant, false)));
+        write(home.filePath("plum 2.txt"), "x");
+        QTRY_COMPARE(folder->matches(), 6);
+        QCOMPARE(cursor(), folder->indexOfPath(home.filePath("plum pudding.txt")));
+        QCOMPARE(folder->selectedPaths(), QStringList{home.filePath("plum pudding.txt")});
+        // Let go of, the cursor isn't put back by the rows read again.
+        QVERIFY(QMetaObject::invokeMethod(view, "select", Q_ARG(QVariant, 0), Q_ARG(QVariant, false)));
+        folder->setQuery("plu");
+        QTRY_COMPARE(folder->matches(), 6);
+        QCOMPARE(cursor(), 0);
+        QTRY_VERIFY(!folder->reading() && !folder->loading());
+        QVERIFY(QMetaObject::invokeMethod(view, "letGo"));
+        QCOMPARE(cursor(), -1);
+        write(home.filePath("plum 3.txt"), "x");
+        QTRY_COMPARE(folder->matches(), 7);
+        QCOMPARE(cursor(), -1);
+    }
+
+    void searchStatusLeavesRoomForTheQuery()
+    {
+        // In a narrow pane the count and the folder's name would take the whole field, and the query typed there could not be seen.
+        QTest::failOnWarning(QRegularExpression("Binding loop|recursive rearrange"));
+        QTemporaryDir home;
+        Theme theme(home.filePath("theme"));
+        QQmlEngine engine;
+        QQmlComponent stubs(&engine);
+        stubs.setData("import QtQml\n"
+                      "QtObject {\n"
+                      "    property string language: \"en\"\n"
+                      "    property string path: \"/a\"\n"
+                      "    property var crumbs: [{ name: \"A folder with quite a long name of its own\", path: \"/a\" }]\n"
+                      "    property QtObject folder: QtObject {\n"
+                      "        property string query: \"q\"; property int matches: 987; property int count: 987\n"
+                      "        property bool reading: true; property string sortMode: \"name\"\n"
+                      "    }\n"
+                      "}\n", QUrl());
+        std::unique_ptr<QObject> stub(stubs.create());
+        QVERIFY2(stub, qPrintable(stubs.errorString()));
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("backend", stub.get());
+        engine.rootContext()->setContextProperty("translator", stub.get());
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window {\n"
+                          "    width: 420; height: 80; visible: true\n"
+                          "    property bool mirrored: false\n"
+                          "    PathBar { id: bar; anchors.fill: parent; LayoutMirroring.enabled: mirrored; LayoutMirroring.childrenInherit: true }\n"
+                          "    // The search field's width and paddings, then its status: the width drawn, the width wanted, whether it is cut short, whether it is drawn.\n"
+                          "    function measured() {\n"
+                          "        let found = []\n"
+                          "        const walk = item => {\n"
+                          "            for (const child of item.children) {\n"
+                          "                if (child instanceof Text && child.text.includes('still reading') && item.visible) {\n"
+                          "                    // Read once the row has laid its items out again, not on the way there.\n"
+                          "                    item.parent.ensurePolished()\n"
+                          "                    found = [item.width, item.leftPadding, item.rightPadding, child.width, child.implicitWidth, child.truncated, child.visible]\n"
+                          "                }\n"
+                          "                walk(child)\n"
+                          "            }\n"
+                          "        }\n"
+                          "        walk(bar)\n"
+                          "        return found\n"
+                          "    }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/PathBarTest.qml"));
+        std::unique_ptr<QObject> window(component.create());
+        QVERIFY2(window, qPrintable(component.errorString()));
+        const auto measured = [&] {
+            QVariant numbers;
+            QMetaObject::invokeMethod(window.get(), "measured", Q_RETURN_ARG(QVariant, numbers));
+            return numbers.toList();
+        };
+        // The room the query keeps, the field's padding at the query's end, and the status's margin and gap at the other.
+        const qreal room = 160, padding = 12, aroundStatus = 24;
+        // field, left, right, status, wanted, cut, drawn: the status wants more than the field has, and the query keeps its room.
+        QTRY_COMPARE(measured().size(), 7);
+        QTRY_VERIFY(measured().at(0).toReal() > room + padding + aroundStatus);
+        const QList<QVariant> narrow = measured();
+        QVERIFY2(narrow.at(4).toReal() > narrow.at(0).toReal() - room - padding - aroundStatus, "The pane is not narrow enough to try the status.");
+        QCOMPARE(narrow.at(0).toReal() - narrow.at(1).toReal() - narrow.at(2).toReal(), room);
+        QCOMPARE(narrow.at(1).toReal(), padding);
+        QVERIFY(narrow.at(3).toReal() > 0);
+        QVERIFY(narrow.at(5).toBool() && narrow.at(6).toBool());
+
+        // Mirrored, the status is at the other end of the field and the query keeps the same room.
+        window->setProperty("mirrored", true);
+        QTRY_COMPARE(measured().at(2).toReal(), padding);
+        const QList<QVariant> mirrored = measured();
+        QCOMPARE(mirrored.at(1).toReal(), mirrored.at(3).toReal() + aroundStatus);
+        QCOMPARE(mirrored.at(0).toReal() - mirrored.at(1).toReal() - mirrored.at(2).toReal(), room);
+        QCOMPARE(mirrored.at(0).toReal(), narrow.at(0).toReal());
+        window->setProperty("mirrored", false);
+        QTRY_COMPARE(measured().at(1).toReal(), padding);
+
+        // In a field with room for both, the status is whole and the field's padding the one it had.
+        window->setProperty("width", 2400);
+        QTRY_VERIFY(!measured().at(5).toBool());
+        const QList<QVariant> wide = measured();
+        QCOMPARE(wide.at(3).toReal(), wide.at(4).toReal());
+        QCOMPARE(wide.at(2).toReal(), wide.at(4).toReal() + aroundStatus);
+
+        // A shorter status changes the field's padding and never its width: the field takes what the row has left, whatever its status asks for.
+        QVERIFY(stub->setProperty("crumbs", QVariantList{QVariantMap{{"name", "A"}, {"path", "/a"}}}));
+        QTRY_VERIFY(measured().at(4).toReal() < wide.at(4).toReal());
+        const QList<QVariant> shorter = measured();
+        QCOMPARE(shorter.at(2).toReal(), shorter.at(4).toReal() + aroundStatus);
+        QCOMPARE(shorter.at(0).toReal(), wide.at(0).toReal());
+
+        // A field narrower than the query's room draws no status at all.
+        window->setProperty("width", 200);
+        QTRY_COMPARE(measured().at(3).toReal(), 0.0);
+        QVERIFY(!measured().at(6).toBool());
+    }
+
+    void searchSelectAllUnderAnotherSortTakesEveryMatch()
+    {
+        // Sorted by size, the rows are the best 1000; a selection of every match stays whole through the switch and back, and Select All there takes them all.
+        QTemporaryDir dir;
+        for (int i = 0; i < 1500; ++i)
+            write(dir.filePath(QString("match%1.txt").arg(i)), QByteArray(i % 7, 'x'));
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        model.setQuery("match");
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        model.selectAll();
+        QCOMPARE(model.selectedCount(), 1500);
+        model.setSortMode("size");
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 1000);
+        QCOMPARE(model.selectedCount(), 1500);
+        QCOMPARE(model.selectedPaths().size(), 1500);
+        model.selectOnly(0);
+        model.selectAll();
+        QCOMPARE(model.selectedCount(), 1500);
+        QCOMPARE(model.selectedPaths().size(), 1500);
+        model.setSortMode("name");
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.selectedCount(), 1500);
+    }
+
+    void searchSelectAllIsWholeWhenItSaysSo()
+    {
+        // Whoever asks for the selection as it changes gets all of it, best first, as it reads after.
+        QTemporaryDir dir;
+        for (int i = 0; i < 400; ++i)
+            write(dir.filePath(QString("match%1.txt").arg(i)), "x");
+        // Matches a class below, whose paths sort before the others'.
+        for (int i = 0; i < 150; ++i)
+            write(dir.filePath(QString("a match%1.txt").arg(i)), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        model.setQuery("match");
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QList<QStringList> seen;
+        connect(&model, &FolderModel::selectionChanged, &model, [&] { seen << model.selectedPaths(); });
+        model.selectAll();
+        // Said once: nobody was handed a part of it before.
+        QCOMPARE(seen.size(), 1);
+        QCOMPARE(seen.constFirst().size(), 550);
+        QCOMPARE(seen.constFirst(), model.selectedPaths());
+    }
+
+    void searchClearedForgetsHowManyMatched()
+    {
+        // A search ended, by clearing it or going elsewhere, leaves no count behind.
+        QTemporaryDir dir;
+        write(dir.filePath("match.txt"), "x");
+        QDir(dir.path()).mkdir("sub");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        model.setQuery("match");
+        QTRY_COMPARE(model.matches(), 1);
+        model.setQuery("");
+        QCOMPARE(model.matches(), -1);
+        model.setQuery("match");
+        QTRY_COMPARE(model.matches(), 1);
+        model.setPath(dir.filePath("sub"));
+        QCOMPARE(model.matches(), -1);
+    }
+
+    void searchShowsARowForAMatchGoneSinceTheWalk()
+    {
+        // A match deleted after the walk still gives its row, so the next window starts where the last one ended.
+        QTemporaryDir dir;
+        for (int i = 0; i < 400; ++i)
+            write(dir.filePath(QString("match%1.txt").arg(i)), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        model.setQuery("match");
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QCOMPARE(model.count(), 350);
+        QSet<QString> shown;
+        for (int row = 0; row < model.count(); ++row)
+            shown.insert(model.get(row).value("path").toString());
+        // The folder's watcher reads the search again after the deletions: held, so the walk that knew the files answers to the end.
+        WalksHeld walks;
+        for (int i = 0; i < 400; ++i)
+            if (const QString path = dir.filePath(QString("match%1.txt").arg(i)); !shown.contains(path))
+                QVERIFY(QFile::remove(path));
+        model.fetchMore({});
+        QTRY_COMPARE(model.count(), 400);
+        for (int row = 350; row < 400; ++row)
+            shown.insert(model.get(row).value("path").toString());
+        QCOMPARE(shown.size(), 400);
+    }
+
+    void searchReadAgainKeepsTheRowsItShowed()
+    {
+        // F5, or a change in the folder, reads a search again: rows past the first window stay, and a selection among them.
+        QTemporaryDir dir;
+        for (int i = 0; i < 500; ++i)
+            write(dir.filePath(QString("match%1.txt").arg(i)), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        model.setQuery("match");
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        model.fetchMore({});
+        QTRY_COMPARE(model.count(), 500);
+        model.selectOnly(420);
+        model.reload();
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 500);
+        QCOMPARE(model.selectedCount(), 1);
+        QVERIFY(model.isSelected(420));
+        // Other words start from the first window again.
+        model.setQuery("atch");
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 350);
+    }
+
+    void searchMatchesWordsAlongThePath()
+    {
+        // Before a "/" is for the folders and after it for the name; a folder is matched once a query, however many rows it holds.
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("projects/editor/src/components");
+        QDir(dir.path()).mkpath("projects/viewer/src");
+        QDir(dir.path()).mkpath("archive/2024/client/reports");
+        for (int i = 0; i < 50; ++i)
+            write(dir.filePath(QString("projects/editor/src/components/render%1.rs").arg(i)), "x");
+        write(dir.filePath("projects/editor/src/components/render_frame.rs"), "x");
+        write(dir.filePath("projects/viewer/src/render.rs"), "x");
+        write(dir.filePath("archive/2024/client/reports/quarterly_review.pdf"), "x");
+        write(dir.filePath("render_notes.txt"), "x");
+        SearchIndex index;
+        QVERIFY(index.walk(dir.path(), false));
+        const auto best = [&](const QString &query) {
+            index.answer(query);
+            const auto rows = index.rows(0, 1);
+            return rows.isEmpty() ? QString() : QString::fromUtf8(index.path(rows.first()));
+        };
+        QCOMPARE(best("editor/src/components/render_f"), QString("projects/editor/src/components/render_frame.rs"));
+        QCOMPARE(best("archive/2024/client/reports/quarterly"), QString("archive/2024/client/reports/quarterly_review.pdf"));
+        const qsizetype before = index.counts.folders;
+        QCOMPARE(index.answer("src/render"), 52);
+        QVERIFY(index.counts.folders - before <= 10);
+        // A name that holds the query comes before a path that does.
+        QCOMPARE(best("render"), QString("render_notes.txt"));
+    }
+
+    void searchFindsAPathThatFoldsToALongerOne()
+    {
+        // U+023A is two bytes of UTF-8 and folds to U+2C65, which is three: the folded query is longer than the path as it is stored.
+        const QString letter = QChar(0x023A);
+        QTemporaryDir plain;
+        QVERIFY(QDir(plain.path()).mkpath("plain"));
+        write(plain.filePath("plain/x"), "x");
+        const auto found = [](SearchIndex &index, const QString &query) {
+            QStringList paths;
+            const auto count = index.answer(query);
+            for (const quint32 row : index.rows(0, count))
+                paths << QString::fromUtf8(index.path(row));
+            return paths;
+        };
+        // The letter is found as a folder's name and as a file's: either makes the path longer folded.
+        for (const QString &path : {letter + "/x", "x/" + letter}) {
+            QTemporaryDir odd;
+            QVERIFY(QDir(odd.path()).mkpath(path.section('/', 0, 0)));
+            write(odd.filePath(path), "x");
+            SearchIndex index;
+            QVERIFY(index.walk(odd.path(), false));
+            QCOMPARE(found(index, path), QStringList{path});
+        }
+
+        // A path in ASCII too short for a query whose letters it all holds is still ruled out by its length, no folder read.
+        SearchIndex ascii;
+        QVERIFY(ascii.walk(plain.path(), false));
+        QCOMPARE(found(ascii, "plain/x"), QStringList{"plain/x"});
+        const qsizetype before = ascii.counts.folders;
+        QCOMPARE(found(ascii, "plain/xx"), QStringList());
+        QCOMPARE(ascii.counts.folders, before);
+    }
+
+    void searchForgivesATypoWhenNoNameSpellsTheQuery()
+    {
+        // A name a letter off (a swapped pair is one) is found only when no name spells the query, whole or in runs that each start a word.
+        QTemporaryDir dir;
+        for (const char *folder : {"projects/src", "editor/render"})
+            QDir(dir.path()).mkpath(folder);
+        write(dir.filePath("projects/src/render_frame.rs"), "x");
+        write(dir.filePath("projects/src/thread_runner.rs"), "x");
+        write(dir.filePath("editor/render/pipeline.rs"), "x");
+        write(dir.filePath("fuzzy.rs"), "x");
+        write(dir.filePath("report2024.pdf"), "x");
+        SearchIndex index;
+        QVERIFY(index.walk(dir.path(), false));
+        QCOMPARE(index.answer("redner_frame.rs"), 1);
+        QCOMPARE(index.path(index.rows(0, 1).first()), QByteArray("projects/src/render_frame.rs"));
+        QCOMPARE(index.answer("fzuzy"), 1);
+        QCOMPARE(index.path(index.rows(0, 1).first()), QByteArray("fuzzy.rs"));
+        QCOMPARE(index.counts.typos, 2);
+        // Digits aren't letters to get wrong.
+        QCOMPARE(index.answer("report2025"), 0);
+        QCOMPARE(index.counts.typos, 3);
+        for (const char *query : {"render", "rend", "fuzzy", "report", "renfr", "ort2024"})
+            QVERIFY(index.answer(query) > 0);
+        QCOMPARE(index.counts.typos, 3);
+        // The name meant comes before letters scattered through a name (thread_runner) or along a path (editor/render/pipeline).
+        QCOMPARE(index.answer("redner"), 4);
+        QCOMPARE(index.counts.typos, 4);
+        const QVector<quint32> rows = index.rows(0, 4);
+        QCOMPARE(index.path(rows[0]), QByteArray("editor/render"));
+        QCOMPARE(index.path(rows[1]), QByteArray("projects/src/render_frame.rs"));
+        QCOMPARE(QSet<QByteArray>({index.path(rows[2]), index.path(rows[3])}),
+                 QSet<QByteArray>({"editor/render/pipeline.rs", "projects/src/thread_runner.rs"}));
+    }
+
+    void searchShowsMatchesWhileItsStillReading()
+    {
+        // A folder slow to read shows its best matches so far, saying it's still reading, then all of them.
+        QTemporaryDir dir;
+        for (const char *folder : {"a", "b", "c"}) {
+            QDir(dir.path()).mkdir(folder);
+            write(dir.filePath(QString("%1/match.txt").arg(folder)), "x");
+        }
+        write(dir.filePath("match.txt"), "x");
+        WalksHeld walks(2);
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        loaded.clear();
+        model.setQuery("match");
+        QVERIFY(model.reading());
+        QVERIFY(walks.reached.tryAcquire(1, 3000));
+        QVERIFY(loaded.wait(3000));
+        QVERIFY(model.reading());
+        QVERIFY(model.loading());
+        QCOMPARE(model.matches(), 2);
+        QCOMPARE(model.count(), 2);
+        walks.letGo();
+        // The walk's end is taken in by itself: no timer runs here, so no partial answer is asked for that the end would overtake.
+        QVERIFY(QThreadPool::globalInstance()->waitForDone(5000));
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::FutureCallOut);
+        QVERIFY(!model.reading());
+        QTRY_VERIFY(!model.loading());
+        QCOMPARE(model.matches(), 4);
+        QCOMPARE(model.count(), 4);
+        QCOMPARE(model.searchIndex()->counts.walks, 1);
+        // One answer for each time it showed.
+        QCOMPARE(model.searchIndex()->counts.answers, loaded.count());
+    }
+
+    void searchDropsAnAnswerTheWalksEndOvertook()
+    {
+        // The other order: an answer asked for before the walk's end is taken in lands after it, and never shows.
+        QTemporaryDir dir;
+        for (const char *folder : {"a", "b"}) {
+            QDir(dir.path()).mkdir(folder);
+            write(dir.filePath(QString("%1/match.txt").arg(folder)), "x");
+        }
+        write(dir.filePath("match.txt"), "x");
+        WalksHeld walks(2);
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        loaded.clear();
+        model.setQuery("match");
+        QVERIFY(walks.reached.tryAcquire(1, 3000));
+        QVERIFY(loaded.wait(3000));
+        QVERIFY(model.loading());
+        const auto index = model.searchIndex();
+        // The walk ends on its thread and its end waits to be taken in: no events run here.
+        walks.letGo();
+        QVERIFY(QThreadPool::globalInstance()->waitForDone(5000));
+        // Another order asks for an answer now, whose own end waits behind the walk's.
+        model.setSortMode("size");
+        QVERIFY(QThreadPool::globalInstance()->waitForDone(5000));
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::FutureCallOut);
+        QVERIFY(!model.reading());
+        QTRY_VERIFY(!model.loading());
+        QCOMPARE(model.matches(), 3);
+        // Three answers were worked out and two shown: the one overtaken landed nowhere.
+        QCOMPARE(index->counts.answers, 3);
+        QCOMPARE(loaded.count(), 2);
+    }
+
     void folderModelSwapsFoldersWithoutAnEmptyFrame()
     {
         QTemporaryDir a, b;
@@ -680,6 +3057,164 @@ private slots:
         QTRY_COMPARE(model.get(1).value("itemCount").toInt(), 1);
     }
 
+    void folderModelCountsAFolderAgainWhenItChanged()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("Photos");
+        write(dir.filePath("Photos/a.jpg"), "x");
+        write(dir.filePath("notes.txt"), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QTRY_COMPARE(model.get(0).value("itemCount").toInt(), 1);
+        // The parent lists the same names; only the date of Photos says it holds one more.
+        write(dir.filePath("Photos/b.jpg"), "x");
+        const timespec later[2] = {{0, UTIME_OMIT}, {QDateTime::currentSecsSinceEpoch() + 60, 0}};
+        QCOMPARE(::utimensat(AT_FDCWD, QFile::encodeName(dir.filePath("Photos")).constData(), later, 0), 0);
+        QSignalSpy told(&model, &QAbstractItemModel::dataChanged);
+        model.reload();
+        QVERIFY(loaded.wait(3000));
+        // Its row is told that the count it showed no longer holds, before the new count comes in.
+        const QList<int> uncounted{FolderModel::SizeRole, FolderModel::ModifiedRole, FolderModel::ItemCountRole};
+        QVERIFY(std::any_of(told.cbegin(), told.cend(), [&](const auto &signal) {
+            return signal.at(0).toModelIndex().row() == 0 && signal.at(2).template value<QList<int>>() == uncounted;
+        }));
+        QTRY_COMPARE(model.get(0).value("itemCount").toInt(), 2);
+        QCOMPARE(model.get(0).value("name").toString(), QString("Photos"));
+    }
+
+    void folderModelCountsAFolderNoViewAskedForAgainWhenItChanged()
+    {
+        // Past the rows read at first and never asked for by a view, a folder is counted all the same: a re-read must see it changed.
+        QTemporaryDir dir;
+        const int last = FolderModel::firstRows + 9;
+        for (int i = 0; i <= last; ++i)
+            QVERIFY(QDir(dir.path()).mkpath(QString("d%1").arg(i, 4, 10, QChar('0'))));
+        const QString far = dir.filePath(QString("d%1").arg(last, 4, 10, QChar('0')));
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.index(last).data(FolderModel::NameRole).toString(), QFileInfo(far).fileName());
+        // The count is read as a view's delegate reads it, which asks for nothing.
+        QTRY_COMPARE(model.index(last).data(FolderModel::ItemCountRole).toInt(), 0);
+        write(far + "/a.jpg", "x");
+        const timespec later[2] = {{0, UTIME_OMIT}, {QDateTime::currentSecsSinceEpoch() + 60, 0}};
+        QCOMPARE(::utimensat(AT_FDCWD, QFile::encodeName(far).constData(), later, 0), 0);
+        model.reload();
+        QVERIFY(loaded.wait(3000));
+        QTRY_COMPARE(model.index(last).data(FolderModel::ItemCountRole).toInt(), 1);
+    }
+
+    void folderModelCountsAgainAFolderWhoseCountItKept()
+    {
+        // Rows that replace others keep a folder's count in sight, and the folder is counted again whatever overtakes that counting.
+        QTemporaryDir dir, other;
+        QVERIFY(QDir(dir.path()).mkpath("Photos/.cache") && QDir(dir.path()).mkpath("Albums"));
+        for (const char *name : {"Photos/a.jpg", "Photos/b.jpg", "Albums/one.jpg", "notes.txt"})
+            write(dir.filePath(name), "x");
+        const QString photos = dir.filePath("Photos");
+        // Declared ahead of the model, which announces as it ends.
+        QList<int> countAtLanding, countsSeen;
+        QMetaObject::Connection once;
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        const auto count = [&model, &photos] { return model.get(model.indexOfPath(photos)).value("itemCount").toInt(); };
+        const auto notes = [&model, &dir] { return model.get(model.indexOfPath(dir.filePath("notes.txt"))).value("size"); };
+        const auto albums = [&model, &dir] { return model.get(model.indexOfPath(dir.filePath("Albums"))).value("itemCount").toInt(); };
+        QTRY_COMPARE(count(), 2);
+        QTRY_COMPARE(albums(), 1);
+        QTRY_COMPARE(notes().toLongLong(), 1);
+        QTRY_VERIFY(!model.loading());
+        connect(&model, &FolderModel::loaded, &model, [&countAtLanding, count] { countAtLanding << count(); });
+
+        // Read again before the count is in: the same rows land, and the folder is counted all the same.
+        write(dir.filePath("Photos/c.jpg"), "x");
+        write(dir.filePath("more.txt"), "x");
+        once = connect(&model, &FolderModel::loaded, &model, [&model, &once] {
+            disconnect(once);
+            model.reload();
+        });
+        model.reload();
+        QTRY_VERIFY(!countAtLanding.isEmpty());
+        QCOMPARE(countAtLanding.first(), 2);
+        QTRY_COMPARE(count(), 3);
+        QTRY_COMPARE(albums(), 1);
+        QTRY_VERIFY(!model.loading());
+
+        // Counted, it isn't counted again by a later read of these rows: only the folder that changed is.
+        {
+            QSignalSpy changed(&model, &FolderModel::dataChanged);
+            write(dir.filePath("Albums/two.jpg"), "x");
+            model.reload();
+            QTRY_COMPARE(albums(), 2);
+            for (const QList<QVariant> &change : changed)
+                QVERIFY(change.at(0).toModelIndex().row() != model.indexOfPath(photos));
+        }
+        QTRY_VERIFY(!model.loading());
+
+        // Left before the count is in, and a file changed meanwhile: back on its remembered rows, the folder is counted.
+        write(dir.filePath("Photos/d.jpg"), "x");
+        write(dir.filePath("less.txt"), "x");
+        once = connect(&model, &FolderModel::loaded, &model, [&model, &once, &other] {
+            disconnect(once);
+            QMetaObject::invokeMethod(&model, [&model, &other] { model.setPath(other.path()); }, Qt::QueuedConnection);
+        });
+        model.reload();
+        QTRY_COMPARE(model.path(), other.path());
+        QTRY_VERIFY(!model.loading());
+        write(dir.filePath("notes.txt"), "xx");
+        model.setPath(dir.path());
+        QCOMPARE(count(), 3);
+        QTRY_COMPARE(notes().toLongLong(), 2);
+        QTRY_COMPARE(count(), 4);
+        QTRY_VERIFY(!model.loading());
+
+        // Hidden files shown, and the rows are the same: the count made without them goes at once, said to the views, and the folder is counted with them.
+        countAtLanding.clear();
+        QSignalSpy changed(&model, &FolderModel::dataChanged);
+        model.setShowHidden(true);
+        QCOMPARE(count(), -1);
+        QVERIFY(!changed.isEmpty() && changed.first().at(2).value<QList<int>>() == QList<int>{FolderModel::ItemCountRole});
+        QTRY_VERIFY(!countAtLanding.isEmpty());
+        QCOMPARE(countAtLanding.first(), -1);
+        QTRY_COMPARE(count(), 5);
+        QTRY_VERIFY(!model.loading());
+
+        // Hidden again while a count made with hidden files waits to land: that count is dropped, never shown.
+        write(dir.filePath("Photos/e.jpg"), "x");
+        write(dir.filePath("Photos/f.jpg"), "x");
+        connect(&model, &FolderModel::dataChanged, &model, [&countsSeen, count] { countsSeen << count(); });
+        once = connect(&model, &FolderModel::loaded, &model, [&model, &once] {
+            disconnect(once);
+            // Queued, this runs after the count is started and ahead of its landing; the wait lets the count finish first.
+            QMetaObject::invokeMethod(&model, [&model] {
+                QThreadPool::globalInstance()->waitForDone();
+                model.setShowHidden(false);
+            }, Qt::QueuedConnection);
+        });
+        model.reload();
+        QTRY_VERIFY(!model.showHidden());
+        QTRY_COMPARE(count(), 6);
+        QTRY_VERIFY(!model.loading());
+        QVERIFY(!countsSeen.contains(7));
+    }
+
+    void folderModelKeepsTheDateAFolderWasCountedWith()
+    {
+        // A view's read of a folder's date lands after the folder was counted and then changed: the count's own date stays, so a re-read sees the change.
+        countedThenChangedAndReadForAView(false);
+    }
+
+    void folderModelKeepsACountsDateOverAViewsReadThatLandedFirst()
+    {
+        // The same read lands ahead of the count made before it: the count brings its own, older date, and a re-read sees the change.
+        countedThenChangedAndReadForAView(true);
+    }
+
     void folderModelForgetsAFolderLeftWhileLoading()
     {
         QTemporaryDir dir;
@@ -702,16 +3237,19 @@ private slots:
         // next listing, the folder counts and file transfers all wait for.
         // With a pool of one thread, the next folder waits for the overtaken
         // read to stop, so it shows in a fraction of the time the read takes.
-        QTemporaryDir big, small, other;
+        QTemporaryDir big, small, other, tree;
         for (int i = 0; i < 20000; ++i)
             write(big.filePath(QString("%1.txt").arg(i)), "x");
+        // A search asks nothing about a file, so what it takes time over is opening folders.
+        for (int i = 0; i < 5000; ++i)
+            QDir(tree.path()).mkdir(QString::number(i));
         write(small.filePath("a.txt"), "x");
         write(other.filePath("b.txt"), "x");
         QElapsedTimer timer;
         timer.start();
         FolderModel::list(big.path(), false, "name", nullptr);
         const qint64 listing = timer.restart();
-        FolderModel::search(big.path(), "none", false, "name");
+        FolderModel::search(tree.path(), "none", false, "name");
         const qint64 searching = timer.elapsed();
 
         QThreadPool *pool = QThreadPool::globalInstance();
@@ -728,7 +3266,7 @@ private slots:
         QVERIFY(loaded.wait(5000));
         QVERIFY(timer.elapsed() < listing / 2);
 
-        model.setPath(big.path());
+        model.setPath(tree.path());
         QVERIFY(loaded.wait(5000));
         model.setQuery("none");
         timer.restart();
@@ -1528,6 +4066,70 @@ private slots:
         QCOMPARE(order("size"), QString("Zeta a.png c.txt b.txt"));
     }
 
+    void folderSortsInThePlainSortsOrder()
+    {
+        // However they arrive, entries end in the order one stable sort by one collating compare gives, ties and all.
+        const auto entries = sortable();
+        // A real locale sorts names by their keys, C by the plain compare: each is held to the same order.
+        for (const QLocale &locale : {QLocale(QLocale::English, QLocale::UnitedStates), QLocale::c()}) {
+            const SortLocale sorting(locale);
+            for (const QString &sort : FolderModel::sortModes()) {
+                auto ordered = entries;
+                plainSort(ordered, sort);
+                auto reversed = ordered;
+                std::reverse(reversed.begin(), reversed.end());
+                auto shuffled = entries;
+                std::shuffle(shuffled.begin(), shuffled.end(), std::mt19937(2026));
+                // A few runs, as a folder written in batches arrives.
+                auto runs = shuffled;
+                constexpr int batches = 5;
+                for (int i = 0; i < batches; ++i) {
+                    QVector<FolderModel::Entry> batch(runs.begin() + i * runs.size() / batches, runs.begin() + (i + 1) * runs.size() / batches);
+                    plainSort(batch, sort);
+                    std::move(batch.begin(), batch.end(), runs.begin() + i * runs.size() / batches);
+                }
+                for (const auto &arrived : {ordered, reversed, shuffled, runs}) {
+                    auto sorted = arrived, expected = arrived;
+                    FolderModel::sortEntries(sorted, sort);
+                    plainSort(expected, sort);
+                    QCOMPARE(paths(sorted), paths(expected));
+                }
+            }
+        }
+    }
+
+    void folderSortsAnOrderedListingInOneCompareAnEntry()
+    {
+        // A listing already in order is checked, not sorted again: about one compare an entry, where a sort takes a dozen.
+        constexpr qsizetype comparesAnEntry = 2;
+        for (const QString &sort : FolderModel::sortModes()) {
+            auto entries = sortable();
+            plainSort(entries, sort);
+            const QStringList expected = paths(entries);
+            QCollator collator;
+            collator.setNumericMode(true);
+            collator.setCaseSensitivity(Qt::CaseInsensitive);
+            qsizetype compares = 0;
+            QVERIFY(FolderModel::mergeRuns(entries, [&](const FolderModel::Entry &a, const FolderModel::Entry &b) {
+                ++compares;
+                return plainBefore(a, b, sort, collator);
+            }));
+            QVERIFY2(compares <= comparesAnEntry * entries.size(), qPrintable(QString("%1 compares").arg(compares)));
+            QCOMPARE(paths(entries), expected);
+        }
+    }
+
+    void folderLeavesAnOrderedListingWhereItIs()
+    {
+        // sortEntries merges what arrives in order; the keyed sort a real locale would fall to builds the listing again in another buffer.
+        const SortLocale sorting(QLocale(QLocale::English, QLocale::UnitedStates));
+        auto entries = sortable();
+        plainSort(entries, "name");
+        const FolderModel::Entry *listed = entries.constData();
+        FolderModel::sortEntries(entries, "name");
+        QCOMPARE(entries.constData(), listed);
+    }
+
     void folderKeepsASelection()
     {
         QTemporaryDir dir;
@@ -1558,6 +4160,61 @@ private slots:
         QCOMPARE(model.selectedCount(), 3);
         model.clearSelection();
         QCOMPARE(model.selectedCount(), 0);
+    }
+
+    void folderSelectsWithoutCopyingTheListing()
+    {
+        // Enough rows that a copy of the listing shows in the heap.
+        constexpr int files = 4000;
+        QTemporaryDir dir;
+        QDir(dir.path()).mkdir("sub");
+        for (int i = 0; i < files; ++i)
+            write(dir.filePath(QString("f%1.txt").arg(i)), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        QSignalSpy counted(&model, &QAbstractItemModel::dataChanged);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QVERIFY(!counted.isEmpty() || counted.wait(3000));
+        QCOMPARE(model.get(0).value("itemCount").toInt(), 0);
+
+        // Selecting, and re-reading with a selection, read the remembered listing and leave it shared.
+        const size_t before = heap();
+        model.selectAll();
+        QCOMPARE(model.selectedCount(), files + 1);
+        model.selectRows({1, 2});
+        model.toggleSelected(2);
+        model.selectRange(3, 5, true);
+        model.selectOnly(4);
+        model.reload();
+        QVERIFY(loaded.wait(3000));
+        QTest::qWait(50);
+        QVERIFY2(heap() < before + files * sizeof(FolderModel::Entry) / 2, "selecting copied the listing");
+        QVERIFY(model.isSelected(4) && model.selectedCount() == 1);
+    }
+
+    void folderShowsARememberedListingWithoutCopyingIt()
+    {
+        constexpr int files = 4000;
+        QTemporaryDir dir;
+        for (int i = 0; i < files; ++i)
+            write(dir.filePath(QString("f%1.txt").arg(i)), "x");
+        FolderModel first;
+        QSignalSpy firstLoaded(&first, &FolderModel::loaded);
+        first.setPath(dir.path());
+        QVERIFY(firstLoaded.wait(3000));
+        QTest::qWait(50);
+
+        // A second view of the folder (a column, a split) shares the listing the first one left.
+        const size_t before = heap();
+        FolderModel second;
+        QSignalSpy secondLoaded(&second, &FolderModel::loaded);
+        second.setPath(dir.path());
+        QCOMPARE(second.count(), files);
+        QVERIFY(secondLoaded.wait(3000));
+        QTest::qWait(50);
+        QVERIFY2(heap() < before + files * sizeof(FolderModel::Entry) / 2, "the second view copied the listing");
+        QCOMPARE(second.count(), files);
     }
 
     void recentsSelectOneOfTwoSameNamedFiles()
@@ -3417,6 +6074,81 @@ private slots:
         QCOMPARE(places.pinned().size(), 1);
     }
 
+    void placesAnnounceOnlyTheListThatChanged()
+    {
+        QTemporaryDir home;
+        QDir(home.path()).mkpath("Work");
+        Places places(home.path());
+        QSignalSpy placesSpy(&places, &Places::placesChanged);
+        QSignalSpy pinnedSpy(&places, &Places::pinnedChanged);
+        QSignalSpy viewsSpy(&places, &Places::viewsChanged);
+        // The drives are read off the UI thread and land later: these are the lists a poll changes at once.
+        auto counts = [&] {
+            return QList<int>{int(placesSpy.count()), int(pinnedSpy.count()), int(viewsSpy.count())};
+        };
+
+        // A poll that finds nothing new says nothing.
+        places.refresh();
+        places.refresh();
+        QCOMPARE(counts(), QList<int>({0, 0, 0}));
+
+        // A new folder in home changes Home and nothing else.
+        QDir(home.path()).mkpath("Music");
+        places.refresh();
+        QCOMPARE(counts(), QList<int>({1, 0, 0}));
+        QCOMPARE(places.places().size(), 2);
+    }
+
+    void placesListsEachHaveTheirOwnSignal()
+    {
+        // What the sidebar binds to: a list's own signal, so one list's change rebuilds one section.
+        const QMetaObject &meta = Places::staticMetaObject;
+        for (const char *list : {"places", "pinned", "views", "devices"})
+            QCOMPARE(meta.property(meta.indexOfProperty(list)).notifySignal().name(), QByteArray(list) + "Changed");
+    }
+
+    void placesPinAnnouncesOnlyPinned()
+    {
+        QTemporaryDir home;
+        QDir(home.path()).mkpath("Work/folio");
+        Places places(home.path());
+        QSignalSpy placesSpy(&places, &Places::placesChanged);
+        QSignalSpy pinnedSpy(&places, &Places::pinnedChanged);
+
+        QCOMPARE(places.pin(home.filePath("Work/folio")), QString());
+        QCOMPARE(pinnedSpy.count(), 1);
+        // Pinning it again changes nothing, so it says nothing.
+        QCOMPARE(places.pin(home.filePath("Work/folio")), QString());
+        QCOMPARE(pinnedSpy.count(), 1);
+        places.unpin(home.filePath("Work/folio"));
+        QCOMPARE(pinnedSpy.count(), 2);
+        places.refresh();
+        QCOMPARE(pinnedSpy.count(), 2);
+        QCOMPARE(placesSpy.count(), 0);
+    }
+
+    void placesReorderedPinsAreAChange()
+    {
+        QTemporaryDir home;
+        for (const char *dir : {"Work/folio", "Work/hype"})
+            QDir(home.path()).mkpath(dir);
+        const QString bookmarks = home.filePath(".config/gtk-3.0/bookmarks");
+        QDir().mkpath(QFileInfo(bookmarks).absolutePath());
+        const QByteArray folio = QUrl::fromLocalFile(home.filePath("Work/folio")).toEncoded() + "\n";
+        const QByteArray hype = QUrl::fromLocalFile(home.filePath("Work/hype")).toEncoded() + "\n";
+        write(bookmarks, folio + hype);
+        Places places(home.path());
+        QSignalSpy pinnedSpy(&places, &Places::pinnedChanged);
+        places.refresh();
+        QCOMPARE(pinnedSpy.count(), 0);
+
+        // Reordered in a GTK dialog: the same pins, a new order.
+        write(bookmarks, hype + folio);
+        places.refresh();
+        QCOMPARE(pinnedSpy.count(), 1);
+        QCOMPARE(places.pinned().at(0).toMap().value("name").toString(), QString("hype"));
+    }
+
     void typedViewsGoToTheirView()
     {
         // The path bar shows a view as its own name, so Return on it, or
@@ -3441,6 +6173,21 @@ private slots:
         QCOMPARE(Backend::mountLabel("smb-share:server=nas,share=media"), QString("nas"));
         QCOMPARE(Backend::mountLabel("ftp:host=ftp.example.com"), QString("ftp.example.com"));
         QCOMPARE(Backend::mountLabel("dav:host=cloud.example.com,ssl=true,prefix=%2Fremote.php"), QString("cloud.example.com"));
+    }
+
+    void pluginItemsAreNotTypedFromTheirNames()
+    {
+        // A plugin's item is shown as listed: its kind and subtitle are not read again from its name.
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setItems({QVariantMap{{"name", "notes.txt"}, {"path", "plugin:servers/a"}, {"subtitle", "Windows"}}});
+        model.setPath("plugin:servers");
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.get(0).value("name").toString(), QString("notes.txt"));
+        QCOMPARE(model.get(0).value("kind").toString(), QString("item"));
+        QCOMPARE(model.get(0).value("extension").toString(), QString("Windows"));
+        QCOMPARE(model.data(model.index(0), FolderModel::KindRole).toString(), QString("item"));
+        QCOMPARE(model.data(model.index(0), FolderModel::ExtensionRole).toString(), QString("Windows"));
     }
 
     void typedServerAddressesAreMounted()
@@ -5834,16 +8581,327 @@ private slots:
 
     void themeFollowsHyprlandRounding()
     {
-        QTemporaryDir dir;
-        const QString response = dir.filePath("response.json"), command = dir.filePath("hyprctl");
-        write(command, "#!/bin/sh\ncat '" + response.toUtf8() + "'\n");
+        // The stand-in writes outside the theme folder, so its runs aren't theme changes.
+        QTemporaryDir dir, stage;
+        const QString response = stage.filePath("response.json"), runs = stage.filePath("runs");
+        const QString command = standInHyprctl(stage, response, runs);
+        write(response, "{\"int\":2}");
+        const QByteArray runtime = qgetenv("XDG_RUNTIME_DIR");
+        const int hyprland = listenAsHyprland(stage.path());
+        QVERIFY(hyprland >= 0);
+        const auto restore = qScopeGuard([=] { stopHyprland(hyprland, runtime); });
+
+        Theme theme(dir.path(), nullptr, command);
+        const int events = ::accept4(hyprland, nullptr, nullptr, SOCK_CLOEXEC);
+        QVERIFY(events >= 0);
+        const auto hangUp = qScopeGuard([events] { ::close(events); });
+        QTRY_COMPARE(theme.radius(), 2);
+        write(response, "{\"int\":6}");
+        // Other events, and a reload name cut short, ask nothing.
+        send(events, "activewindow>>kitty,configreloaded>>\nconfigreloaded\n");
+        QTest::qWait(300);
+        QCOMPARE(countRuns(runs), 1);
+        // A reload line that arrives in two pieces is one reload.
+        send(events, "configrel");
+        QTest::qWait(100);
+        send(events, "oaded>>\n");
+        QTRY_COMPARE(theme.radius(), 6);
+        QCOMPARE(countRuns(runs), 2);
+    }
+
+    void themeReadsABurstOfHyprlandEventsOverSeveralTurns()
+    {
+        // More events than one turn reads are read a piece a turn, and the reload at their end still counts.
+        QTemporaryDir dir, stage;
+        const QString response = stage.filePath("response.json"), runs = stage.filePath("runs");
+        const QString command = standInHyprctl(stage, response, runs);
+        write(response, "{\"int\":2}");
+        const QByteArray runtime = qgetenv("XDG_RUNTIME_DIR");
+        const int hyprland = listenAsHyprland(stage.path());
+        QVERIFY(hyprland >= 0);
+        const auto restore = qScopeGuard([=] { stopHyprland(hyprland, runtime); });
+
+        Theme theme(dir.path(), nullptr, command);
+        const int events = ::accept4(hyprland, nullptr, nullptr, SOCK_CLOEXEC);
+        QVERIFY(events >= 0);
+        const auto hangUp = qScopeGuard([events] { ::close(events); });
+        QTRY_COMPARE(theme.radius(), 2);
+        write(response, "{\"int\":6}");
+        QByteArray burst;
+        while (burst.size() < 2 * Theme::eventsATurn)
+            burst += "activewindow>>kitty,a title\n";
+        burst += "configreloaded>>\n";
+        // Room asked for the whole burst unread, and sent without waiting, so a socket too small fails here instead of hanging.
+        const int room = 2 * int(burst.size());
+        QCOMPARE(::setsockopt(events, SOL_SOCKET, SO_SNDBUF, &room, sizeof room), 0);
+        QCOMPARE(::send(events, burst.constData(), burst.size(), MSG_DONTWAIT), ssize_t(burst.size()));
+        const int queued = unread(events);
+        // One turn at a time, up to the first that reads: it leaves the rest for the turns after it.
+        for (int turn = 0; turn < 100 && unread(events) == queued; ++turn)
+            QCoreApplication::processEvents();
+        QVERIFY(unread(events) < queued);
+        QVERIFY(unread(events) > 0);
+        QTRY_COMPARE(theme.radius(), 6);
+        QCOMPARE(unread(events), 0);
+        QCOMPARE(countRuns(runs), 2);
+    }
+
+    void themeDropsTheRestOfAHyprlandLineTooLong()
+    {
+        // A line longer than any kept is dropped whole: its last piece, which reads like a reload, asks nothing.
+        QTemporaryDir dir, stage;
+        const QString response = stage.filePath("response.json"), runs = stage.filePath("runs");
+        const QString command = standInHyprctl(stage, response, runs);
+        write(response, "{\"int\":2}");
+        const QByteArray runtime = qgetenv("XDG_RUNTIME_DIR");
+        const int hyprland = listenAsHyprland(stage.path());
+        QVERIFY(hyprland >= 0);
+        const auto restore = qScopeGuard([=] { stopHyprland(hyprland, runtime); });
+
+        Theme theme(dir.path(), nullptr, command);
+        const int events = ::accept4(hyprland, nullptr, nullptr, SOCK_CLOEXEC);
+        QVERIFY(events >= 0);
+        const auto hangUp = qScopeGuard([events] { ::close(events); });
+        QTRY_COMPARE(theme.radius(), 2);
+        write(response, "{\"int\":6}");
+        // All the theme keeps of one line, then one byte more: the line is given up there, with nothing of it left over.
+        send(events, QByteArray(Theme::longestEventLine, 'x'));
+        QTRY_COMPARE(unread(events), 0);
+        send(events, "x");
+        QTRY_COMPARE(unread(events), 0);
+        // The line's end comes last, and reads like a reload standing alone.
+        send(events, "configreloaded>>\n");
+        QTRY_COMPARE(unread(events), 0);
+        QTest::qWait(300);
+        QCOMPARE(countRuns(runs), 1);
+        send(events, "configreloaded>>\n");
+        QTRY_COMPARE(theme.radius(), 6);
+        QCOMPARE(countRuns(runs), 2);
+    }
+
+    void themeAsksAgainForAReloadDuringAnAsk()
+    {
+        QTemporaryDir dir, stage;
+        const QString response = stage.filePath("response.json"), runs = stage.filePath("runs");
+        const QString command = stage.filePath("hyprctl"), go = stage.filePath("go");
+        // This hyprctl reads its answer, then holds it until `go` exists: a reload sent meanwhile makes it stale.
+        write(command, "#!/bin/sh\nanswer=$(cat '" + response.toUtf8() + "')\necho run >> '" + runs.toUtf8()
+                           + "'\nuntil [ -e '" + go.toUtf8() + "' ]; do sleep 0.01; done\necho \"$answer\"\n");
         QVERIFY(QFile::setPermissions(command, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+        write(response, "{\"int\":2}");
+        const QByteArray runtime = qgetenv("XDG_RUNTIME_DIR");
+        const int hyprland = listenAsHyprland(stage.path());
+        QVERIFY(hyprland >= 0);
+        const auto restore = qScopeGuard([=] { stopHyprland(hyprland, runtime); });
+
+        Theme theme(dir.path(), nullptr, command);
+        const int events = ::accept4(hyprland, nullptr, nullptr, SOCK_CLOEXEC);
+        QVERIFY(events >= 0);
+        const auto hangUp = qScopeGuard([events] { ::close(events); });
+        QTRY_COMPARE(countRuns(runs), 1);
+        write(response, "{\"int\":6}");
+        send(events, "configreloaded>>\n");
+        // Theme reads the reload while the first ask is still held.
+        QVERIFY(unread(events) > 0);
+        QTRY_COMPARE(unread(events), 0);
+        write(go, "");
+        QTRY_COMPARE(theme.radius(), 6);
+        QCOMPARE(countRuns(runs), 2);
+    }
+
+    void themeWatchesHyprlandAgainOnceItsEventsStopped()
+    {
+        QTemporaryDir dir, stage;
+        const QString response = stage.filePath("response.json"), runs = stage.filePath("runs");
+        const QString command = standInHyprctl(stage, response, runs);
+        write(response, "{\"int\":2}");
+        const QByteArray runtime = qgetenv("XDG_RUNTIME_DIR");
+        const int hyprland = listenAsHyprland(stage.path());
+        QVERIFY(hyprland >= 0);
+        const auto restore = qScopeGuard([=] { stopHyprland(hyprland, runtime); });
+
+        Theme theme(dir.path(), nullptr, command);
+        const int events = ::accept4(hyprland, nullptr, nullptr, SOCK_CLOEXEC);
+        QVERIFY(events >= 0);
+        QTRY_COMPARE(theme.radius(), 2);
+        QCOMPARE(theme.findChildren<QSocketNotifier *>(Qt::FindDirectChildrenOnly).size(), 1);
+        // Away from Folio, Hyprland hangs up, as it does on a reader that fell behind, and the theme lets go of the socket.
+        emit qGuiApp->applicationStateChanged(Qt::ApplicationInactive);
+        ::close(events);
+        QTRY_VERIFY(theme.findChildren<QSocketNotifier *>(Qt::FindDirectChildrenOnly).isEmpty());
+        write(response, "{\"int\":4}");
+        // Nothing connects again while away, however long; coming back does.
+        QTest::qWait(2 * Theme::watchAgainAfter);
+        pollfd knock{hyprland, POLLIN, 0};
+        QCOMPARE(::poll(&knock, 1, 0), 0);
+        emit qGuiApp->applicationStateChanged(Qt::ApplicationActive);
+        const int again = ::accept4(hyprland, nullptr, nullptr, SOCK_CLOEXEC);
+        QVERIFY(again >= 0);
+        const auto hangUp = qScopeGuard([again] { ::close(again); });
+        // Coming back asked once, and that ask is over; the next change is told by the new watch alone.
+        QTRY_COMPARE(theme.radius(), 4);
+        QCOMPARE(countRuns(runs), 2);
+        write(response, "{\"int\":6}");
+        send(again, "configreloaded>>\n");
+        QTRY_COMPARE(theme.radius(), 6);
+        QCOMPARE(countRuns(runs), 3);
+    }
+
+    void themeWatchesHyprlandAgainAfterAHangUpWhileInUse()
+    {
+        QTemporaryDir dir, stage;
+        const QString response = stage.filePath("response.json"), runs = stage.filePath("runs");
+        const QString command = standInHyprctl(stage, response, runs);
+        write(response, "{\"int\":2}");
+        const QByteArray runtime = qgetenv("XDG_RUNTIME_DIR");
+        const int hyprland = listenAsHyprland(stage.path());
+        QVERIFY(hyprland >= 0);
+        const auto restore = qScopeGuard([=] { stopHyprland(hyprland, runtime); });
+
+        Theme theme(dir.path(), nullptr, command);
+        const int events = ::accept4(hyprland, nullptr, nullptr, SOCK_CLOEXEC);
+        QVERIFY(events >= 0);
+        QTRY_COMPARE(theme.radius(), 2);
+        // Hyprland hangs up and then reloads its config: nobody is told of that reload.
+        ::close(events);
+        QTRY_VERIFY(theme.findChildren<QSocketNotifier *>(Qt::FindDirectChildrenOnly).isEmpty());
+        write(response, "{\"int\":4}");
+        // Folio is never left and come back to: the theme connects again by itself after its pause.
+        pollfd knock{hyprland, POLLIN, 0};
+        QTRY_COMPARE_WITH_TIMEOUT(::poll(&knock, 1, 0), 1, 5 * Theme::watchAgainAfter);
+        const int again = ::accept4(hyprland, nullptr, nullptr, SOCK_CLOEXEC);
+        QVERIFY(again >= 0);
+        const auto hangUp = qScopeGuard([again] { ::close(again); });
+        // Connected again, it reads the rounding it wasn't told of, once; the next change is told by the new watch.
+        QTRY_COMPARE(theme.radius(), 4);
+        QCOMPARE(countRuns(runs), 2);
+        write(response, "{\"int\":6}");
+        send(again, "configreloaded>>\n");
+        QTRY_COMPARE(theme.radius(), 6);
+        QCOMPARE(countRuns(runs), 3);
+    }
+
+    void themeKeepsTryingHyprlandWhileInUseUntilItAnswers()
+    {
+        QTemporaryDir dir, stage;
+        const QString response = stage.filePath("response.json"), runs = stage.filePath("runs");
+        const QString command = standInHyprctl(stage, response, runs);
+        write(response, "{\"int\":2}");
+        const QByteArray runtime = qgetenv("XDG_RUNTIME_DIR");
+        int hyprland = listenAsHyprland(stage.path());
+        QVERIFY(hyprland >= 0);
+        const auto restore = qScopeGuard([&hyprland, runtime] { stopHyprland(hyprland, runtime); });
+
+        Theme theme(dir.path(), nullptr, command);
+        const int events = ::accept4(hyprland, nullptr, nullptr, SOCK_CLOEXEC);
+        QVERIFY(events >= 0);
+        QTRY_COMPARE(theme.radius(), 2);
+        // Hyprland hangs up and its socket is gone for longer than one pause: the first try after it finds nothing there.
+        ::close(std::exchange(hyprland, -1));
+        QVERIFY(QFile::remove(stage.filePath("hypr/test/.socket2.sock")));
+        ::close(events);
+        QTRY_VERIFY(theme.findChildren<QSocketNotifier *>(Qt::FindDirectChildrenOnly).isEmpty());
+        QSignalSpy states(qGuiApp, &QGuiApplication::applicationStateChanged);
+        // Two tries and more go by with nothing there, so no single try is the one that connects.
+        QTest::qWait(Theme::watchAgainAfter * 5 / 2);
+        // The socket is back, with a reload gone by untold; Folio was never left and come back to, and a later try finds it.
+        write(response, "{\"int\":4}");
+        hyprland = listenAsHyprland(stage.path());
+        QVERIFY(hyprland >= 0);
+        pollfd knock{hyprland, POLLIN, 0};
+        QTRY_COMPARE_WITH_TIMEOUT(::poll(&knock, 1, 0), 1, 5 * Theme::watchAgainAfter);
+        const int again = ::accept4(hyprland, nullptr, nullptr, SOCK_CLOEXEC);
+        QVERIFY(again >= 0);
+        const auto hangUp = qScopeGuard([again] { ::close(again); });
+        QTRY_COMPARE(theme.radius(), 4);
+        QCOMPARE(countRuns(runs), 2);
+        // Coming back to Folio connects too, and didn't happen: a try after a pause did this.
+        QCOMPARE(states.size(), 0);
+    }
+
+    void themeWatchesAHyprlandThatWasNotThereAtFirst()
+    {
+        QTemporaryDir dir, stage;
+        const QString response = stage.filePath("response.json"), runs = stage.filePath("runs");
+        const QString command = standInHyprctl(stage, response, runs);
+        write(response, "{\"int\":2}");
+        const QByteArray runtime = qgetenv("XDG_RUNTIME_DIR");
+        int hyprland = listenAsHyprland(stage.path());
+        QVERIFY(hyprland >= 0);
+        const auto restore = qScopeGuard([&hyprland, runtime] { stopHyprland(hyprland, runtime); });
+        // Hyprland is named and its socket isn't there: the theme's first try, as it's made, finds nothing.
+        ::close(std::exchange(hyprland, -1));
+        QVERIFY(QFile::remove(stage.filePath("hypr/test/.socket2.sock")));
+
+        Theme theme(dir.path(), nullptr, command);
+        QSignalSpy states(qGuiApp, &QGuiApplication::applicationStateChanged);
+        QTRY_COMPARE(theme.radius(), 2);
+        QVERIFY(theme.findChildren<QSocketNotifier *>(Qt::FindDirectChildrenOnly).isEmpty());
+        // The socket appears, with a reload gone by untold; Folio's state never changes, and a later try finds it.
+        write(response, "{\"int\":4}");
+        hyprland = listenAsHyprland(stage.path());
+        QVERIFY(hyprland >= 0);
+        pollfd knock{hyprland, POLLIN, 0};
+        QTRY_COMPARE_WITH_TIMEOUT(::poll(&knock, 1, 0), 1, 5 * Theme::watchAgainAfter);
+        const int events = ::accept4(hyprland, nullptr, nullptr, SOCK_CLOEXEC);
+        QVERIFY(events >= 0);
+        const auto hangUp = qScopeGuard([events] { ::close(events); });
+        QTRY_COMPARE(theme.radius(), 4);
+        QCOMPARE(countRuns(runs), 2);
+        // Coming back to Folio connects too, and didn't happen: a try after a pause did this.
+        QCOMPARE(states.size(), 0);
+    }
+
+    void themeAsksHyprlandOnlyWhenSomethingChanges()
+    {
+        QTemporaryDir dir, stage;
+        const QString response = stage.filePath("response.json"), runs = stage.filePath("runs");
+        const QString command = standInHyprctl(stage, response, runs);
         write(response, "{\"int\":4}");
 
         Theme theme(dir.path(), nullptr, command);
         QTRY_COMPARE(theme.radius(), 4);
+        // Longer than the one-second poll this replaced.
+        QTest::qWait(2500);
+        QCOMPARE(countRuns(runs), 1);
+        QDir(dir.path()).mkpath("theme");
+        write(dir.filePath("theme/colors.toml"), "accent = \"#112233\"\n");
+        QTRY_COMPARE(countRuns(runs), 2);
+    }
+
+    void themeKeepsRoundingWhenHyprctlFails()
+    {
+        QTemporaryDir dir, stage;
+        const QString response = stage.filePath("response.json"), runs = stage.filePath("runs");
+        const QString command = standInHyprctl(stage, response, runs);
         write(response, "{\"int\":6}");
+        const QByteArray runtime = qgetenv("XDG_RUNTIME_DIR");
+        const int hyprland = listenAsHyprland(stage.path());
+        QVERIFY(hyprland >= 0);
+        const auto restore = qScopeGuard([=] { stopHyprland(hyprland, runtime); });
+
+        Theme theme(dir.path(), nullptr, command);
+        const int events = ::accept4(hyprland, nullptr, nullptr, SOCK_CLOEXEC);
+        QVERIFY(events >= 0);
+        const auto hangUp = qScopeGuard([events] { ::close(events); });
         QTRY_COMPARE(theme.radius(), 6);
+
+        write(command, "#!/bin/sh\necho run >> '" + runs.toUtf8() + "'\necho '{\"int\":2}'\nexit 1\n");
+        send(events, "configreloaded>>\n");
+        QTRY_COMPARE(countRuns(runs), 2);
+        QTest::qWait(200);
+        QCOMPARE(theme.radius(), 6);
+
+        // A hyprctl that's gone changes nothing, and the next one that answers is followed again.
+        QVERIFY(QFile::remove(command));
+        send(events, "configreloaded>>\n");
+        QTest::qWait(300);
+        QCOMPARE(theme.radius(), 6);
+        write(response, "{\"int\":2}");
+        standInHyprctl(stage, response, runs);
+        send(events, "configreloaded>>\n");
+        QTRY_COMPARE(theme.radius(), 2);
+        QCOMPARE(countRuns(runs), 3);
     }
 
     void themeAsksForRoundingOnlyWhileActive()
@@ -6080,11 +9138,236 @@ private:
         return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
     }
 
+    // What the process holds on the heap, in bytes.
+    static size_t heap()
+    {
+        const struct mallinfo2 m = mallinfo2();
+        return m.uordblks + m.hblkhd;
+    }
+
+    // A line of /proc/self/status in KiB, such as "VmHWM:     12345 kB".
+    static long residentKib(const char *key)
+    {
+        QFile status("/proc/self/status");
+        if (!status.open(QIODevice::ReadOnly))
+            return -1;
+        for (const QByteArray &line : status.readAll().split('\n'))
+            if (line.startsWith(key))
+                return line.mid(qstrlen(key)).trimmed().split(' ').first().toLong();
+        return -1;
+    }
+
+    // Two screens and more of plain files, beside one of every other sort of entry; `all` is how many are listed with hidden ones.
+    static void oddEntries(const QTemporaryDir &dir, int *all)
+    {
+        constexpr int files = 2000;
+        for (int i = 0; i < files; ++i)
+            write(dir.filePath(QString("f%1.%2").arg(i).arg(i % 3 ? "txt" : "png")), QByteArray(i % 7, 'x'));
+        const auto named = {".bashrc", "a.tar.gz", "X.JpG", "noext", "CMakeLists.txt", "notes.md"};
+        for (const char *name : named)
+            write(dir.filePath(name), "x");
+        QVERIFY(QDir(dir.path()).mkdir("folder.png"));
+        QVERIFY(QFile::link("notes.md", dir.filePath("link.txt")));
+        QVERIFY(QFile::link(dir.filePath("folder.png"), dir.filePath("linked")));
+        QVERIFY(QFile::link(dir.filePath("nowhere"), dir.filePath("broken.jpg")));
+        QCOMPARE(::mkfifo(QFile::encodeName(dir.filePath("pipe.txt")).constData(), 0600), 0);
+        constexpr int others = 5; // the folder, the link to a file, the link to the folder, the broken link and the pipe
+        *all = files + int(named.size()) + others;
+    }
+
+    // Entries with every kind of tie: names equal but for case, numbers written two ways, equal sizes and dates, folders among them.
+    static QVector<FolderModel::Entry> sortable()
+    {
+        const QStringList names{"README", "readme", "ReadMe", "a9.txt", "a09.txt", "a10.txt", "photo9.jpg", "photo10.jpg",
+                                "Photo9.jpg", "b.png", "B.PNG", "zeta", "Zeta", "é.md", "e.md", "notes", "x.tar.gz"};
+        QVector<FolderModel::Entry> entries;
+        constexpr int count = 2000; // shuffled, far more runs than mergeRuns takes, so the sorts behind it run too
+        for (int i = 0; i < count; ++i) {
+            FolderModel::Entry e;
+            e.name = i < 400 ? names.at(i % names.size()) : QString("file %1 %2").arg(i % 97).arg(names.at(i % names.size()));
+            e.path = QString("/sortable/%1").arg(i);
+            e = FolderModel::typed(e);
+            if (i % 13 == 0) {
+                e.isDir = true;
+                e.mime = "inode/directory";
+                e.kind = FolderModel::kindForMime(e.mime);
+                e.extension = QString();
+            } else {
+                e.size = (i % 5) * 10;
+            }
+            e.modified = QDateTime::fromSecsSinceEpoch(1700000000 + (i % 7) * 60);
+            entries.push_back(e);
+        }
+        return entries;
+    }
+
+    // The default locale, which a QCollator made without one follows, for as long as this lives.
+    struct SortLocale {
+        explicit SortLocale(const QLocale &locale) { QLocale::setDefault(locale); }
+        ~SortLocale() { QLocale::setDefault(was); }
+        const QLocale was;
+    };
+
+    // The order every faster sort must keep: Folio's compare, one pair at a time, in a stable sort.
+    static bool plainBefore(const FolderModel::Entry &a, const FolderModel::Entry &b, const QString &sort, const QCollator &collator)
+    {
+        if (a.isDir != b.isDir)
+            return a.isDir;
+        if (sort == "modified" && a.modified != b.modified)
+            return a.modified > b.modified;
+        if (sort == "oldest" && a.modified != b.modified)
+            return a.modified < b.modified;
+        if (sort == "size" && !a.isDir && a.size != b.size)
+            return a.size > b.size;
+        if (sort == "kind" && !a.isDir) {
+            if (a.kind != b.kind)
+                return a.kind < b.kind;
+            if (a.extension != b.extension)
+                return collator.compare(a.extension, b.extension) < 0;
+        }
+        return collator.compare(a.name, b.name) < 0;
+    }
+
+    static void plainSort(QVector<FolderModel::Entry> &entries, const QString &sort)
+    {
+        QCollator collator;
+        collator.setNumericMode(true);
+        collator.setCaseSensitivity(Qt::CaseInsensitive);
+        std::stable_sort(entries.begin(), entries.end(), [&](const auto &a, const auto &b) { return plainBefore(a, b, sort, collator); });
+    }
+
+    static QStringList paths(const QVector<FolderModel::Entry> &entries)
+    {
+        QStringList out;
+        for (const auto &e : entries)
+            out << e.path;
+        return out;
+    }
+
     static void write(const QString &path, const QByteArray &contents)
     {
         QFile file(path);
         QVERIFY(file.open(QIODevice::WriteOnly));
         file.write(contents);
+    }
+    // A folder past the first rows is counted, then changed, then read for a view; the two landings come in either order.
+    static void countedThenChangedAndReadForAView(bool readLandsFirst)
+    {
+        QTemporaryDir dir;
+        const int last = FolderModel::firstRows + 9;
+        for (int i = 0; i <= last; ++i)
+            QVERIFY(QDir(dir.path()).mkpath(QString("d%1").arg(i, 4, 10, QChar('0'))));
+        const QString far = dir.filePath(QString("d%1").arg(last, 4, 10, QChar('0')));
+        QThreadPool *pool = QThreadPool::globalInstance();
+        pool->waitForDone();
+        const int threads = pool->maxThreadCount();
+        pool->setMaxThreadCount(1);
+        QSemaphore counted, changed;
+        const auto restore = qScopeGuard([&] {
+            changed.release();
+            pool->waitForDone();
+            pool->setMaxThreadCount(threads);
+        });
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded), told(&model, &FolderModel::dataChanged);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        // One pool thread: the count is on it, this waits behind the count, and the view's read behind this.
+        pool->start([&] {
+            counted.release();
+            changed.acquire();
+        });
+        QVERIFY(!model.index(last).data(FolderModel::ModifiedRole).isValid());
+        QVERIFY(counted.tryAcquire(1, 3000));
+        write(far + "/a.jpg", "x");
+        const timespec later[2] = {{0, UTIME_OMIT}, {QDateTime::currentSecsSinceEpoch() + 60, 0}};
+        QCOMPARE(::utimensat(AT_FDCWD, QFile::encodeName(far).constData(), later, 0), 0);
+        const auto tellings = [&] {
+            int rows = 0;
+            for (const auto &call : told)
+                rows += call.at(0).toModelIndex().row() == last;
+            return rows;
+        };
+        if (readLandsFirst) {
+            // Each landing waits in its own watcher's events: the view's read is started and lands with the count's still waiting.
+            const auto watchers = model.findChildren<QFutureWatcherBase *>().size();
+            QCoreApplication::sendPostedEvents(&model, QEvent::MetaCall);
+            QCOMPARE(model.findChildren<QFutureWatcherBase *>().size(), watchers + 1);
+            changed.release();
+            pool->waitForDone();
+            QCoreApplication::sendPostedEvents(model.findChildren<QFutureWatcherBase *>().constLast());
+            QCOMPARE(tellings(), 1);
+            QCOMPARE(model.index(last).data(FolderModel::ItemCountRole).toInt(), -1);
+        } else {
+            QCoreApplication::processEvents();
+            changed.release();
+        }
+        // The row is told twice: once counted, as it was before the change, and once read for the view, after it.
+        QTRY_COMPARE(tellings(), 2);
+        QCOMPARE(model.index(last).data(FolderModel::ItemCountRole).toInt(), 0);
+        model.reload();
+        QVERIFY(loaded.wait(3000));
+        QTRY_COMPARE(model.index(last).data(FolderModel::ItemCountRole).toInt(), 1);
+    }
+
+    // A hyprctl that notes each run and prints the response file.
+    static QString standInHyprctl(const QTemporaryDir &dir, const QString &response, const QString &runs)
+    {
+        const QString command = dir.filePath("hyprctl");
+        write(command, "#!/bin/sh\necho run >> '" + runs.toUtf8() + "'\ncat '" + response.toUtf8() + "'\n");
+        QFile::setPermissions(command, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+        return command;
+    }
+
+    static int countRuns(const QString &runs)
+    {
+        QFile file(runs);
+        return file.open(QIODevice::ReadOnly) ? int(file.readAll().count('\n')) : 0;
+    }
+
+    // Hyprland's event socket, under a runtime folder of the test's own.
+    static int listenAsHyprland(const QString &runtime)
+    {
+        QDir(runtime).mkpath("hypr/test");
+        const QByteArray path = QFile::encodeName(runtime + "/hypr/test/.socket2.sock");
+        sockaddr_un address{};
+        address.sun_family = AF_UNIX;
+        if (path.size() >= qsizetype(sizeof address.sun_path))
+            return -1;
+        std::memcpy(address.sun_path, path.constData(), path.size());
+        const int fd = ::socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+        if (fd < 0 || ::bind(fd, reinterpret_cast<const sockaddr *>(&address), sizeof address) != 0
+            || ::listen(fd, 1) != 0) {
+            if (fd >= 0)
+                ::close(fd);
+            return -1;
+        }
+        qputenv("XDG_RUNTIME_DIR", QFile::encodeName(runtime));
+        qputenv("HYPRLAND_INSTANCE_SIGNATURE", "test");
+        return fd;
+    }
+
+    static void stopHyprland(int fd, const QByteArray &runtime)
+    {
+        ::close(fd);
+        if (runtime.isEmpty())
+            qunsetenv("XDG_RUNTIME_DIR");
+        else
+            qputenv("XDG_RUNTIME_DIR", runtime);
+        qunsetenv("HYPRLAND_INSTANCE_SIGNATURE");
+    }
+
+    // What a socket has sent that its other end hasn't read yet, as the kernel counts it: 0 once all of it is read.
+    static int unread(int fd)
+    {
+        int queued = -1;
+        ::ioctl(fd, SIOCOUTQ, &queued);
+        return queued;
+    }
+
+    static void send(int fd, const QByteArray &events)
+    {
+        QCOMPARE(::write(fd, events.constData(), events.size()), ssize_t(events.size()));
     }
 };
 
