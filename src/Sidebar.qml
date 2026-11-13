@@ -189,19 +189,19 @@ Rectangle {
             border.color: theme.accent
         }
 
-        DropArea {
+        FileDrop {
             id: rowDrop
             anchors.fill: parent
             enabled: row.dropPath.length > 0 || row.dropTrashes
-            keys: ["text/uri-list"]
+            folder: row.dropPath
             onEntered: (drag) => { drag.accepted = row.dropTrashes ? drag.hasUrls : fileOps.canDrop(drag.urls, row.dropPath) }
             onDropped: (drop) => {
                 if (row.dropTrashes) {
                     fileOps.trash(fileOps.localPaths(drop.urls))
+                    drop.accept(Qt.MoveAction)
                 } else {
-                    fileOps.dropInto(drop.urls, row.dropPath)
+                    drop.accept(fileOps.dropInto(drop.urls, row.dropPath, fileOps.ctrlHeld()))
                 }
-                drop.accept(Qt.MoveAction)
             }
         }
         contentItem: RowLayout {
@@ -243,6 +243,7 @@ Rectangle {
                      : row.mark.tone === "warning" ? theme.yellow : theme.secondaryForeground
                 font.pixelSize: 11
             }
+            Text { visible: rowDrop.containsDrag && !row.dropTrashes; text: rowDrop.copies ? qsTr("Copy here") : qsTr("Move here"); color: theme.secondaryForeground; font.pixelSize: 11 }
         }
     }
 

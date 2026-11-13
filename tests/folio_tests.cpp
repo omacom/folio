@@ -1377,6 +1377,7 @@ private slots:
         const std::unique_ptr<QQmlPropertyMap> theme(QQmlPropertyMap::create());
         theme->insert("accent", QColor(Qt::blue));
         theme->insert("radius", 0);
+        theme->insert("secondaryForeground", QColor(Qt::gray));
         QQmlEngine engine;
         engine.rootContext()->setContextProperty("fileOps", &ops);
         engine.rootContext()->setContextProperty("theme", theme.get());
@@ -1420,6 +1421,101 @@ private slots:
         QVERIFY(dropAt({100, 150}));
         QVERIFY(done.wait(3000));
         QVERIFY(QFileInfo(home.filePath("install")).isDir());
+    }
+
+    void dropsInAColumnAndOnATilesNameCopyWithCtrl()
+    {
+        // A column's drop area and a folder tile's name both say "Copy here" with Ctrl held, and copy.
+        QTemporaryDir home;
+        QDir(home.path()).mkpath("column");
+        QDir(home.path()).mkpath("project");
+        write(home.filePath("a.txt"), "a");
+        write(home.filePath("b.txt"), "b");
+        FileOps ops;
+        const std::unique_ptr<QQmlPropertyMap> theme(QQmlPropertyMap::create());
+        const std::unique_ptr<QQmlPropertyMap> translator(QQmlPropertyMap::create());
+        const std::unique_ptr<QQmlPropertyMap> backend(QQmlPropertyMap::create());
+        const std::unique_ptr<QQmlPropertyMap> folder(QQmlPropertyMap::create());
+        for (const char *role : {"accent", "foreground", "brightForeground", "secondaryForeground", "lighterBackground",
+                                 "darkBackground", "red", "blue", "magenta", "orange", "yellow", "cyan"})
+            theme->insert(role, QColor(Qt::gray));
+        theme->insert("radius", 0);
+        translator->insert("language", "en");
+        folder->insert("selectedCount", 0);
+        backend->insert("folder", QVariant::fromValue<QObject *>(folder.get()));
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("fileOps", &ops);
+        engine.rootContext()->setContextProperty("theme", theme.get());
+        engine.rootContext()->setContextProperty("translator", translator.get());
+        engine.rootContext()->setContextProperty("backend", backend.get());
+        engine.rootContext()->setContextProperty("home", home.path());
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window {\n"
+                          "    width: 400; height: 300; visible: true\n"
+                          "    ListView {\n"
+                          "        id: column; width: 200; height: 300; model: 1\n"
+                          "        delegate: Item { width: 200; height: 40 }\n"
+                          "    }\n"
+                          "    FolderDrop { parent: column; anchors.fill: parent; z: -1; items: column; folder: home + '/column' }\n"
+                          "    GridView {\n"
+                          "        x: 200; width: 200; height: 300; cellWidth: 200; cellHeight: 200; model: 1\n"
+                          "        delegate: FileTile {\n"
+                          "            width: 200; height: 200; name: 'project'; fileName: 'project'; folder: ''\n"
+                          "            path: home + '/project'; isDir: true; kind: 'folder'; mime: 'inode/directory'\n"
+                          "            extension: ''; itemCount: 0; icon: ''; size: 0; modified: new Date(); selected: false\n"
+                          "        }\n"
+                          "    }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(QFINDTESTDATA("../src/FolderDrop.qml") + ".test.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+
+        // Whether a shown text anywhere in the window reads `text`.
+        std::function<bool(QQuickItem *, const QString &)> shows = [&](QQuickItem *item, const QString &text) {
+            if (item->isVisible() && item->property("text").toString() == text)
+                return true;
+            for (QQuickItem *child : item->childItems())
+                if (shows(child, text))
+                    return true;
+            return false;
+        };
+        QMimeData data;
+        // Enters at `at`, checks the verb shown, then drops, giving what the drop did.
+        const auto dropAt = [&](const QString &file, QPointF at, const QString &verb) {
+            data.setUrls({QUrl::fromLocalFile(home.filePath(file))});
+            QDragEnterEvent enter(at, Qt::CopyAction | Qt::MoveAction, &data, Qt::LeftButton, Qt::NoModifier);
+            QGuiApplication::sendEvent(window, &enter);
+            const bool said = shows(window->contentItem(), verb);
+            QDropEvent drop(at, Qt::CopyAction | Qt::MoveAction, &data, Qt::LeftButton, Qt::NoModifier);
+            QGuiApplication::sendEvent(window, &drop);
+            return said && drop.isAccepted() ? drop.dropAction() : Qt::IgnoreAction;
+        };
+        QSignalSpy done(&ops, &FileOps::done);
+        QTest::keyPress(window, Qt::Key_Control, Qt::ControlModifier);
+        auto ctrl = qScopeGuard([&] { QTest::keyRelease(window, Qt::Key_Control, Qt::NoModifier); });
+
+        // Below the column's last item.
+        QCOMPARE(dropAt("a.txt", {100, 150}, "Copy here"), Qt::CopyAction);
+        QVERIFY(done.wait(3000));
+        QVERIFY(QFile::exists(home.filePath("column/a.txt")));
+        QVERIFY(QFile::exists(home.filePath("a.txt")));
+
+        // On the tile's name, under its picture.
+        QCOMPARE(dropAt("a.txt", {300, 128}, "Copy here"), Qt::CopyAction);
+        QVERIFY(done.wait(3000));
+        QVERIFY(QFile::exists(home.filePath("project/a.txt")));
+        QVERIFY(QFile::exists(home.filePath("a.txt")));
+
+        // Ctrl let go, the name takes a move.
+        ctrl.dismiss();
+        QTest::keyRelease(window, Qt::Key_Control, Qt::NoModifier);
+        QCOMPARE(dropAt("b.txt", {300, 128}, "Move here"), Qt::MoveAction);
+        QVERIFY(done.wait(3000));
+        QVERIFY(QFile::exists(home.filePath("project/b.txt")));
+        QVERIFY(!QFile::exists(home.filePath("b.txt")));
     }
 
     void fileOpsDragUriLists()
@@ -4329,6 +4425,65 @@ private slots:
         QCOMPARE(backend.path(), QDir::cleanPath(home.path()));
     }
 
+    void detailsDrawAPlainGlyphForSeveralPluginItems()
+    {
+        // One of a plugin's items shows its own icon in the details; several selected show the plain glyph, as several files do.
+        QTemporaryDir folder, home;
+        writePlugin(folder.path(), "servers", R"({"folio": 1, "poll": {"command": ["./servers"]},
+            "view": {"title": "Servers", "label": "All", "icon": "drive"}})",
+                    {{"servers", "#!/bin/sh\ncat <<EOF\n{\"items\": ["
+                                 "{\"id\": \"a\", \"name\": \"alpha\", \"icon\": \"peer\"},"
+                                 "{\"id\": \"b\", \"name\": \"beta\", \"icon\": \"peer\"}]}\nEOF\n"}});
+        // The window remembers its view in QSettings; here that file lands in the test's home, not the user's.
+        QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, home.path());
+        Theme theme(home.filePath("theme"));
+        Translator translator(home.filePath("language"), sourceFolder() + "/i18n");
+        Places places(home.path());
+        Plugins plugins("en", {folder.path()}, home.filePath("folio.conf"));
+        QTRY_VERIFY(plugins.hasView("plugin:servers"));
+        Backend backend(home.path());
+        backend.setPlugins(&plugins);
+        FileOps ops;
+        QQmlEngine engine;
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("places", &places);
+        engine.rootContext()->setContextProperty("plugins", &plugins);
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("fileOps", &ops);
+        QQmlComponent component(&engine, QUrl::fromLocalFile(sourceFolder() + "/Main.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        backend.navigate("plugin:servers");
+        QTRY_COMPARE(backend.folder()->count(), 2);
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowFocused(window));
+
+        // The details' large glyph: the one of its size inside the pane.
+        const int detailsGlyph = 72;
+        std::function<QQuickItem *(QQuickItem *, bool)> find = [&](QQuickItem *item, bool inPane) -> QQuickItem * {
+            const QByteArray type = item->metaObject()->className();
+            if (inPane && type.startsWith("Glyph") && item->property("size").toInt() == detailsGlyph)
+                return item;
+            for (QQuickItem *child : item->childItems())
+                if (QQuickItem *found = find(child, inPane || type.startsWith("PreviewPane")))
+                    return found;
+            return nullptr;
+        };
+        QQuickItem *glyph = find(window->contentItem(), false);
+        QVERIFY(glyph);
+
+        // The window takes no keys until it has settled.
+        QTRY_VERIFY(window->property("settled").toBool());
+        QTest::keyClick(window, Qt::Key_Down);
+        QTRY_COMPARE(glyph->property("name").toString(), QString("peer"));
+        backend.folder()->selectAll();
+        QCOMPARE(backend.folder()->selectedCount(), 2);
+        QTRY_COMPARE(glyph->property("name").toString(), QString("file"));
+    }
+
     void pluginPollsArentHeldUpByActions()
     {
         QTemporaryDir folder, home;
@@ -4927,6 +5082,56 @@ private slots:
         QTest::keyClick(window, Qt::Key_Escape);
         QVERIFY(!window->property("asking").toBool());
         QCOMPARE(window->property("answer").toString(), QString());
+    }
+
+    void selectionDropsTheAccentWhileTheKeysAreInTheSidebar()
+    {
+        // Shift+Tab puts the keyboard in the sidebar, and the files' view draws its selection without the accent until Tab brings it back.
+        QTemporaryDir home;
+        write(home.filePath("a.txt"), "a");
+        // The window remembers its view in QSettings; here that file lands in the test's home, not the user's.
+        QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, home.path());
+        Theme theme(home.filePath("theme"));
+        Translator translator(home.filePath("language"), sourceFolder() + "/i18n");
+        Places places(home.path());
+        Plugins plugins("en", {}, home.filePath("folio.conf"));
+        Backend backend(home.path());
+        FileOps ops;
+        QQmlEngine engine;
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("places", &places);
+        engine.rootContext()->setContextProperty("plugins", &plugins);
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("fileOps", &ops);
+        QQmlComponent component(&engine, QUrl::fromLocalFile(sourceFolder() + "/Main.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        backend.navigate(home.path());
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowFocused(window));
+
+        // The files' view, whichever of the three it is.
+        std::function<QQuickItem *(QQuickItem *)> findView = [&](QQuickItem *item) -> QQuickItem * {
+            if (QByteArray(item->metaObject()->className()).startsWith("Folder") && item->property("inactive").isValid())
+                return item;
+            for (QQuickItem *child : item->childItems())
+                if (QQuickItem *found = findView(child))
+                    return found;
+            return nullptr;
+        };
+        QQuickItem *view = nullptr;
+        QTRY_VERIFY((view = findView(window->contentItem())));
+        QTRY_VERIFY(!view->property("inactive").toBool());
+
+        // The window takes no keys until it has settled.
+        QTRY_VERIFY(window->property("settled").toBool());
+        QTest::keyClick(window, Qt::Key_Backtab, Qt::ShiftModifier);
+        QTRY_VERIFY(view->property("inactive").toBool());
+        QTest::keyClick(window, Qt::Key_Tab);
+        QTRY_VERIFY(!view->property("inactive").toBool());
     }
 
     void formattingOffersWhatThisMachineCanMake()
@@ -5793,6 +5998,79 @@ private slots:
         }
     }
 
+    void previewSheetTakesTheKeysFromThePreview()
+    {
+        // With the shortcut sheet up in the preview window, the keys scroll the sheet, not the file behind it, and its bar shows at rest.
+        QTemporaryDir home;
+        // Nothing here should write settings; any that did would land in the test's home, not the user's.
+        QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, home.path());
+        QByteArray lines;
+        for (int i = 0; i < 400; ++i)
+            lines += "line " + QByteArray::number(i) + "\n";
+        write(home.filePath("a.txt"), "a");
+        write(home.filePath("b.txt"), lines);
+        write(home.filePath("c.txt"), "c");
+        Theme theme(home.filePath("theme"));
+        Translator translator(home.filePath("language"), sourceFolder() + "/i18n");
+        Previewer previewer;
+        previewer.start(home.filePath("b.txt"), false, "name");
+        QTRY_COMPARE(previewer.count(), 3);
+        QCOMPARE(previewer.index(), 1);
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("previewer", &previewer);
+        QQmlComponent component(&engine, QUrl::fromLocalFile(sourceFolder() + "/PreviewWindow.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        window->resize(480, 360);
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowFocused(window));
+
+        QObject *view = nullptr;
+        QTRY_VERIFY((view = root->property("view").value<QObject *>())
+                    && view->property("contentHeight").toDouble() > view->property("height").toDouble());
+        QTest::keyClick(window, Qt::Key_Down);
+        const double read = view->property("contentY").toDouble();
+        QVERIFY(read > 0);
+
+        QObject *overlay = nullptr;
+        for (QObject *child : root->findChildren<QObject *>())
+            if (QByteArray(child->metaObject()->className()).startsWith("HelpOverlay"))
+                overlay = child;
+        QVERIFY(overlay);
+        // The preview's own rows fit even its smallest window, so the sheet gets thirty to scroll through.
+        QVariantList rows;
+        for (int i = 0; i < 30; ++i)
+            rows << QVariant(QVariantList{QString("K%1").arg(i), QString("Row %1").arg(i)});
+        overlay->setProperty("shortcuts", rows);
+        QQuickItem *sheet = nullptr, *bar = nullptr;
+        for (QQuickItem *child : overlay->findChildren<QQuickItem *>()) {
+            if (child->inherits("QQuickFlickable"))
+                sheet = child;
+            if (child->inherits("QQuickScrollBar"))
+                bar = child;
+        }
+        QVERIFY(sheet && bar);
+        root->setProperty("helpVisible", true);
+        QTRY_VERIFY(bar->property("size").toDouble() > 0 && bar->property("size").toDouble() < 1);
+
+        for (const Qt::Key key : {Qt::Key_Down, Qt::Key_PageDown, Qt::Key_Up, Qt::Key_Left, Qt::Key_Right})
+            QTest::keyClick(window, key);
+        QVERIFY(sheet->property("contentY").toDouble() > 0);
+        QCOMPARE(previewer.index(), 1);
+        QCOMPARE(view->property("contentY").toDouble(), read);
+        auto *handle = bar->property("contentItem").value<QQuickItem *>();
+        QVERIFY(!bar->property("active").toBool() && !bar->property("hovered").toBool());
+        QVERIFY(handle && handle->isVisible());
+
+        QTest::keyClick(window, Qt::Key_Escape);
+        QVERIFY(!root->property("helpVisible").toBool());
+        QTest::keyClick(window, Qt::Key_Right);
+        QCOMPARE(previewer.index(), 2);
+    }
+
     void themeFallsBack()
     {
         QTemporaryDir dir;
@@ -6057,6 +6335,212 @@ private slots:
         Translator translator(dir.path() + "/language", dir.path());
         QCOMPARE(QLocale().toString(12345), QString("12345"));
         QCOMPARE(QLocale().toString(1.5, 'f', 1), QString("1,5"));
+    }
+
+    void folderTotalsTheSelection()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkdir("c");
+        write(dir.filePath("a.txt"), "xx");
+        write(dir.filePath("b.txt"), "xxxxx");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+
+        // Files add up their bytes; folders are only counted.
+        model.selectRange(1, 2, false);
+        QCOMPARE(model.selectedSize(), qint64(7));
+        QCOMPARE(model.selectedFolderCount(), 0);
+        model.selectAll();
+        QCOMPARE(model.selectedSize(), qint64(7));
+        QCOMPARE(model.selectedFolderCount(), 1);
+
+        // A selected file that grows is counted at its new size.
+        QSignalSpy selection(&model, &FolderModel::selectionChanged);
+        write(dir.filePath("a.txt"), "xxxx");
+        model.reload();
+        QVERIFY(loaded.wait(3000));
+        QVERIFY(selection.count() > 0);
+        QCOMPARE(model.selectedSize(), qint64(9));
+    }
+
+    void folderSearchNamesTheFileAndItsFolder()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("Raw/Takes\\One");
+        QDir(dir.path()).mkpath(QString::fromUtf8("A\u2215B/Deep/Down"));
+        write(dir.filePath("harbour.txt"), "x");
+        write(dir.filePath("Raw/Takes\\One/harbour.mp4"), "x");
+        write(dir.filePath(QString::fromUtf8("A\u2215B/Deep/Down/harbour.jpg")), "x");
+
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QVERIFY(model.get(0).value("folder").toString().isEmpty());
+        model.setQuery("harbour");
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 3);
+
+        // The name stays the path from the searched folder; fileName and folder split it, no folder for one found here.
+        auto at = [&](const QString &name) { return model.get(model.indexOf(name)); };
+        const QString deep = QString::fromUtf8("A\u2215B/Deep/Down/harbour.jpg");
+        QCOMPARE(at(deep).value("fileName").toString(), QString("harbour.jpg"));
+        QCOMPARE(at(deep).value("folder").toString(), QString::fromUtf8("A\u2215B/Deep/Down"));
+        QCOMPARE(at("Raw/Takes\\One/harbour.mp4").value("fileName").toString(), QString("harbour.mp4"));
+        QCOMPARE(at("Raw/Takes\\One/harbour.mp4").value("folder").toString(), QString("Raw/Takes\\One"));
+        QCOMPARE(at("harbour.txt").value("fileName").toString(), QString("harbour.txt"));
+        QVERIFY(at("harbour.txt").value("folder").toString().isEmpty());
+        const QModelIndex row = model.index(model.indexOf(deep));
+        QCOMPARE(model.data(row, FolderModel::FileNameRole).toString(), QString("harbour.jpg"));
+        QCOMPARE(model.data(row, FolderModel::FolderRole).toString(), QString::fromUtf8("A\u2215B/Deep/Down"));
+
+        // A plugin's item goes by its own name, even one with a slash in it.
+        const QVariantMap share{{"id", "nas"}, {"name", "nas/backup"}, {"path", "/mnt/nas/backup"}};
+        const auto item = FolderModel::toMap(FolderModel::listItems({share}).at(0));
+        QCOMPARE(item.value("fileName").toString(), QString("nas/backup"));
+        QVERIFY(item.value("folder").toString().isEmpty());
+    }
+
+    void searchResultTileKeepsAPercentInItsFolder()
+    {
+        // A "%2" in a result's folder stays as written, not taken for the size and date's place.
+        FileOps ops;
+        const std::unique_ptr<QQmlPropertyMap> theme(QQmlPropertyMap::create());
+        const std::unique_ptr<QQmlPropertyMap> translator(QQmlPropertyMap::create());
+        const std::unique_ptr<QQmlPropertyMap> backend(QQmlPropertyMap::create());
+        const std::unique_ptr<QQmlPropertyMap> folder(QQmlPropertyMap::create());
+        for (const char *role : {"accent", "foreground", "brightForeground", "secondaryForeground", "lighterBackground",
+                                 "darkBackground", "background", "red", "blue", "magenta", "orange", "yellow", "cyan"})
+            theme->insert(role, QColor(Qt::gray));
+        theme->insert("radius", 0);
+        translator->insert("language", "en");
+        folder->insert("selectedCount", 0);
+        backend->insert("folder", QVariant::fromValue<QObject *>(folder.get()));
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("fileOps", &ops);
+        engine.rootContext()->setContextProperty("theme", theme.get());
+        engine.rootContext()->setContextProperty("translator", translator.get());
+        engine.rootContext()->setContextProperty("backend", backend.get());
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window {\n"
+                          "    width: 200; height: 200; visible: true\n"
+                          "    GridView {\n"
+                          "        anchors.fill: parent; cellWidth: 200; cellHeight: 200; model: 1\n"
+                          "        delegate: FileTile {\n"
+                          "            width: 200; height: 200; name: 'a%2b/notes.bin'; fileName: 'notes.bin'; folder: 'a%2b'\n"
+                          "            path: '/nowhere/a%2b/notes.bin'; isDir: false; kind: 'file'; mime: 'application/octet-stream'\n"
+                          "            extension: 'bin'; itemCount: 0; icon: ''; size: 4096; modified: new Date(); selected: false\n"
+                          "        }\n"
+                          "    }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(QFINDTESTDATA("../src/FileTile.qml") + ".test.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+
+        QStringList texts;
+        std::function<void(QQuickItem *)> collect = [&](QQuickItem *item) {
+            if (item->isVisible() && !item->property("text").toString().isEmpty())
+                texts << item->property("text").toString();
+            for (QQuickItem *child : item->childItems())
+                collect(child);
+        };
+        collect(window->contentItem());
+        const QString line = QString::fromUtf8("a%2b · ") + QLocale().toString(4.096, 'f', 1) + " KB";
+        QVERIFY2(texts.contains(line), qPrintable(texts.join(" | ")));
+    }
+
+    void fileOpsDropCopiesWithCtrl()
+    {
+        QTemporaryDir from, to;
+        write(from.filePath("todo.txt"), "list");
+        write(to.filePath("todo.txt"), "already here");
+        write(to.filePath("notes.txt"), "kept");
+
+        // One drive, so only Ctrl copies: the source stays, the taken name is asked about, and what is already there is left.
+        FileOps ops;
+        QSignalSpy done(&ops, &FileOps::done);
+        QCOMPARE(ops.dropInto({QUrl::fromLocalFile(from.filePath("todo.txt")), QUrl::fromLocalFile(to.filePath("notes.txt"))}, to.path(), true), Qt::CopyAction);
+        QCOMPARE(ops.clash().value("name").toString(), QString("todo.txt"));
+        // A drop while that copy waits is refused, and says so rather than that it moved.
+        QCOMPARE(ops.dropInto({QUrl::fromLocalFile(from.filePath("todo.txt"))}, to.path(), false), Qt::IgnoreAction);
+        ops.answerClash("both", false);
+        QVERIFY(done.wait(3000));
+        QCOMPARE(done.takeFirst().at(1).toString(), QString("todo (copy).txt"));
+        QVERIFY(QFile::exists(from.filePath("todo.txt")));
+        QVERIFY(QFile::exists(to.filePath("todo (copy).txt")));
+        QVERIFY(!QFile::exists(to.filePath("notes (copy).txt")));
+
+        // Without Ctrl it's still a move.
+        QCOMPARE(ops.dropInto({QUrl::fromLocalFile(from.filePath("todo.txt"))}, to.path(), false), Qt::MoveAction);
+        ops.answerClash("both", false);
+        QVERIFY(done.wait(3000));
+        QVERIFY(!QFile::exists(from.filePath("todo.txt")));
+        QVERIFY(QFile::exists(to.filePath("todo (copy 2).txt")));
+
+        // Through a link to the folder, what is already there is left out too.
+        write(from.filePath("plan.txt"), "next");
+        QVERIFY(QFile::link(to.path(), from.filePath("there")));
+        QCOMPARE(ops.dropInto({QUrl::fromLocalFile(from.filePath("plan.txt")), QUrl::fromLocalFile(to.filePath("notes.txt"))}, from.filePath("there"), true), Qt::CopyAction);
+        QVERIFY(done.wait(3000));
+        QVERIFY(QFile::exists(to.filePath("plan.txt")));
+        QVERIFY(!QFile::exists(to.filePath("notes (copy).txt")));
+    }
+
+    void fileOpsSaysWhetherADropCopies()
+    {
+        QTemporaryDir from, to;
+        write(from.filePath("todo.txt"), "list");
+        const QList<QUrl> urls{QUrl::fromLocalFile(from.filePath("todo.txt"))};
+
+        // On one drive only Ctrl copies; nothing local to drop never does.
+        FileOps ops;
+        QVERIFY(!ops.dropCopies(urls, to.path(), false));
+        QVERIFY(ops.dropCopies(urls, to.path(), true));
+        QVERIFY(!ops.dropCopies({QUrl("https://example.com/todo.txt")}, to.path(), false));
+
+        // From another drive it copies without Ctrl.
+        if (!FileOps::sameDrive(from.filePath("todo.txt"), "/proc"))
+            QVERIFY(ops.dropCopies(urls, "/proc", false));
+
+        // What is already there stays out of it, as the drop leaves it, so the rest decide.
+        write(to.filePath("notes.txt"), "kept");
+        if (!FileOps::sameDrive(to.path(), "/proc"))
+            QVERIFY(ops.dropCopies({QUrl::fromLocalFile(to.filePath("notes.txt")), QUrl::fromLocalFile("/proc/version")}, to.path(), false));
+
+        // One from the folder's own drive moves, so the drop says so even when another drive's item leads.
+        if (!FileOps::sameDrive(from.path(), "/proc"))
+            QVERIFY(!ops.dropCopies({QUrl::fromLocalFile("/proc/version"), urls.first()}, to.path(), false));
+
+        // A mounted folder is asked itself, as the work asks it, never by the folder it is in; a link by its own folder.
+        QCOMPARE(ops.dropCopies({QUrl::fromLocalFile("/proc")}, to.path(), false), !FileOps::sameDrive("/proc", to.path()));
+        QVERIFY(QFile::link("/proc", from.filePath("proc")));
+        QCOMPARE(ops.dropCopies({QUrl::fromLocalFile(from.filePath("proc"))}, to.path(), false),
+                 !FileOps::sameDrive(from.filePath("proc"), to.path()));
+    }
+
+    void fileOpsMixedDropMovesWhatItSaysItMoves()
+    {
+        // A drop from two drives, led by the other drive's file, says Move: the one already on this drive is moved.
+        QTemporaryDir shm("/dev/shm/folio-XXXXXX"), from, to;
+        QVERIFY(shm.isValid());
+        write(shm.filePath("far.txt"), "far");
+        write(from.filePath("near.txt"), "near");
+        if (FileOps::sameDrive(shm.path(), to.path()))
+            QSKIP("Needs a second drive.");
+        FileOps ops;
+        QSignalSpy done(&ops, &FileOps::done);
+        QCOMPARE(ops.dropInto({QUrl::fromLocalFile(shm.filePath("far.txt")), QUrl::fromLocalFile(from.filePath("near.txt"))}, to.path()),
+                 Qt::MoveAction);
+        QVERIFY(done.wait(3000));
+        QVERIFY(QFile::exists(to.filePath("far.txt")));
+        QVERIFY(QFile::exists(to.filePath("near.txt")));
+        QVERIFY(QFile::exists(shm.filePath("far.txt")));
+        QVERIFY(!QFile::exists(from.filePath("near.txt")));
     }
 
 private:

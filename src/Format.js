@@ -30,7 +30,17 @@ function when(date) {
     const locale = Qt.locale()
     const now = new Date()
     const today = date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate()
-    return today ? date.toLocaleTimeString(locale, QtQml.Locale.ShortFormat) : date.toLocaleDateString(locale, QtQml.Locale.ShortFormat)
+    return spaced(today ? date.toLocaleTimeString(locale, QtQml.Locale.ShortFormat) : date.toLocaleDateString(locale, QtQml.Locale.ShortFormat))
+}
+
+// Its date and time, in the details.
+function stamp(date) {
+    return date ? spaced(date.toLocaleString(Qt.locale(), QtQml.Locale.ShortFormat)) : ""
+}
+
+// Qt puts a narrow no-break space (U+202F) before AM and PM, which draws as no space at all.
+function spaced(text) {
+    return text.replace(/\u202f/g, " ")
 }
 
 // A folder's contents; nothing until they've been counted.

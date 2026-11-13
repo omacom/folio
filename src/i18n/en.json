@@ -32,9 +32,17 @@
   "%1 · %2": "%1 · %2",
   "%1 × %2": "%1 × %2",
   "%1: %2": "%1: %2",
+  "%Ln folders": {
+    "one": "%Ln folder",
+    "other": "%Ln folders"
+  },
   "%Ln items": {
     "one": "%Ln item",
     "other": "%Ln items"
+  },
+  "%Ln items selected": {
+    "one": "%Ln item selected",
+    "other": "%Ln items selected"
   },
   "%Ln items will be deleted permanently. This can't be undone.": {
     "one": "%Ln item will be deleted permanently. This can't be undone.",
@@ -80,6 +88,7 @@
   "Copied %1, but couldn't remove the original.": "Copied %1, but couldn't remove the original.",
   "Copy": "Copy",
   "Copy Path": "Copy Path",
+  "Copy here": "Copy here",
   "Copy the path as text": "Copy the path as text",
   "Copy, cut, paste files": "Copy, cut, paste files",
   "Copying %1: %2 of %3…": "Copying %1: %2 of %3…",
@@ -220,6 +229,7 @@
   "Modified": "Modified",
   "Mount": "Mount",
   "Move between the sidebar, the panes and the details": "Move between the sidebar, the panes and the details",
+  "Move here": "Move here",
   "Move the selection": "Move the selection",
   "Move to the trash": "Move to the trash",
   "Moved only part of %1: %2": "Moved only part of %1: %2",

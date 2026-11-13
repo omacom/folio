@@ -5,6 +5,9 @@ import QtQuick.Controls
 GridView {
     id: grid
 
+    // In a pane the keys don't go to: the selection is drawn without the accent.
+    property bool inactive: false
+
     function select(row, keep) { selecting.select(row, keep) }
     // A click on empty space lets go of the cursor; the pane then keeps it
     // let go of through a re-read or a switch of view.
@@ -95,6 +98,7 @@ GridView {
         height: grid.cellHeight
         zoom: grid.tileZoom
         current: selected
+        inactive: grid.inactive
         onClicked: (modifiers) => { selecting.click(index, modifiers); grid.forceActiveFocus() }
         onActivated: backend.open(path)
     }

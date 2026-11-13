@@ -74,6 +74,7 @@ Rectangle {
     // Sized to what it holds: two columns of shortcuts side by side when
     // the window is wide enough, and scrolling when it's too short for them.
     Rectangle {
+        id: card
         anchors.centerIn: parent
         width: Math.min(parent.width - 64, content.implicitWidth + 56)
         height: Math.min(parent.height - 64, content.implicitHeight + 56)
@@ -90,7 +91,14 @@ Rectangle {
             contentHeight: content.implicitHeight
             clip: true
             boundsBehavior: Flickable.StopAtBounds
-            ScrollBar.vertical: FolioScrollBar { }
+            // In the card's margin, clear of the descriptions; at rest too, so the rows below are known.
+            ScrollBar.vertical: FolioScrollBar {
+                policy: ScrollBar.AlwaysOn
+                parent: card
+                anchors.right: parent.right
+                y: flick.y
+                height: flick.height
+            }
 
             ColumnLayout {
                 id: content

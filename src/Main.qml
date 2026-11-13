@@ -66,10 +66,16 @@ ApplicationWindow {
     // Whether keys are going into a text field. The right pane can go before
     // the window does when it closes, leaving activePane null.
     readonly property bool typing: !!activePane && activePane.typing
+    // Whether Tab has put the keyboard in the sidebar or the details.
+    readonly property bool keysBesidePanes: sidebar.activeFocus || details.hasKeyboard
     // The rightmost pane's path bar reaches over the details column.
     readonly property int detailsWidth: details.visible ? details.width : 0
     // Whether the window is wide enough for the details column at all.
     readonly property bool detailsFit: width >= (split ? 1400 : 960)
+    // The panes draw their dialogs here, so they dim and centre on the whole window.
+    readonly property Item dialogLayer: layer
+    // A dialog dims the whole window, so while one is open no pane takes keys.
+    readonly property bool dialogOpen: leftPane.dialogShowing || (rightPane !== null && rightPane.dialogShowing)
 
     // The process works in the folder the window used last shows, in the
     // pane used last, for Omarchy's terminal key to open there.
@@ -131,6 +137,7 @@ ApplicationWindow {
     }
 
     Item {
+        id: layer
         anchors.fill: parent
         enabled: win.settled
         opacity: win.settled ? 1 : 0

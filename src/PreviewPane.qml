@@ -15,6 +15,12 @@ Rectangle {
     // look for their trash notes or make large thumbnails for nobody.
     readonly property var item: visible && folderPane ? folderPane.current : ({})
     readonly property bool hasItem: item !== undefined && item.path !== undefined
+    // With several selected, the title and the line under it are theirs.
+    readonly property var folder: folderPane ? folderPane.paneBackend.folder : null
+    // A selection with no cursor (let go of by a click on empty space) is counted too.
+    readonly property int many: visible && folder && (folder.selectedCount > 1 || folder.selectedCount > 0 && !hasItem) ? folder.selectedCount : 0
+    // The picture is one item's only while one is shown.
+    readonly property bool one: hasItem && !many
     // An item in the trash shows where it came from and when it was
     // deleted, and offers Restore rather than Open. Its note is read in the
     // background; until it's in, the item looks trashed, as nearly all there
@@ -39,6 +45,8 @@ Rectangle {
     readonly property bool hasKeyboard: opensWith.activeFocus
     function focusKeyboard() { opensWith.forceActiveFocus(Qt.TabFocusReason) }
     signal finished()
+    // Several selected in a plugin's view are its items, with no size to add up.
+    readonly property bool pluginItems: many > 0 && folderPane.inView
     function homeless(path) { return path.startsWith(places.home + "/") ? "~" + path.slice(places.home.length) : path }
     // A picture's size or a text's opening lines once they've been read off
     // the UI thread.
@@ -57,7 +65,7 @@ Rectangle {
         anchors.fill: parent
         anchors.margins: 28
         spacing: 22
-        visible: pane.hasItem
+        visible: pane.hasItem || pane.many > 0
 
         Item {
             Layout.fillWidth: true
@@ -68,14 +76,14 @@ Rectangle {
                 anchors.fill: parent
                 asynchronous: true
                 fillMode: Image.PreserveAspectFit
-                source: pane.hasItem && !pane.item.isDir && pane.item.kind !== "text" && !pane.pluginItem ? Format.thumb(pane.item.path, pane.item.mime, 512, pane.item.modified) : ""
+                source: pane.one && !pane.item.isDir && pane.item.kind !== "text" && !pane.pluginItem ? Format.thumb(pane.item.path, pane.item.mime, 512, pane.item.modified) : ""
                 visible: status === Image.Ready
             }
 
             // Text files show their opening lines instead of a picture.
             Rectangle {
                 anchors.fill: parent
-                visible: pane.hasItem && pane.item.kind === "text"
+                visible: pane.one && pane.item.kind === "text"
                 color: theme.background
                 border.width: 1
                 border.color: Qt.alpha(theme.foreground, 0.12)
@@ -86,7 +94,7 @@ Rectangle {
                     text: pane.info.text || ""
                     color: theme.foreground
                     font.pixelSize: 10
-                    wrapMode: Text.WrapAnywhere
+                    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
                 }
@@ -94,11 +102,11 @@ Rectangle {
 
             Glyph {
                 anchors.centerIn: parent
-                visible: !big.visible && pane.hasItem && pane.item.kind !== "text"
-                name: pane.pluginItem ? pane.item.icon : pane.hasItem && pane.item.isDir ? "folder" : "file"
+                visible: !big.visible && (pane.many > 0 || pane.hasItem && pane.item.kind !== "text")
+                name: pane.one && pane.pluginItem ? pane.item.icon : pane.one && pane.item.isDir ? "folder" : "file"
                 size: 72
                 stroke: 1.2
-                color: pane.hasItem && pane.item.isDir ? theme.accent : theme.secondaryForeground
+                color: pane.one && pane.item.isDir ? theme.accent : theme.secondaryForeground
             }
         }
 
@@ -110,11 +118,11 @@ Rectangle {
             Text {
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignLeft
-                text: pane.item.name || ""
+                text: pane.many ? qsTr("%Ln items selected", "", pane.many) : pane.item.fileName || ""
                 color: theme.brightForeground
                 font.pixelSize: 15
                 font.weight: Font.DemiBold
-                wrapMode: Text.WrapAnywhere
+                wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                 maximumLineCount: 3
                 elide: Text.ElideRight
             }
@@ -123,7 +131,10 @@ Rectangle {
                 horizontalAlignment: Text.AlignLeft
                 text: {
                     translator.language // The type's name comes from the system, in the language of the moment.
-                    return Format.summary(pane.item, backend.typeName(pane.item.mime || ""))
+                    return !pane.many ? Format.summary(pane.item, backend.typeName(pane.item.mime || ""))
+                        : pane.pluginItems ? ""
+                        : pane.folder.selectedFolderCount > 0 ? qsTr("%Ln folders", "", pane.folder.selectedFolderCount)
+                        : Format.size(pane.folder.selectedSize)
                 }
                 color: theme.secondaryForeground
                 font.pixelSize: 12
@@ -133,6 +144,7 @@ Rectangle {
 
         GridLayout {
             Layout.fillWidth: true
+            visible: !pane.many
             columns: 2
             rowSpacing: 12
             columnSpacing: 16
@@ -147,6 +159,16 @@ Rectangle {
                 font.pixelSize: 12
                 elide: Text.ElideMiddle
             }
+            Text { visible: !!pane.item.folder; text: qsTr("Folder"); color: theme.secondaryForeground; font.pixelSize: 12 }
+            Text {
+                visible: !!pane.item.folder
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignRight
+                text: pane.item.folder || ""
+                color: theme.foreground
+                font.pixelSize: 12
+                elide: Text.ElideMiddle
+            }
             Text { visible: !pane.pluginItem; text: pane.trashed || pane.noting ? qsTr("Deleted") : qsTr("Modified"); color: theme.secondaryForeground; font.pixelSize: 12 }
             Text {
                 visible: !pane.pluginItem
@@ -155,7 +177,7 @@ Rectangle {
                 text: {
                     translator.language // Re-read when the language (and so the default locale) changes.
                     const when = pane.trashed ? pane.info.deleted : pane.noting ? null : pane.item.modified
-                    return pane.hasItem && when ? when.toLocaleString(Qt.locale(), Locale.ShortFormat) : ""
+                    return pane.hasItem ? Format.stamp(when) : ""
                 }
                 color: theme.foreground
                 font.pixelSize: 12
@@ -242,6 +264,8 @@ Rectangle {
 
         AbstractButton {
             id: openButton
+            // It acts on one item, so it stands aside for several.
+            visible: pane.one
             Layout.fillWidth: true
             implicitHeight: 40
             focusPolicy: Qt.NoFocus
@@ -272,7 +296,9 @@ Rectangle {
 
     Text {
         anchors.centerIn: parent
-        visible: !pane.hasItem
+        // On the empty folder's line beside it: that view starts 16 px lower, under a gap below the bar.
+        anchors.verticalCenterOffset: 8
+        visible: !pane.hasItem && !pane.many
         text: qsTr("Nothing selected")
         color: theme.secondaryForeground
     }

@@ -5,10 +5,9 @@ import QtQuick
 // where it refuses one (it's the folder being dropped, or the one the drop
 // is already in), this refuses too, rather than catching the drop as it
 // falls through and landing it in this folder instead.
-DropArea {
+FileDrop {
     id: area
 
-    property string folder
     // The list or grid whose items lie over this area.
     property Item items
 
@@ -18,14 +17,12 @@ DropArea {
         return !(item && item.isDir) && fileOps.canDrop(drag.urls, folder)
     }
 
-    keys: ["text/uri-list"]
     onEntered: (drag) => { drag.accepted = takes(drag) }
     onPositionChanged: (drag) => { drag.accepted = takes(drag) }
     onDropped: (drop) => {
         if (!takes(drop))
             return
-        fileOps.dropInto(drop.urls, folder)
-        drop.accept(Qt.MoveAction)
+        drop.accept(fileOps.dropInto(drop.urls, folder, fileOps.ctrlHeld()))
     }
 
     Rectangle {
@@ -36,5 +33,13 @@ DropArea {
         border.width: 2
         border.color: theme.accent
         radius: Math.min(6, theme.radius)
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 12
+            text: area.copies ? qsTr("Copy here") : qsTr("Move here")
+            color: theme.secondaryForeground
+            font.pixelSize: 12
+        }
     }
 }

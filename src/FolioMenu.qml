@@ -9,6 +9,8 @@ Menu {
     exit: null
     topPadding: 4
     bottomPadding: 4
+    // Material's default of 0 lets a menu touch the window's edge.
+    margins: 8
     // Submenu entries (Open With, Share) are made from this.
     delegate: FolioMenuItem { }
     // As wide as its widest entry shown, so a long label (in any language)
