@@ -1879,6 +1879,51 @@ private slots:
         QCOMPARE(walks.walks.load(), 2);
     }
 
+    void searchTypedOnDuringItsFirstReadAnswersTheLastKey()
+    {
+        // Keys typed while the first walk still reads start no walk beside it, and what lands is the answer to the last of them.
+        QTemporaryDir dir;
+        QDir(dir.path()).mkdir("a");
+        write(dir.filePath("render.txt"), "x");
+        write(dir.filePath("a/render too.txt"), "x");
+        write(dir.filePath("a/reel.txt"), "x");
+        // Matches the key before the last and not the last, so an answer to the wrong one shows.
+        write(dir.filePath("a/siren.txt"), "x");
+        // Declared ahead of the model, which announces a count as it ends.
+        QList<int> counts;
+        WalksHeld walks(2);
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        model.setQuery("r");
+        QVERIFY(walks.reached.tryAcquire(1, 3000));
+        for (const char *typed : {"re", "ren", "rend"})
+            model.setQuery(typed);
+        QCOMPARE(walks.walks.load(), 1);
+        const auto names = [&model] {
+            QStringList names;
+            for (int row = 0; row < model.count(); ++row)
+                names << model.get(row).value("name").toString();
+            names.sort();
+            return names;
+        };
+        const QStringList rend = {"a/render too.txt", "render.txt"};
+        // An earlier key's answer holds more than the last key's two, so no count seen on the way may pass two.
+        connect(&model, &FolderModel::matchesChanged, &model, [&counts, &model] { counts << model.matches(); });
+        walks.letGo();
+        QTRY_COMPARE(model.matches(), 2);
+        QCOMPARE(names(), rend);
+        // The three keys asked for one more read of the folders between them, not one each, and it answers the last key too.
+        QVERIFY(QThreadPool::globalInstance()->waitForDone(5000));
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QCOMPARE(walks.walks.load(), 2);
+        QCOMPARE(model.matches(), 2);
+        QCOMPARE(names(), rend);
+        QVERIFY(!counts.isEmpty());
+        QCOMPARE(*std::max_element(counts.cbegin(), counts.cend()), 2);
+    }
+
     void searchReadAgainTakesOverOnceItHasAnswered()
     {
         // A walk read again is whole before it has answered: until its answer lands, the count and Select All are the old walk's, never the rows alone.
@@ -2115,6 +2160,58 @@ private slots:
         QTRY_COMPARE(said(), QString("12 matches in A and below, only the nearest 7 items read"));
         stub->property("folder").value<QObject *>()->setProperty("mostRead", -1);
         QTRY_COMPARE(said(), QString("12 matches in A and below"));
+    }
+
+    void searchAsksAtEveryKey()
+    {
+        // A key typed in the search field is the query at once, with no pause in the typing to wait for.
+        QTemporaryDir home;
+        Theme theme(home.filePath("theme"));
+        QQmlEngine engine;
+        QQmlComponent stubs(&engine);
+        stubs.setData("import QtQml\n"
+                      "QtObject {\n"
+                      "    property string language: \"en\"\n"
+                      "    property string path: \"/a\"\n"
+                      "    property var crumbs: [{ name: \"A\", path: \"/a\" }]\n"
+                      "    property QtObject folder: QtObject {\n"
+                      "        property string query; property int matches: -1; property int count: 0; property int mostRead: -1\n"
+                      "        property bool reading: false; property string sortMode: \"name\"\n"
+                      "    }\n"
+                      "}\n", QUrl());
+        std::unique_ptr<QObject> stub(stubs.create());
+        QVERIFY2(stub, qPrintable(stubs.errorString()));
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("backend", stub.get());
+        engine.rootContext()->setContextProperty("translator", stub.get());
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window {\n"
+                          "    width: 900; height: 80; visible: true\n"
+                          "    PathBar { id: bar; anchors.fill: parent }\n"
+                          "    function search() { bar.search() }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/PathBarTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowFocused(window));
+        QMetaObject::invokeMethod(window, "search");
+        const auto query = [&] { return stub->property("folder").value<QObject *>()->property("query").toString(); };
+        QTest::keyClick(window, Qt::Key_R);
+        QCOMPARE(query(), QString("r"));
+        QTest::keyClick(window, Qt::Key_E);
+        QCOMPARE(query(), QString("re"));
+        // A space at the end asks nothing new, and the letter after it is asked with the space.
+        QTest::keyClick(window, Qt::Key_Space);
+        QCOMPARE(query(), QString("re"));
+        QTest::keyClick(window, Qt::Key_D);
+        QCOMPARE(query(), QString("re d"));
+        QTest::keyClick(window, Qt::Key_Backspace);
+        QTest::keyClick(window, Qt::Key_Backspace);
+        QTest::keyClick(window, Qt::Key_Backspace);
+        QCOMPARE(query(), QString("r"));
     }
 
     void searchStatusLeavesRoomForTheQuery()

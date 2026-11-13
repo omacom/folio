@@ -42,15 +42,9 @@ Rectangle {
     // S and Shift+S, through the sort menu's orders.
     function stepSort(by) { sortMenu.step(by) }
     function endSearch() {
-        searchDelay.stop()
         searchField.text = ""
         backend.folder.query = ""
         editDone()
-    }
-    Timer {
-        id: searchDelay
-        interval: 150
-        onTriggered: backend.folder.query = searchField.text.trim()
     }
     // Going to another folder ends the search there.
     Connections {
@@ -127,10 +121,10 @@ Rectangle {
                 color: theme.secondaryForeground
                 font.pixelSize: 12
             }
-            onTextEdited: searchDelay.restart()
+            // Each key asks at once: the model answers from the names it holds, and keys typed while it reads them are taken together when the read ends.
+            onTextEdited: backend.folder.query = text.trim()
             // Enter or ↓ goes to the results, leaving the search up.
             function toResults() {
-                searchDelay.stop()
                 backend.folder.query = text.trim()
                 if (backend.folder.query === "")
                     bar.endSearch()
