@@ -714,6 +714,8 @@ struct Listing {
     bool partial = false;
     // The matches past the rows, when a selection could hold some of them.
     std::optional<QStringList> unshown;
+    // How many names a search read of a tree that holds more, or -1.
+    int mostRead = -1;
 };
 
 // The open search: its index, read once in the background, and the lock its answers take turns at.
@@ -782,8 +784,8 @@ void FolderModel::closeSearch() {
     m_hold.stop();
     m_refresh.stop();
     setReading(false);
-    if (m_matches != -1) {
-        m_matches = -1;
+    if (m_matches != -1 || m_mostRead != -1) {
+        m_matches = m_mostRead = -1;
         emit matchesChanged();
     }
 }
@@ -860,7 +862,7 @@ void FolderModel::read() {
                 openSearch();
         }
         m_rowsQuery = answers;
-        auto [entries, error, matches, partial, unshown] = watcher->future().takeResult();
+        auto [entries, error, matches, partial, unshown, mostRead] = watcher->future().takeResult();
         // Unchanged (the usual case after showing a remembered listing):
         // leave the items alone, and only fill in folder counts still missing.
         const bool same = error == m_error && !m_entries.isEmpty() && sameListing(m_entries, entries);
@@ -895,8 +897,9 @@ void FolderModel::read() {
             }
         }
         setError(error);
-        if (matches != m_matches) {
+        if (matches != m_matches || mostRead != m_mostRead) {
             m_matches = matches;
+            m_mostRead = mostRead;
             emit matchesChanged();
         }
         setLoading(partial);
@@ -933,6 +936,7 @@ void FolderModel::read() {
             if (overtaken())
                 return listing;
             listing.matches = int(search->index.answer(query));
+            listing.mostRead = search->index.cut() ? int(search->index.size()) : -1;
             root = search->index.root();
             // Best first, a window at a time; another order puts the best matches in it instead.
             const qsizetype shown = sort == "name" ? window : SortedMatches;

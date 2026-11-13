@@ -95,10 +95,16 @@ public:
         qsizetype answers = 0;
     };
 
-    // Reads `root` and the folders below, breadth first, on its drive, past no link. False and empty once `stop` says; adding under `lock`, it's answered from as it reads.
+    // Reads `root` and the folders below, breadth first, on its drive, past no link, up to mostRows names. False and empty once `stop` says; adding under `lock`, it's answered from as it reads.
     bool walk(const QString &root, bool showHidden, const std::function<bool()> &stop = {}, QMutex *lock = nullptr);
     // Called with how many folders have been read, after each, so a test can hold a walk partway.
     inline static std::function<void(qsizetype folders)> afterFolder;
+    // The most names a walk keeps: with more below, it ends with the nearest and cut() says so.
+    static constexpr qsizetype MostRows = 2'000'000;
+    // MostRows, until a test lowers it.
+    inline static qsizetype mostRows = MostRows;
+    // Whether the walk left names unread.
+    bool cut() const { return m_cut; }
     qsizetype size() const { return m_rows.size(); }
     // The memory it holds.
     qsizetype bytes() const;
@@ -157,6 +163,7 @@ private:
     QVector<Row> m_rows;
     // A bit for each row, set for a folder.
     QByteArray m_kinds;
+    bool m_cut = false;
 
     // The last answer: its query and matcher, its matches, how many of them are in their final order, and how many rows there were to match.
     QString m_query;

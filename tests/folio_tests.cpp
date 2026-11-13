@@ -1393,6 +1393,69 @@ private slots:
         QCOMPARE(nearest.first().name, QString("beach.txt"));
     }
 
+    void searchKeepsTheNearestNamesOfATreeTooBig()
+    {
+        // A walk keeps so many names and no more, the nearest, and the search says how many it read.
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("deep/deeper");
+        for (int i = 0; i < 3; ++i) {
+            write(dir.filePath(QString("near%1.txt").arg(i)), "x");
+            write(dir.filePath(QString("deep/far%1.txt").arg(i)), "x");
+            write(dir.filePath(QString("deep/deeper/farther%1.txt").arg(i)), "x");
+        }
+        const auto restore = qScopeGuard([] {
+            QThreadPool::globalInstance()->waitForDone();
+            SearchIndex::mostRows = SearchIndex::MostRows;
+        });
+        // Four names in the root, four in deep, three in deeper: at eleven nothing is left unread.
+        SearchIndex::mostRows = 11;
+        SearchIndex whole;
+        QVERIFY(whole.walk(dir.path(), false));
+        QCOMPARE(whole.size(), 11);
+        QVERIFY(!whole.cut());
+        QCOMPARE(whole.answer("farther"), 3);
+        // At six, the root's four and two of deep's: nothing of deeper.
+        SearchIndex::mostRows = 6;
+        SearchIndex index;
+        QVERIFY(index.walk(dir.path(), false));
+        QCOMPARE(index.size(), 6);
+        QVERIFY(index.cut());
+        QCOMPARE(index.answer("near"), 3);
+        QCOMPARE(index.answer("farther"), 0);
+        // Full, the walk ends at once: of two folders waiting, the first is opened to find a name too many and the second is left.
+        QTemporaryDir pair;
+        for (const char *folder : {"a", "b"}) {
+            QDir(pair.path()).mkdir(folder);
+            write(pair.filePath(QString("%1/file.txt").arg(folder)), "x");
+        }
+        SearchIndex::mostRows = 2;
+        SearchIndex ended;
+        QVERIFY(ended.walk(pair.path(), false));
+        QVERIFY(ended.cut());
+        QCOMPARE(ended.size(), 2);
+        QCOMPARE(ended.counts.opens, 2);
+
+        SearchIndex::mostRows = 6;
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.mostRead(), -1);
+        model.setQuery("near");
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QCOMPARE(model.matches(), 3);
+        QCOMPARE(model.mostRead(), 6);
+        // The search over, there is nothing left to say of it, at once; and a tree read whole says nothing.
+        model.setQuery("");
+        QCOMPARE(model.mostRead(), -1);
+        QVERIFY(QThreadPool::globalInstance()->waitForDone(5000));
+        SearchIndex::mostRows = SearchIndex::MostRows;
+        model.setQuery("far");
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QCOMPARE(model.matches(), 6);
+        QCOMPARE(model.mostRead(), -1);
+    }
+
     void searchStartsAWordAtACapitalInANameThatIsNotAscii()
     {
         // "büro" starts a word of MeinBüro, so it comes before a shorter name that only holds the letters.
@@ -1978,13 +2041,76 @@ private slots:
         said.setData("import QtQml\nimport \"Format.js\" as Format\n"
                      "QtObject { readonly property string whole: Format.matches(12, \"%2 %1\", false, -1)\n"
                      "    readonly property string cut: Format.matches(12, \"%2 %1\", false, 5)\n"
-                     "    readonly property string soFar: Format.matches(12, \"%2 %1\", true, -1) }",
+                     "    readonly property string soFar: Format.matches(12, \"%2 %1\", true, -1)\n"
+                     "    readonly property string nearest: Format.matches(12, \"%2 %1\", false, -1, 7)\n"
+                     "    readonly property string nearestCut: Format.matches(12, \"%3 %2 %1\", false, 5, 7)\n"
+                     "    readonly property string stillReading: Format.matches(12, \"%2 %1\", true, -1, 7)\n"
+                     "    readonly property string allRead: Format.matches(12, \"%2 %1\", false, -1, -1) }",
                      QUrl::fromLocalFile(QFINDTESTDATA("../src/Format.js")));
         std::unique_ptr<QObject> text(said.create());
         QVERIFY2(text, qPrintable(said.errorString()));
         QCOMPARE(text->property("whole").toString(), QString("12 matches in %2 %1 and below"));
         QCOMPARE(text->property("cut").toString(), QString("12 matches in %2 %1 and below, the best 5 shown"));
         QCOMPARE(text->property("soFar").toString(), QString("12 matches so far, still reading %2 %1 and below"));
+        // A tree too big to read whole says how many of its names were read, once it's done reading.
+        QCOMPARE(text->property("nearest").toString(), QString("12 matches in %2 %1 and below, only the nearest 7 items read"));
+        // Sorted another way too, it says both: which rows are shown and how many names were read.
+        QCOMPARE(text->property("nearestCut").toString(), QString("12 matches in %3 %2 %1 and below, the best 5 shown, only the nearest 7 items read"));
+        QCOMPARE(text->property("stillReading").toString(), text->property("soFar").toString());
+        QCOMPARE(text->property("allRead").toString(), text->property("whole").toString());
+    }
+
+    void searchStatusSaysHowManyNamesWereRead()
+    {
+        // The path bar hands the status how many names the search read of a tree too big, and nothing of one read whole.
+        QTemporaryDir home;
+        Theme theme(home.filePath("theme"));
+        QQmlEngine engine;
+        QQmlComponent stubs(&engine);
+        stubs.setData("import QtQml\n"
+                      "QtObject {\n"
+                      "    property string language: \"en\"\n"
+                      "    property string path: \"/a\"\n"
+                      "    property var crumbs: [{ name: \"A\", path: \"/a\" }]\n"
+                      "    property QtObject folder: QtObject {\n"
+                      "        property string query: \"q\"; property int matches: 12; property int count: 12; property int mostRead: 7\n"
+                      "        property bool reading: false; property string sortMode: \"name\"\n"
+                      "    }\n"
+                      "}\n", QUrl());
+        std::unique_ptr<QObject> stub(stubs.create());
+        QVERIFY2(stub, qPrintable(stubs.errorString()));
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("backend", stub.get());
+        engine.rootContext()->setContextProperty("translator", stub.get());
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window {\n"
+                          "    width: 900; height: 80; visible: true\n"
+                          "    PathBar { id: bar; anchors.fill: parent }\n"
+                          "    function said() {\n"
+                          "        let found = \"\"\n"
+                          "        const walk = item => {\n"
+                          "            for (const child of item.children) {\n"
+                          "                if (child instanceof Text && child.text.includes('12 matches'))\n"
+                          "                    found = child.text\n"
+                          "                walk(child)\n"
+                          "            }\n"
+                          "        }\n"
+                          "        walk(bar)\n"
+                          "        return found\n"
+                          "    }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/PathBarTest.qml"));
+        std::unique_ptr<QObject> window(component.create());
+        QVERIFY2(window, qPrintable(component.errorString()));
+        const auto said = [&] {
+            QVariant text;
+            QMetaObject::invokeMethod(window.get(), "said", Q_RETURN_ARG(QVariant, text));
+            return text.toString();
+        };
+        QTRY_COMPARE(said(), QString("12 matches in A and below, only the nearest 7 items read"));
+        stub->property("folder").value<QObject *>()->setProperty("mostRead", -1);
+        QTRY_COMPARE(said(), QString("12 matches in A and below"));
     }
 
     void searchStatusLeavesRoomForTheQuery()

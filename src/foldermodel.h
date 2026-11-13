@@ -36,6 +36,8 @@ class FolderModel : public QAbstractListModel {
     Q_PROPERTY(QVariantList items READ items WRITE setItems NOTIFY itemsChanged)
     // How many match the query, shown or not; -1 until a search has answered.
     Q_PROPERTY(int matches READ matches NOTIFY matchesChanged)
+    // How many names a search read, the nearest, of a tree that holds more; -1 when it read them all.
+    Q_PROPERTY(int mostRead READ mostRead NOTIFY matchesChanged)
     // While a search is still reading the folders below.
     Q_PROPERTY(bool reading READ reading NOTIFY readingChanged)
 
@@ -97,6 +99,7 @@ public:
     QVariantList items() const { return m_items; }
     void setItems(const QVariantList &items);
     int matches() const { return m_matches; }
+    int mostRead() const { return m_mostRead; }
     bool reading() const { return m_stillReading; }
 
     void setPath(const QString &path);
@@ -216,6 +219,7 @@ private:
     QString m_query;
     QVariantList m_items;
     int m_matches = -1;
+    int m_mostRead = -1;
     bool m_fetching = false;
     // The rows a search showed with its whole answer: read again, it shows as many, so a selection past the first window stays.
     qsizetype m_shownRows = 0;

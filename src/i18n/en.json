@@ -44,9 +44,17 @@
     "one": "%Ln match in %1 and below",
     "other": "%Ln matches in %1 and below"
   },
+  "%Ln matches in %2 and below, only the nearest %1 items read": {
+    "one": "%Ln match in %2 and below, only the nearest %1 items read",
+    "other": "%Ln matches in %2 and below, only the nearest %1 items read"
+  },
   "%Ln matches in %2 and below, the best %1 shown": {
     "one": "%Ln match in %2 and below, the best %1 shown",
     "other": "%Ln matches in %2 and below, the best %1 shown"
+  },
+  "%Ln matches in %3 and below, the best %1 shown, only the nearest %2 items read": {
+    "one": "%Ln match in %3 and below, the best %1 shown, only the nearest %2 items read",
+    "other": "%Ln matches in %3 and below, the best %1 shown, only the nearest %2 items read"
   },
   "%Ln matches so far, still reading %1 and below": {
     "one": "%Ln match so far, still reading %1 and below",

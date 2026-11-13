@@ -121,7 +121,8 @@ Rectangle {
                     : backend.folder.query.length > 0 && backend.folder.matches >= 0
                     // Sorted another way than best first, the rows are the best of the matches, and it says so.
                     ? Format.matches(backend.folder.matches, here, backend.folder.reading,
-                                     backend.folder.sortMode !== "name" && backend.folder.matches > backend.folder.count ? backend.folder.count : -1)
+                                     backend.folder.sortMode !== "name" && backend.folder.matches > backend.folder.count ? backend.folder.count : -1,
+                                     backend.folder.mostRead)
                     : qsTr("Search %1 and below").arg(here)
                 color: theme.secondaryForeground
                 font.pixelSize: 12

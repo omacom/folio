@@ -237,6 +237,9 @@ bool SearchIndex::walk(const QString &root, bool showHidden, const std::function
             ::close(top);
     });
     dev_t drive = 0;
+    // How many names are taken, and whether more were left at mostRows.
+    qsizetype taken = 0;
+    bool full = false;
     // Gone partway: nothing is kept.
     const auto stopped = [&] {
         QMutexLocker hold(lock);
@@ -312,6 +315,12 @@ bool SearchIndex::walk(const QString &root, bool showHidden, const std::function
             const char *text = entry->d_name;
             if (text[0] == '.' && (!showHidden || text[1] == 0 || (text[1] == '.' && text[2] == 0)))
                 continue;
+            // At the most it keeps, the walk ends with the nearest names.
+            if (taken == mostRows) {
+                full = true;
+                break;
+            }
+            ++taken;
             // The type comes with the name; only a filesystem that doesn't say needs asking. Symlinked folders aren't walked into.
             bool isDir = entry->d_type == DT_DIR;
             if (entry->d_type == DT_UNKNOWN) {
@@ -326,6 +335,8 @@ bool SearchIndex::walk(const QString &root, bool showHidden, const std::function
         if (dir)
             ::closedir(dir);
         waiting.push_back(std::move(read));
+        if (full)
+            break;
         if (!lock) {
             add();
         } else if (lock->tryLock()) {
@@ -335,8 +346,10 @@ bool SearchIndex::walk(const QString &root, bool showHidden, const std::function
         if (afterFolder)
             afterFolder(folder + 2);
     }
-    // Names are only looked up while folders are read, and what's left over from growing goes back.
     QMutexLocker hold(lock);
+    add();
+    m_cut = full;
+    // Names are only looked up while folders are read, and what's left over from growing goes back.
     m_lookup = {};
     m_names.squeeze();
     m_folders.squeeze();
