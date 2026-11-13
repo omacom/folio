@@ -186,9 +186,21 @@ Rectangle {
                 }
                 readonly property var current: apps.find(app => app.isDefault)
                 visible: apps.length > 1
+                // Its width at most: a long app name shrinks it and loses its middle to …
+                // rather than pushing the whole pane past its edge.
                 Layout.alignment: Qt.AlignRight
+                Layout.fillWidth: true
+                Layout.maximumWidth: implicitWidth
+                leftPadding: 16
+                rightPadding: 16
+                implicitWidth: Math.max(88, appName.implicitWidth + arrow.implicitWidth + 8 + leftPadding + rightPadding)
                 implicitHeight: 28
-                text: (current ? current.name : qsTr("Choose")) + "  ▾"
+                text: current ? current.name : qsTr("Choose")
+                contentItem: RowLayout {
+                    spacing: 8
+                    Text { id: appName; Layout.fillWidth: true; text: opensWith.text; elide: Text.ElideMiddle; color: theme.foreground; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    Text { id: arrow; text: "▾"; color: theme.foreground; verticalAlignment: Text.AlignVCenter }
+                }
                 onClicked: appsMenu.popup(opensWith, 0, opensWith.height + 4)
                 Keys.onEscapePressed: pane.finished()
                 // Gone with the keyboard on it (another item selected, or the
