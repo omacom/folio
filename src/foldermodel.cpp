@@ -40,6 +40,27 @@ FolderModel::~FolderModel() {
     *m_latest = 0;
 }
 
+// Folder listings run on a pool of their own, apart from the folder counts
+// and previews on the global one: slow or huge subfolders being counted can't
+// then hold up the listing of the folder just opened.
+static QThreadPool &listingPool() {
+    static QThreadPool *const pool = [] {
+        auto *p = new QThreadPool;
+        p->setMaxThreadCount(8);
+        return p;
+    }();
+    return *pool;
+}
+
+static QThreadPool &countingPool() {
+    static QThreadPool *const pool = [] {
+        auto *p = new QThreadPool;
+        p->setMaxThreadCount(2);
+        return p;
+    }();
+    return *pool;
+}
+
 // Recent listings, shared by every model (the window's folder and each
 // column), so stepping back and forth or opening a column for a folder just
 // seen shows it in the same frame instead of an old or empty one. Each is
@@ -481,7 +502,7 @@ void FolderModel::reload() {
             remember();
         countFolders(generation);
     });
-    watcher->setFuture(QtConcurrent::run([path, showHidden, sort, query, items, latest, generation, locale] {
+    watcher->setFuture(QtConcurrent::run(&listingPool(), [path, showHidden, sort, query, items, latest, generation, locale] {
         QString error;
         const auto overtaken = [&] { return *latest != generation; };
         auto entries = isPluginView(path) ? listItems(items, query)
@@ -524,7 +545,7 @@ void FolderModel::countFolders(quint64 generation) {
         remember();
     });
     const auto latest = m_latest;
-    watcher->setFuture(QtConcurrent::run([folders, showHidden, latest, generation]() mutable {
+    watcher->setFuture(QtConcurrent::run(&countingPool(), [folders, showHidden, latest, generation]() mutable {
         // Overtaken (another folder, or a re-read), the counts would be
         // thrown away, so it stops instead of listing every subfolder.
         for (auto &folder : folders) {
