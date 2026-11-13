@@ -309,13 +309,17 @@ void FolderModel::setQuery(const QString &query) {
     m_query = query;
     m_shownRows = 0;
     emit queryChanged();
-    setSelected({});
+    // What's selected is of the rows on screen and goes in the turn they do: let go at the key, its mark would blink out ahead of the rows.
+    m_leaving = m_selected;
     // Back to the folder: its remembered listing shows at once, and what the search read is let go of.
     if (m_query.isEmpty()) {
         closeSearch();
         if (const auto *cached = recentListings().object(cacheKey())) {
+            setSelected({});
             setEntries(*cached);
             m_rowsQuery.clear();
+            // Said in this turn, so the cursor is on its row in the frame that shows the folder.
+            emit loaded();
         }
     }
     read();
@@ -847,7 +851,8 @@ void FolderModel::read() {
         return;
     const bool partial = search && !search->landed;
     const qsizetype window = std::max<qsizetype>(SearchWindow, m_shownRows);
-    const bool selecting = !m_selected.isEmpty();
+    // A selection about to go with its rows asks nothing of the answer.
+    const bool selecting = !m_selected.isEmpty() && m_leaving.isEmpty();
     const QString answers = search ? query : QString();
     auto *watcher = new QFutureWatcher<Listing>(this);
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, answers, search] {
@@ -873,6 +878,9 @@ void FolderModel::read() {
         } else {
             takeSizesAndDates(std::move(entries));
         }
+        // The selection a key found goes here with its rows, unless it was changed since.
+        if (!std::exchange(m_leaving, {}).isEmpty())
+            setSelected({});
         // A partial answer drops nothing from the selection: what it hasn't found yet may still match.
         if (!partial && !m_selected.isEmpty()) {
             QSet<QString> still;
@@ -1091,6 +1099,8 @@ void FolderModel::setSelected(const QSet<QString> &paths) {
         m_unshown.clear();
     if (paths == m_selected)
         return;
+    // Changed since the key, it is no longer the key's to let go.
+    m_leaving.clear();
     m_selected = paths;
     if (!m_entries.isEmpty())
         emit dataChanged(index(0), index(m_entries.size() - 1), {SelectedRole});

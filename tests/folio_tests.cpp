@@ -2214,6 +2214,332 @@ private slots:
         QCOMPARE(query(), QString("r"));
     }
 
+    void searchLetsGoOfTheSelectionInTheTurnItsAnswerLands()
+    {
+        // A key leaves what is selected alone until its answer is here: the mark goes with its rows, not a frame or two ahead of them.
+        QTemporaryDir dir;
+        QVERIFY(QDir(dir.path()).mkpath("a"));
+        for (const char *name : {"river.txt", "stone.txt", "a/reed.txt"})
+            write(dir.filePath(name), "x");
+        // Declared ahead of the model, which announces as it ends.
+        QList<int> selectedAtLanding;
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QTRY_VERIFY(!model.loading());
+        model.selectOnly(model.indexOfPath(dir.filePath("stone.txt")));
+        QCOMPARE(model.selectedPaths(), QStringList{dir.filePath("stone.txt")});
+        connect(&model, &FolderModel::loaded, &model, [&selectedAtLanding, &model] { selectedAtLanding << model.selectedCount(); });
+        model.setQuery("r");
+        QCOMPARE(model.selectedPaths(), QStringList{dir.filePath("stone.txt")});
+        QTRY_COMPARE(model.matches(), 2);
+        QVERIFY(!selectedAtLanding.isEmpty());
+        QCOMPARE(*std::max_element(selectedAtLanding.cbegin(), selectedAtLanding.cend()), 0);
+        QCOMPARE(model.selectedCount(), 0);
+        QTRY_VERIFY(!model.reading() && !model.loading());
+
+        // A match selected is let go by the next key's answer too, though it still matches.
+        model.selectOnly(model.indexOfPath(dir.filePath("a/reed.txt")));
+        selectedAtLanding.clear();
+        model.setQuery("ree");
+        QCOMPARE(model.selectedPaths(), QStringList{dir.filePath("a/reed.txt")});
+        QTRY_COMPARE(model.matches(), 1);
+        QVERIFY(!selectedAtLanding.isEmpty());
+        QCOMPARE(model.selectedCount(), 0);
+        QTRY_VERIFY(!model.reading() && !model.loading());
+
+        // What is selected after the key, on the rows still shown, is not the key's to let go, were it the same item again: it stays while it matches.
+        model.setQuery("r");
+        QTRY_COMPARE(model.matches(), 2);
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        model.selectOnly(model.indexOfPath(dir.filePath("river.txt")));
+        model.setQuery("ri");
+        model.selectOnly(model.indexOfPath(dir.filePath("a/reed.txt")));
+        model.selectOnly(model.indexOfPath(dir.filePath("river.txt")));
+        QTRY_COMPARE(model.matches(), 1);
+        QCOMPARE(model.selectedPaths(), QStringList{dir.filePath("river.txt")});
+
+        // The same through a toggle: taken off and put back after the key, it stays.
+        model.setQuery("r");
+        QTRY_COMPARE(model.matches(), 2);
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        model.selectOnly(model.indexOfPath(dir.filePath("river.txt")));
+        model.setQuery("ri");
+        model.toggleSelected(model.indexOfPath(dir.filePath("river.txt")));
+        QCOMPARE(model.selectedCount(), 0);
+        model.toggleSelected(model.indexOfPath(dir.filePath("river.txt")));
+        QTRY_COMPARE(model.matches(), 1);
+        QCOMPARE(model.selectedPaths(), QStringList{dir.filePath("river.txt")});
+    }
+
+    void searchEndedShowsTheFolderAndSaysSoInOneTurn()
+    {
+        // The search's end puts the folder's remembered rows up and says so at once, so a view has its cursor on a row in the frame that shows them.
+        QTemporaryDir dir;
+        QVERIFY(QDir(dir.path()).mkpath("a"));
+        for (const char *name : {"river.txt", "stone.txt", "a/reed.txt"})
+            write(dir.filePath(name), "x");
+        // Declared ahead of the model, which announces as it ends.
+        QList<QPair<int, int>> rowsAndSelectedAtLanding;
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QTRY_VERIFY(!model.loading());
+        model.setQuery("r");
+        QTRY_COMPARE(model.matches(), 2);
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        model.selectOnly(model.indexOfPath(dir.filePath("river.txt")));
+        loaded.clear();
+        model.setQuery("");
+        // No turn of the event loop has passed.
+        QCOMPARE(loaded.count(), 1);
+        QCOMPARE(model.count(), 3);
+        QCOMPARE(model.selectedCount(), 0);
+        QVERIFY(model.indexOfPath(dir.filePath("stone.txt")) >= 0);
+        // The selection went with the search's rows; the same item selected again on the folder's is kept by the read that follows.
+        model.selectOnly(model.indexOfPath(dir.filePath("river.txt")));
+        QTRY_COMPARE(loaded.count(), 2);
+        QCOMPARE(model.selectedPaths(), QStringList{dir.filePath("river.txt")});
+
+        // Sorted another way meanwhile, the folder isn't remembered: the search's rows and what is selected on them, a row of the folder too, stay until the folder's rows land, and go in that turn.
+        QTRY_VERIFY(!model.loading());
+        model.setQuery("r");
+        QTRY_COMPARE(model.matches(), 2);
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        model.setSortMode("kind");
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        model.selectOnly(model.indexOfPath(dir.filePath("river.txt")));
+        connect(&model, &FolderModel::loaded, &model, [&rowsAndSelectedAtLanding, &model] { rowsAndSelectedAtLanding.append({model.count(), model.selectedCount()}); });
+        loaded.clear();
+        model.setQuery("");
+        QCOMPARE(loaded.count(), 0);
+        QCOMPARE(model.count(), 2);
+        QCOMPARE(model.selectedPaths(), QStringList{dir.filePath("river.txt")});
+        QTRY_VERIFY(!rowsAndSelectedAtLanding.isEmpty());
+        QCOMPARE(rowsAndSelectedAtLanding.first(), qMakePair(3, 0));
+    }
+
+    void searchPutsTheCursorOnItsBestMatchAndBackWhereItWas()
+    {
+        // Each answer to another query has the cursor on its first row, and the search's end has it back on the item it left, in the turn the folder's rows return.
+        QTemporaryDir home, kept;
+        // Opening a folder makes it the working directory, which the tests after this one count on.
+        const QString before = QDir::currentPath();
+        const auto restore = qScopeGuard([before] { QDir::setCurrent(before); });
+        // The window remembers its view in QSettings; here that file lands beside the test's folder, not in it and not in the user's.
+        QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, kept.path());
+        QVERIFY(QDir(home.path()).mkpath("box"));
+        for (const char *name : {"apple.txt", "apricot.txt", "grape.txt", "pear.txt", "plum pudding.txt", "box/grape juice.txt", "box/grapefruit.txt", "box/plum.txt"})
+            write(home.filePath(name), "x");
+        Theme theme(kept.filePath("theme"));
+        Translator translator(kept.filePath("language"), sourceFolder() + "/i18n");
+        Places places(home.path());
+        Plugins plugins("en", {}, kept.filePath("folio.conf"));
+        Backend backend(home.path());
+        backend.setPlugins(&plugins);
+        FileOps ops;
+        QQmlEngine engine;
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("places", &places);
+        engine.rootContext()->setContextProperty("plugins", &plugins);
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("fileOps", &ops);
+        QQmlComponent component(&engine, QUrl::fromLocalFile(sourceFolder() + "/Main.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowFocused(window));
+        QTRY_VERIFY(window->property("settled").toBool());
+        backend.open(home.path());
+        FolderModel *folder = backend.folder();
+        QTRY_COMPARE(folder->count(), 6);
+        QTRY_VERIFY(!folder->loading());
+        // The view that lists the folder, whichever the window opened with.
+        std::function<QQuickItem *(QQuickItem *)> find = [&find](QQuickItem *item) -> QQuickItem * {
+            const QByteArray type = item->metaObject()->className();
+            if (type.startsWith("FolderGrid") || type.startsWith("FolderList") || type.startsWith("FolderColumns"))
+                return item;
+            for (QQuickItem *child : item->childItems())
+                if (QQuickItem *found = find(child))
+                    return found;
+            return nullptr;
+        };
+        QQuickItem *view = find(window->contentItem());
+        QVERIFY(view);
+        const auto cursor = [view] { return view->property("currentIndex").toInt(); };
+        const int pear = folder->indexOfPath(home.filePath("pear.txt"));
+        QCOMPARE(pear, 4);
+        QVERIFY(QMetaObject::invokeMethod(view, "select", Q_ARG(QVariant, pear), Q_ARG(QVariant, false)));
+        QCOMPARE(cursor(), pear);
+
+        QSignalSpy loaded(folder, &FolderModel::loaded);
+        folder->setQuery("grape");
+        // Until the answer is here nothing moves: the cursor and its mark are on the row they were on.
+        QCOMPARE(cursor(), pear);
+        QVERIFY(folder->isSelected(pear));
+        QTRY_COMPARE(folder->matches(), 3);
+        QCOMPARE(cursor(), 0);
+        QVERIFY(folder->isSelected(0));
+        QCOMPARE(folder->selectedCount(), 1);
+        QTRY_VERIFY(!folder->reading() && !folder->loading());
+
+        // A key taken back is answered by the same rows, with the cursor on the first of them again.
+        QVERIFY(QMetaObject::invokeMethod(view, "select", Q_ARG(QVariant, 2), Q_ARG(QVariant, false)));
+        loaded.clear();
+        folder->setQuery("grap");
+        QCOMPARE(cursor(), 2);
+        QTRY_VERIFY(!loaded.isEmpty());
+        QCOMPARE(folder->count(), 3);
+        QCOMPARE(cursor(), 0);
+        QVERIFY(folder->isSelected(0));
+        QTRY_VERIFY(!folder->reading() && !folder->loading());
+
+        // The end: the folder's rows and the cursor on the item it left, with no turn of the event loop between.
+        folder->setQuery("");
+        QCOMPARE(folder->count(), 6);
+        QCOMPARE(cursor(), pear);
+        QVERIFY(folder->isSelected(pear));
+        QCOMPARE(folder->selectedCount(), 1);
+        // The folder read behind its remembered rows leaves the cursor there.
+        QTRY_VERIFY(!folder->loading());
+        QCOMPARE(cursor(), pear);
+
+        // Sorted another way meanwhile, the folder isn't remembered: the cursor is back on its item in the turn the folder's rows land.
+        const QString sorted = folder->sortMode();
+        folder->setQuery("grape");
+        QTRY_COMPARE(folder->matches(), 3);
+        QTRY_VERIFY(!folder->reading() && !folder->loading());
+        folder->setSortMode(sorted == "kind" ? "name" : "kind");
+        QTRY_VERIFY(!folder->reading() && !folder->loading());
+        folder->setQuery("");
+        QCOMPARE(folder->count(), 3);
+        QTRY_COMPARE(folder->count(), 6);
+        QCOMPARE(cursor(), folder->indexOfPath(home.filePath("pear.txt")));
+        QVERIFY(folder->isSelected(cursor()));
+        QCOMPARE(folder->selectedCount(), 1);
+        folder->setSortMode(sorted);
+        QTRY_VERIFY(!folder->loading());
+        QCOMPARE(cursor(), pear);
+
+        // What is selected while an answer is on its way is kept by it: the cursor goes to the first row and the selection stays.
+        folder->setQuery("ap");
+        folder->toggleSelected(folder->indexOfPath(home.filePath("apple.txt")));
+        folder->toggleSelected(folder->indexOfPath(home.filePath("apricot.txt")));
+        QCOMPARE(folder->selectedCount(), 3);
+        loaded.clear();
+        QTRY_VERIFY(!loaded.isEmpty());
+        QCOMPARE(cursor(), 0);
+        QCOMPARE(folder->selectedCount(), 2);
+        QVERIFY(folder->selectedPaths().contains(home.filePath("apricot.txt")));
+        QTRY_VERIFY(!folder->reading() && !folder->loading());
+        folder->setQuery("");
+        QCOMPARE(cursor(), pear);
+        QTRY_VERIFY(!folder->loading());
+
+        // A search that ends on the item it began on keeps that item selected through the folder's read.
+        const int grape = folder->indexOfPath(home.filePath("grape.txt"));
+        QVERIFY(QMetaObject::invokeMethod(view, "select", Q_ARG(QVariant, grape), Q_ARG(QVariant, false)));
+        folder->setQuery("grape");
+        QTRY_COMPARE(folder->matches(), 3);
+        QCOMPARE(folder->indexOfPath(home.filePath("grape.txt")), 0);
+        QTRY_VERIFY(!folder->reading() && !folder->loading());
+        folder->setQuery("");
+        QCOMPARE(cursor(), grape);
+        QTRY_VERIFY(!folder->loading());
+        QVERIFY(folder->isSelected(grape));
+        QCOMPARE(cursor(), grape);
+
+        // An answer given while the folders below are still read has the cursor on its first row, and the better match found later takes the cursor with the top.
+        {
+            WalksHeld walks;
+            folder->setQuery("plum");
+            QVERIFY(walks.reached.tryAcquire(1, 3000));
+            QTRY_COMPARE(folder->matches(), 1);
+            QVERIFY(folder->reading());
+            QCOMPARE(cursor(), 0);
+            QCOMPARE(folder->selectedPaths(), QStringList{home.filePath("plum pudding.txt")});
+            walks.letGo();
+            QTRY_COMPARE(folder->matches(), 2);
+            QCOMPARE(folder->indexOfPath(home.filePath("box/plum.txt")), 0);
+            QCOMPARE(cursor(), 0);
+            QCOMPARE(folder->selectedPaths(), QStringList{home.filePath("box/plum.txt")});
+            QTRY_VERIFY(!folder->reading() && !folder->loading());
+        }
+        // Still on the best match, the cursor goes on with the top when a better one turns up later.
+        write(home.filePath("plum.txt"), "x");
+        QTRY_COMPARE(folder->matches(), 3);
+        QCOMPARE(folder->indexOfPath(home.filePath("plum.txt")), 0);
+        QCOMPARE(cursor(), 0);
+        QCOMPARE(folder->selectedPaths(), QStringList{home.filePath("plum.txt")});
+        // Its best match gone, the cursor is on the new top and goes on with it.
+        QVERIFY(QFile::remove(home.filePath("plum.txt")));
+        QTRY_COMPARE(folder->matches(), 2);
+        QCOMPARE(cursor(), 0);
+        QCOMPARE(folder->selectedPaths(), QStringList{home.filePath("box/plum.txt")});
+        write(home.filePath("plum.txt"), "x");
+        QTRY_COMPARE(folder->matches(), 3);
+        QCOMPARE(folder->indexOfPath(home.filePath("plum.txt")), 0);
+        QCOMPARE(cursor(), 0);
+        QCOMPARE(folder->selectedPaths(), QStringList{home.filePath("plum.txt")});
+        // Deselected, its item keeps the cursor when a better match turns up, as in any folder read again.
+        QVERIFY(QFile::remove(home.filePath("plum.txt")));
+        QTRY_COMPARE(folder->matches(), 2);
+        QCOMPARE(cursor(), 0);
+        folder->toggleSelected(0);
+        QCOMPARE(folder->selectedCount(), 0);
+        write(home.filePath("plum.txt"), "x");
+        QTRY_COMPARE(folder->matches(), 3);
+        QCOMPARE(folder->indexOfPath(home.filePath("plum.txt")), 0);
+        QCOMPARE(cursor(), 1);
+        QCOMPARE(folder->selectedPaths(), QStringList{home.filePath("box/plum.txt")});
+        // Asked again with nothing selected, the cursor is back on the top.
+        folder->toggleSelected(1);
+        for (const char *query : {"plu", "plum"}) {
+            loaded.clear();
+            folder->setQuery(query);
+            QTRY_VERIFY(!loaded.isEmpty());
+            QTRY_VERIFY(!folder->reading() && !folder->loading());
+        }
+        QCOMPARE(folder->matches(), 3);
+        QCOMPARE(cursor(), 0);
+        QCOMPARE(folder->selectedPaths(), QStringList{home.filePath("plum.txt")});
+        // With more selected beside it, the cursor stays with its item and the selection is kept.
+        folder->toggleSelected(folder->indexOfPath(home.filePath("plum pudding.txt")));
+        write(home.filePath("a plum.txt"), "x");
+        QTRY_COMPARE(folder->matches(), 4);
+        QCOMPARE(folder->selectedCount(), 2);
+        QCOMPARE(cursor(), folder->indexOfPath(home.filePath("plum.txt")));
+        // With one item left selected that isn't the cursor's, the selection is kept and the cursor stays with its item.
+        folder->toggleSelected(folder->indexOfPath(home.filePath("plum.txt")));
+        write(home.filePath("plum 0.txt"), "x");
+        QTRY_COMPARE(folder->matches(), 5);
+        QCOMPARE(folder->selectedPaths(), QStringList{home.filePath("plum pudding.txt")});
+        QCOMPARE(cursor(), folder->indexOfPath(home.filePath("plum.txt")));
+        // Moved to another item, the cursor stays with that item when the rows are read again.
+        const int pudding = folder->indexOfPath(home.filePath("plum pudding.txt"));
+        QVERIFY(QMetaObject::invokeMethod(view, "select", Q_ARG(QVariant, pudding), Q_ARG(QVariant, false)));
+        write(home.filePath("plum 2.txt"), "x");
+        QTRY_COMPARE(folder->matches(), 6);
+        QCOMPARE(cursor(), folder->indexOfPath(home.filePath("plum pudding.txt")));
+        QCOMPARE(folder->selectedPaths(), QStringList{home.filePath("plum pudding.txt")});
+        // Let go of, the cursor isn't put back by the rows read again.
+        QVERIFY(QMetaObject::invokeMethod(view, "select", Q_ARG(QVariant, 0), Q_ARG(QVariant, false)));
+        folder->setQuery("plu");
+        QTRY_COMPARE(folder->matches(), 6);
+        QCOMPARE(cursor(), 0);
+        QTRY_VERIFY(!folder->reading() && !folder->loading());
+        QVERIFY(QMetaObject::invokeMethod(view, "letGo"));
+        QCOMPARE(cursor(), -1);
+        write(home.filePath("plum 3.txt"), "x");
+        QTRY_COMPARE(folder->matches(), 7);
+        QCOMPARE(cursor(), -1);
+    }
+
     void searchStatusLeavesRoomForTheQuery()
     {
         // In a narrow pane the count and the folder's name would take the whole field, and the query typed there could not be seen.
