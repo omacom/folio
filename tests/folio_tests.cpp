@@ -6120,8 +6120,11 @@ private slots:
         clock.start();
         QTRY_VERIFY_WITH_TIMEOUT(answered > 0, 3000);
         QCOMPARE(plugins.details(path, when), QVariantList({QVariantList{"State", "waiting"}}));
-        QTest::qWait(2000);
+        QTest::qWait(3500);
         QVERIFY(asked() <= clock.elapsed() / 800 + 1);
+        // Each answer goes to those who asked since the last, not to
+        // everyone who ever did.
+        QVERIFY2(answered <= 3 * asked(), qPrintable(QString("%1 answers to %2 commands").arg(answered).arg(asked())));
 
         // Once they stop, what's shown is what the plugin says now.
         write(folder.filePath("sync/word"), "synced");

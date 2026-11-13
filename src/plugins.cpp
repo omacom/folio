@@ -955,9 +955,9 @@ bool Plugins::describe(const QString &path, const QString &mime, const QDateTime
         asking = true;
         // Asked again while its command runs (another window, or the
         // folder read again), the caller waits for the same answer.
-        QList<Asker> &askers = m_asking[key];
-        askers << Asker{wanted, done};
-        if (askers.size() == 1)
+        const bool running = m_asking.contains(key);
+        m_asking[key] << Asker{wanted, done};
+        if (!running)
             ask(m, path, key);
     }
     return asking;
@@ -981,14 +981,10 @@ void Plugins::ask(const Manifest &plugin, const QString &path, const QString &ke
             // has it run for them.
             QList<Asker> &askers = m_asking[key];
             askers.removeFirst();
-            if (const Manifest *m = askers.isEmpty() ? nullptr : manifest(id)) {
+            if (askers.isEmpty())
+                m_asking.remove(key);
+            else if (const Manifest *m = manifest(id))
                 ask(*m, path, key);
-                return;
-            }
-            // Nobody's left to run it for. An early answer it was to
-            // replace isn't kept, so the next to ask gets a new one.
-            m_asking.remove(key);
-            m_details.remove(key);
             return;
         }
         // One that fails or takes too long has no rows for the file,
@@ -1006,23 +1002,32 @@ void Plugins::ask(const Manifest &plugin, const QString &path, const QString &ke
             m_details.clear();
         m_details.insert(key, said.array());
         // An early answer is shown all the same, or a state that keeps
-        // changing would leave the file with none; its command runs once
-        // more, for the same callers.
-        const Manifest *m = early ? manifest(id) : nullptr;
-        const QList<Asker> askers = m ? m_asking.value(key) : m_asking.take(key);
+        // changing would leave the file with none.
+        const QList<Asker> askers = m_asking.take(key);
         for (const Asker &asker : askers)
             asker.done();
-        if (m && m_asking.contains(key))
+        // A command run once more had nobody waiting, unless they asked
+        // since; whoever shows the file is told to read it again.
+        if (askers.isEmpty())
+            emit detailsChanged();
+        // After an early answer its command runs once more. Its callers
+        // have their answer and aren't kept; those who ask meanwhile wait
+        // for the next.
+        const Manifest *m = early ? manifest(id) : nullptr;
+        if (m && !m_asking.contains(key)) {
+            m_asking.insert(key, {});
             ask(*m, path, key);
+        }
     });
     // Stepping through files faster than they're answered for queues
     // commands; those overtaken before their turn aren't run, so they
     // don't hold up the polls behind them.
     watcher->setFuture(QtConcurrent::run(&m_pool, [plugin, command = plugin.details + QStringList{path},
                                                    environment = environment(plugin),
-                                                   wanted = m_asking.value(key).first().wanted,
+                                                   wanted = m_asking.value(key).value(0).wanted,
                                                    stop = m_stop]() -> std::optional<Run> {
-        if (!wanted())
+        // One run once more after an early answer has no caller to ask.
+        if (wanted && !wanted())
             return {};
         return execute(plugin, command, environment, detailsTimeout, stop.get());
     }));
