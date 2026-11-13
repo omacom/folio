@@ -26,8 +26,10 @@ public:
                         int patience = 15000);
 
     // Returns a thumbnail no larger than `size` on its longest side, from the
-    // cache when it is fresh, or a null image when none can be made.
-    QImage load(const QString &path, const QString &mime, int size) const;
+    // cache when it is fresh, or a null image when none can be made. Observing
+    // cancellation stops the helper without recording a thumbnail or a failure.
+    QImage load(const QString &path, const QString &mime, int size,
+                const std::atomic_bool *cancelled = nullptr) const;
     // Stops the thumbnailers still running and starts no more, as Folio quits: it waits for every thumbnail being made,
     // and a hung thumbnailer would keep it waiting.
     void quit() { m_quitting = true; }
@@ -48,10 +50,12 @@ private:
     QString cachePath(const QString &path, int size) const;
     QString failPath(const QString &path) const;
     // Sets `attempted` when Qt's reader or a thumbnailer could take the file.
-    QImage generate(const QString &path, const QString &mime, int pixels, bool &attempted) const;
-    // Both answer whether the program judged the file: one that could not start, or was stopped as Folio quit, has not.
-    bool runThumbnailer(const QString &command, const QString &path, int pixels, QImage &image) const;
-    bool pdfPage(const QString &path, int pixels, QImage &image) const;
+    QImage generate(const QString &path, const QString &mime, int pixels, bool &attempted,
+                    const std::atomic_bool *cancelled) const;
+    // Both answer whether the program judged the file: one that could not start, or was stopped, has not.
+    bool runThumbnailer(const QString &command, const QString &path, int pixels, QImage &image,
+                        const std::atomic_bool *cancelled) const;
+    bool pdfPage(const QString &path, int pixels, QImage &image, const std::atomic_bool *cancelled) const;
     void remember(QImage image, const QString &path, int size, const QDateTime &modified) const;
     // A failure goes with the type's thumbnailer as it was then, none included: one installed since gets its turn.
     void rememberFailure(const QString &path, const QDateTime &modified, const QString &thumbnailer) const;

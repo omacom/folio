@@ -5908,6 +5908,142 @@ private slots:
         QCOMPARE(thumbnails.load(dir.filePath("photo.heic"), "image/*", 128).size(), QSize(64, 32));
     }
 
+    void thumbnailsStopWorkWhenItsImagesGoAway()
+    {
+        QTemporaryDir dir;
+        QImage frame(64, 32, QImage::Format_RGB32);
+        frame.fill(Qt::green);
+        QVERIFY(frame.save(dir.filePath("frame.png")));
+        // One slow thumbnail per worker, like leaving a folder whose visible tiles are still loading.
+        write(dir.filePath("render"), "#!/bin/sh\nprintf started > \"$1.started\"\n"
+              "case \"$1\" in *slow*) sleep 2.5;; esac\ncp \""
+              + dir.filePath("frame.png").toUtf8() + "\" \"$2\"\n");
+        write(dir.filePath("test.thumbnailer"), "[Thumbnailer Entry]\nExec=/bin/sh \""
+              + dir.filePath("render").toUtf8() + "\" %i %o\nMimeType=video/mp4;\n");
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
+        QQmlEngine engine;
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\nImage { asynchronous: true; cache: false }", QUrl());
+        QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+        auto source = [](const QString &path) {
+            return QUrl("image://thumb/128/0/video%2Fmp4/" + QUrl::toPercentEncoding(path));
+        };
+        QList<QObject *> images;
+        const auto clear = qScopeGuard([&] { qDeleteAll(images); });
+        const int workers = qBound(2, QThread::idealThreadCount() / 2, 6);
+        QStringList files;
+        for (int i = 0; i < workers; ++i) {
+            const QString path = dir.filePath("slow" + QString::number(i) + ".mp4");
+            files << path;
+            write(path, "clip");
+            images << component.createWithInitialProperties({{"source", source(path)}});
+            QVERIFY(images.last());
+        }
+        QTRY_VERIFY_WITH_TIMEOUT(std::all_of(files.begin(), files.end(), [](const QString &path) {
+            return QFile::exists(path + ".started");
+        }), 3000);
+
+        for (auto *image : images)
+            QVERIFY(image->setProperty("source", QUrl()));
+        const QString next = dir.filePath("next.mp4");
+        write(next, "clip");
+        QVERIFY(images.first()->setProperty("source", source(next)));
+        // Its image is ready without waiting for the discarded folder's 2.5-second jobs.
+        QTRY_COMPARE_WITH_TIMEOUT(images.first()->property("status").toInt(), 1, 1000);
+        QCOMPARE(images.first()->property("implicitWidth").toInt(), 64);
+        for (const auto &path : files) {
+            QVERIFY(!QFile::exists(dir.filePath("cache/normal/" + Thumbnails::cacheKey(path))));
+            QVERIFY(!QFile::exists(dir.filePath("cache/" + Thumbnails::failures + "/" + Thumbnails::cacheKey(path))));
+        }
+    }
+
+    void thumbnailsCancelHelpersWithoutRememberingFailure_data()
+    {
+        QTest::addColumn<bool>("pdf");
+        QTest::addColumn<bool>("installedPdf");
+        QTest::newRow("installed-thumbnailer") << false << false;
+        QTest::newRow("pdf-fallback") << true << false;
+        QTest::newRow("installed-pdf-thumbnailer") << true << true;
+    }
+
+    void thumbnailsCancelHelpersWithoutRememberingFailure()
+    {
+        QFETCH(bool, pdf);
+        QFETCH(bool, installedPdf);
+        QTemporaryDir dir;
+        const QString script = dir.filePath(pdf && !installedPdf ? "pdftoppm" : "render"), file = dir.filePath("clip");
+        QImage frame(64, 32, QImage::Format_RGB32);
+        frame.fill(Qt::green);
+        QVERIFY(frame.save(file, "PNG"));
+        write(script, "#!/bin/sh\n/bin/sleep 300 &\necho $! > \"$0.helper\"\necho $$ > \"$0.pid\"\nwait\n");
+        QVERIFY(QFile::setPermissions(script, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+        write(dir.filePath("test.thumbnailer"), "[Thumbnailer Entry]\nExec=/bin/sh \""
+              + script.toUtf8() + "\" %i %o\nMimeType=" + (installedPdf ? "application/pdf" : "video/mp4") + ";\n");
+        if (installedPdf) {
+            // Cancelling a PDF's installed thumbnailer must not start its fallback.
+            write(dir.filePath("pdftoppm"), "#!/bin/sh\nprintf run > \"$0.ran\"\nexit 1\n");
+            QVERIFY(QFile::setPermissions(dir.filePath("pdftoppm"), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+        }
+        const QByteArray oldPath = qgetenv("PATH");
+        const auto restore = qScopeGuard([&] { qputenv("PATH", oldPath); });
+        qputenv("PATH", QFile::encodeName(dir.path()));
+        const QString mime = pdf ? "application/pdf" : "video/mp4";
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
+        std::atomic_bool cancelled{false};
+        QFuture<QImage> loaded = QtConcurrent::run([&] { return thumbnails.load(file, mime, 128, &cancelled); });
+        const auto finish = qScopeGuard([&] { cancelled = true; loaded.waitForFinished(); });
+        QTRY_VERIFY(QFileInfo(script + ".pid").size() > 1);
+        cancelled = true;
+        QTRY_VERIFY_WITH_TIMEOUT(loaded.isFinished(), 1000);
+        QVERIFY(loaded.result().isNull());
+        for (const QString &suffix : {QString(".pid"), QString(".helper")}) {
+            QFile noted(script + suffix);
+            QVERIFY(noted.open(QIODevice::ReadOnly));
+            const int pid = noted.readAll().trimmed().toInt();
+            QVERIFY(pid > 0);
+            QTRY_VERIFY(ended(pid));
+        }
+        QVERIFY(!QFile::exists(dir.filePath("cache/" + Thumbnails::failures + "/" + Thumbnails::cacheKey(file))));
+        QVERIFY(!QFile::exists(dir.filePath("cache/normal/" + Thumbnails::cacheKey(file))));
+        QVERIFY(!QFile::exists(dir.filePath("pdftoppm.ran")));
+
+        // The same unmodified file is tried again, without changing its thumbnailer's command or its cache.
+        write(script, pdf && !installedPdf ? "#!/bin/sh\nfor output do :; done\n/bin/cp \"" + file.toUtf8() + "\" \"$output.png\"\n"
+                          : "#!/bin/sh\n/bin/cp \"$1\" \"$2\"\n");
+        cancelled = false;
+        QCOMPARE(thumbnails.load(file, mime, 128, &cancelled).size(), QSize(64, 32));
+        // A request cancelled before starting does not even return an existing cached image.
+        cancelled = true;
+        QVERIFY(thumbnails.load(file, mime, 128, &cancelled).isNull());
+    }
+
+    void thumbnailsKeepAnImageAnotherTileStillNeeds()
+    {
+        QTemporaryDir dir;
+        const QString file = dir.filePath("clip.mp4");
+        QImage frame(64, 32, QImage::Format_RGB32);
+        frame.fill(Qt::green);
+        QVERIFY(frame.save(file, "PNG"));
+        write(dir.filePath("render"), "printf started > \"$1.started\"\nsleep 0.2\ncp \"$1\" \"$2\"\n");
+        write(dir.filePath("test.thumbnailer"), "[Thumbnailer Entry]\nExec=/bin/sh \""
+              + dir.filePath("render").toUtf8() + "\" %i %o\nMimeType=video/mp4;\n");
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
+        QQmlEngine engine;
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\nImage { asynchronous: true }", QUrl());
+        const QUrl source("image://thumb/128/0/video%2Fmp4/" + QUrl::toPercentEncoding(file));
+        std::unique_ptr<QObject> first(component.createWithInitialProperties({{"source", source}}));
+        std::unique_ptr<QObject> second(component.createWithInitialProperties({{"source", source}}));
+        QVERIFY(first && second);
+        QTRY_VERIFY(QFile::exists(file + ".started"));
+        first.reset();
+        QTRY_COMPARE_WITH_TIMEOUT(second->property("status").toInt(), 1, 1000);
+        QCOMPARE(second->property("implicitWidth").toInt(), 64);
+        QVERIFY(QFile::exists(dir.filePath("cache/normal/" + Thumbnails::cacheKey(file))));
+    }
+
     void thumbnailsSetTextOnAPage()
     {
         QTemporaryDir dir;
