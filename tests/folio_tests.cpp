@@ -3439,6 +3439,7 @@ private slots:
         QCOMPARE(Backend::mountLabel("sftp:host=studio.example.ts.net,user=me"), QString("studio.example.ts.net"));
         QCOMPARE(Backend::mountLabel("sftp:host=files.example.com"), QString("files.example.com"));
         QCOMPARE(Backend::mountLabel("smb-share:server=nas,share=media"), QString("nas"));
+        QCOMPARE(Backend::mountLabel("nfs:host=nas,prefix=%2Fsrv%2Fexport"), QString("nas"));
         QCOMPARE(Backend::mountLabel("ftp:host=ftp.example.com"), QString("ftp.example.com"));
         QCOMPARE(Backend::mountLabel("dav:host=cloud.example.com,ssl=true,prefix=%2Fremote.php"), QString("cloud.example.com"));
     }
@@ -3450,14 +3451,37 @@ private slots:
         // the mount itself.
         QCOMPARE(Backend::serverAddress("sftp://nas"), QString("sftp://nas/"));
         QCOMPARE(Backend::serverAddress("  SFTP://me@nas:2222/srv/My Files "), QString("sftp://me@nas:2222/srv/My%20Files"));
+        QCOMPARE(Backend::serverAddress("ssh://me@nas:2222/srv"), QString("sftp://me@nas:2222/srv"));
         QCOMPARE(Backend::serverAddress("smb://nas/media/Films"), QString("smb://nas/media/Films"));
+        QCOMPARE(Backend::serverAddress("cifs://nas/media"), QString("smb://nas/media"));
+        QCOMPARE(Backend::serverAddress("\\\\nas\\media\\Films"), QString("smb://nas/media/Films"));
+        QCOMPARE(Backend::serverAddress("\\\\nas\\media\\Project#1"), QString("smb://nas/media/Project%231"));
+        QCOMPARE(Backend::serverAddress("nfs://nas/srv/export"), QString("nfs://nas/srv/export"));
         QCOMPARE(Backend::serverAddress("ftp://ftp.example.com/pub/"), QString("ftp://ftp.example.com/pub/"));
+        QCOMPARE(Backend::serverAddress("ftps://ftp.example.com/pub/"), QString("ftps://ftp.example.com/pub/"));
         QCOMPARE(Backend::serverAddress("davs://cloud.example.com/remote.php/dav/files/me"),
                  QString("davs://cloud.example.com/remote.php/dav/files/me"));
+        QCOMPARE(Backend::serverAddress("webdavs://cloud.example.com/dav"), QString("davs://cloud.example.com/dav"));
+        QCOMPARE(Backend::serverAddress("webdav://10.0.0.5:8080"), QString("dav://10.0.0.5:8080/"));
         QCOMPARE(Backend::serverAddress("dav://10.0.0.5:8080"), QString("dav://10.0.0.5:8080/"));
         // Paths, other schemes and addresses without a server are not.
-        for (const char *text : {"~/Work", "/etc", "Work/folio", "file:///etc", "http://example.com", "sftp://", "smb:/nas"})
-            QVERIFY2(Backend::serverAddress(text).isEmpty(), text);
+        for (const char *text : {"~/Work", "/etc", "Work/folio", "file:///etc", "http://example.com", "sftp://", "smb:/nas", "\\\\"}) {
+            QString problem;
+            QVERIFY2(Backend::serverAddress(text, &problem).isEmpty(), text);
+            QVERIFY2(problem.isEmpty(), text);
+        }
+
+        // An address that needs a share or export, or embeds a password, is
+        // refused with the reason why, and goTyped shows that reason.
+        QTemporaryDir home;
+        Backend backend(home.path());
+        for (const char *incomplete : {"smb://nas", "smb://nas/", "\\\\nas", "nfs://nas", "nfs://nas/", "sftp://me:secret@nas/"}) {
+            QString problem;
+            QVERIFY2(Backend::serverAddress(incomplete, &problem).isEmpty(), incomplete);
+            QVERIFY2(!problem.isEmpty(), incomplete);
+            QVERIFY(!backend.goTyped(incomplete));
+            QCOMPARE(backend.message(), problem);
+        }
     }
 
     void pluginsReadTheirManifests()

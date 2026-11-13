@@ -301,13 +301,50 @@ void Backend::arrive(const QString &folder) {
         showItem(target.filePath());
 }
 
-QString Backend::serverAddress(const QString &text) {
-    static const QStringList schemes{"sftp", "smb", "ftp", "dav", "davs"};
+QString Backend::serverAddress(const QString &text, QString *problem) {
+    if (problem)
+        problem->clear();
+    const QString raw = text.trimmed();
+    static const QStringList schemes{"sftp", "smb", "nfs", "ftp", "ftps", "dav", "davs"};
     // Tolerant, so a path typed with spaces in it is escaped rather than
-    // refused; QUrl puts the scheme in lower case.
-    QUrl url(text.trimmed(), QUrl::TolerantMode);
+    // refused; QUrl puts the scheme in lower case. A Windows UNC path has no
+    // query or fragment, so its folder names are set decoded.
+    QUrl url;
+    if (raw.startsWith("\\\\")) {
+        const QString unc = raw.mid(2).replace('\\', '/');
+        url.setScheme("smb");
+        url.setHost(unc.section('/', 0, 0));
+        const QString rest = unc.section('/', 1);
+        url.setPath(rest.isEmpty() ? "/" : "/" + rest, QUrl::DecodedMode);
+    } else {
+        url = QUrl(raw, QUrl::TolerantMode);
+    }
+    if (url.scheme() == "ssh")
+        url.setScheme("sftp");
+    else if (url.scheme() == "cifs")
+        url.setScheme("smb");
+    else if (url.scheme() == "webdav")
+        url.setScheme("dav");
+    else if (url.scheme() == "webdavs")
+        url.setScheme("davs");
     if (!url.isValid() || !schemes.contains(url.scheme()) || url.host().isEmpty())
         return {};
+    if (!url.password().isEmpty()) {
+        if (problem)
+            *problem = tr("Leave the password out of the address; enter it when asked to sign in.");
+        return {};
+    }
+    const QString firstSegment = url.path().section('/', 0, 0, QString::SectionSkipEmpty);
+    if (url.scheme() == "smb" && firstSegment.isEmpty()) {
+        if (problem)
+            *problem = tr("Add the shared folder, as in smb://%1/share.").arg(url.host());
+        return {};
+    }
+    if (url.scheme() == "nfs" && firstSegment.isEmpty()) {
+        if (problem)
+            *problem = tr("Add the exported folder, as in nfs://%1/export.").arg(url.host());
+        return {};
+    }
     if (url.path().isEmpty())
         url.setPath("/");
     return url.toString(QUrl::FullyEncoded);
@@ -502,10 +539,15 @@ bool Backend::goTyped(const QString &text) {
     // A server is mounted through GVfs, which also says where on the mount
     // the address's path is (a WebDAV address's path can be part of the
     // mount itself), and connecting goes there.
-    if (const QString address = serverAddress(text); !address.isEmpty()) {
+    QString problem;
+    if (const QString address = serverAddress(text, &problem); !address.isEmpty()) {
         if (!m_mounter.busy())
             mount(address, QUrl(address).host(), false);
         return true;
+    }
+    if (!problem.isEmpty()) {
+        setMessage(problem);
+        return false;
     }
     // A view is typed as the path bar shows it, by its own name.
     if (const QString view = text.trimmed(); FolderModel::isView(view))

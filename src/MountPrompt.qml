@@ -1,5 +1,7 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
+import QtCore
 
 // GVfs's password request while connecting to another machine whose keys
 // aren't set up, or its question about a server it can't vouch for (a key
@@ -10,6 +12,12 @@ FolioDialog {
 
     readonly property var mounter: backend.mounter
     readonly property bool question: mounter.choices.length > 0
+    property bool remember: false
+
+    Settings {
+        category: "connect"
+        property alias rememberPassword: prompt.remember
+    }
 
     title: question ? qsTr("Check the server") : qsTr("Sign in")
     cardWidth: 600
@@ -27,12 +35,16 @@ FolioDialog {
             forceActiveFocus()
         } else if (visible) {
             user.text = mounter.user
+            domain.text = mounter.domain
+            rememberBox.checked = prompt.remember
             password.forceActiveFocus()
         }
     }
 
     function submit() {
-        prompt.mounter.providePassword(user.text, password.text)
+        if (prompt.mounter.canRemember)
+            prompt.remember = rememberBox.checked
+        prompt.mounter.providePassword(user.text, password.text, domain.text, rememberBox.checked)
     }
 
     // A click outside the card does nothing: GVfs waits for an answer,
@@ -57,12 +69,52 @@ FolioDialog {
         placeholderText: qsTr("User")
     }
     PlainField {
+        id: domain
+        visible: !prompt.question && prompt.mounter.needsDomain
+        Layout.fillWidth: true
+        placeholderText: qsTr("Domain or workgroup")
+        onAccepted: password.forceActiveFocus()
+    }
+    PlainField {
         id: password
         visible: !prompt.question
         Layout.fillWidth: true
         placeholderText: qsTr("Password")
         echoMode: TextInput.Password
         onAccepted: prompt.submit()
+    }
+
+    AbstractButton {
+        id: rememberBox
+        visible: !prompt.question && prompt.mounter.canRemember
+        checkable: true
+        text: qsTr("Remember the password in the keyring")
+        Accessible.name: text
+        Keys.onReturnPressed: toggle()
+        Keys.onEnterPressed: toggle()
+        contentItem: RowLayout {
+            spacing: 10
+            Rectangle {
+                implicitWidth: 18
+                implicitHeight: 18
+                radius: Math.min(3, theme.radius)
+                color: rememberBox.checked ? theme.accent : "transparent"
+                border.width: rememberBox.checked ? 0 : 1
+                border.color: rememberBox.visualFocus ? theme.accent : Qt.alpha(theme.foreground, 0.4)
+                Glyph {
+                    anchors.centerIn: parent
+                    visible: rememberBox.checked
+                    name: "check"
+                    size: 14
+                    stroke: 2
+                    color: theme.accentForeground
+                }
+            }
+            Text {
+                text: rememberBox.text
+                color: rememberBox.visualFocus ? theme.brightForeground : theme.foreground
+            }
+        }
     }
 
     RowLayout {
@@ -84,6 +136,11 @@ FolioDialog {
             visible: !prompt.question
             text: qsTr("Cancel")
             onClicked: prompt.mounter.cancel()
+        }
+        PlainButton {
+            visible: !prompt.question && prompt.mounter.guestAllowed
+            text: qsTr("Connect as Guest")
+            onClicked: prompt.mounter.connectAsGuest()
         }
         PlainButton {
             visible: !prompt.question

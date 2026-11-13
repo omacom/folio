@@ -107,9 +107,11 @@ public:
     static QString expandTyped(const QString &text, const QString &home, const QString &current);
     static QString complete(const QString &text, const QString &home, const QString &current);
     static QString mountLabel(const QString &mountFolder);
-    // A server address (sftp://, smb://, ftp://, dav://, davs://) as GIO
-    // mounts it, or empty when the text isn't one.
-    static QString serverAddress(const QString &text);
+    // A server address (sftp://, smb://, nfs://, ftp://, ftps://, dav://,
+    // davs://, or \\server\share) as GIO mounts it, or empty when the text
+    // isn't one. `problem` says why when it's an address that can't be
+    // mounted as written.
+    static QString serverAddress(const QString &text, QString *problem = nullptr);
 
 signals:
     void pathChanged();
