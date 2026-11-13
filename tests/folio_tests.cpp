@@ -2273,6 +2273,58 @@ private slots:
         QCOMPARE(model.selectedPaths(), QStringList{dir.filePath("river.txt")});
     }
 
+    void searchKeepsAFoldersCountFromOneAnswerToTheNext()
+    {
+        // A folder two answers both list shows its count in the turn the second lands, and is counted again all the same; with hidden files shown or hidden since, it shows none until it is counted.
+        QTemporaryDir dir;
+        QVERIFY(QDir(dir.path()).mkpath("a/render/.hidden"));
+        for (const char *name : {"a/render/one.txt", "a/render/two.txt", "a/render/.hidden/three.txt", "a/reed.txt", "river.txt", "rock.txt"})
+            write(dir.filePath(name), "x");
+        const QString render = dir.filePath("a/render");
+        // Declared ahead of the model, which announces as it ends.
+        QList<int> countAtLanding;
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QTRY_VERIFY(!model.loading());
+        const auto count = [&model, &render] { return model.get(model.indexOfPath(render)).value("itemCount").toInt(); };
+        connect(&model, &FolderModel::loaded, &model, [&countAtLanding, count] { countAtLanding << count(); });
+        model.setQuery("r");
+        QTRY_COMPARE(count(), 2);
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QVERIFY(model.indexOfPath(dir.filePath("rock.txt")) >= 0);
+
+        countAtLanding.clear();
+        model.setQuery("re");
+        QTRY_VERIFY(!countAtLanding.isEmpty());
+        QCOMPARE(model.indexOfPath(dir.filePath("rock.txt")), -1);
+        QCOMPARE(countAtLanding.first(), 2);
+        QTRY_VERIFY(!model.reading() && !model.loading());
+
+        // Changed since: the count it had shows when the rows land, and the one it has now once it is counted.
+        write(dir.filePath("a/render/three.txt"), "x");
+        countAtLanding.clear();
+        model.setQuery("r");
+        QTRY_VERIFY(!countAtLanding.isEmpty());
+        QCOMPARE(countAtLanding.first(), 2);
+        QTRY_COMPARE(count(), 3);
+        QTRY_VERIFY(!model.reading() && !model.loading());
+
+        // Hidden files shown: what was counted without them says nothing of the folder now.
+        countAtLanding.clear();
+        model.setShowHidden(true);
+        QTRY_COMPARE(count(), 4);
+        QVERIFY(!countAtLanding.contains(3));
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        // And the count made with them is kept by the next answer.
+        countAtLanding.clear();
+        model.setQuery("re");
+        QTRY_VERIFY(!countAtLanding.isEmpty());
+        QCOMPARE(model.indexOfPath(dir.filePath("rock.txt")), -1);
+        QCOMPARE(countAtLanding.first(), 4);
+    }
+
     void searchEndedShowsTheFolderAndSaysSoInOneTurn()
     {
         // The search's end puts the folder's remembered rows up and says so at once, so a view has its cursor on a row in the frame that shows them.
@@ -3029,6 +3081,102 @@ private slots:
         model.reload();
         QVERIFY(loaded.wait(3000));
         QTRY_COMPARE(model.index(last).data(FolderModel::ItemCountRole).toInt(), 1);
+    }
+
+    void folderModelCountsAgainAFolderWhoseCountItKept()
+    {
+        // Rows that replace others keep a folder's count in sight, and the folder is counted again whatever overtakes that counting.
+        QTemporaryDir dir, other;
+        QVERIFY(QDir(dir.path()).mkpath("Photos/.cache") && QDir(dir.path()).mkpath("Albums"));
+        for (const char *name : {"Photos/a.jpg", "Photos/b.jpg", "Albums/one.jpg", "notes.txt"})
+            write(dir.filePath(name), "x");
+        const QString photos = dir.filePath("Photos");
+        // Declared ahead of the model, which announces as it ends.
+        QList<int> countAtLanding, countsSeen;
+        QMetaObject::Connection once;
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        const auto count = [&model, &photos] { return model.get(model.indexOfPath(photos)).value("itemCount").toInt(); };
+        const auto notes = [&model, &dir] { return model.get(model.indexOfPath(dir.filePath("notes.txt"))).value("size"); };
+        const auto albums = [&model, &dir] { return model.get(model.indexOfPath(dir.filePath("Albums"))).value("itemCount").toInt(); };
+        QTRY_COMPARE(count(), 2);
+        QTRY_COMPARE(albums(), 1);
+        QTRY_COMPARE(notes().toLongLong(), 1);
+        QTRY_VERIFY(!model.loading());
+        connect(&model, &FolderModel::loaded, &model, [&countAtLanding, count] { countAtLanding << count(); });
+
+        // Read again before the count is in: the same rows land, and the folder is counted all the same.
+        write(dir.filePath("Photos/c.jpg"), "x");
+        write(dir.filePath("more.txt"), "x");
+        once = connect(&model, &FolderModel::loaded, &model, [&model, &once] {
+            disconnect(once);
+            model.reload();
+        });
+        model.reload();
+        QTRY_VERIFY(!countAtLanding.isEmpty());
+        QCOMPARE(countAtLanding.first(), 2);
+        QTRY_COMPARE(count(), 3);
+        QTRY_COMPARE(albums(), 1);
+        QTRY_VERIFY(!model.loading());
+
+        // Counted, it isn't counted again by a later read of these rows: only the folder that changed is.
+        {
+            QSignalSpy changed(&model, &FolderModel::dataChanged);
+            write(dir.filePath("Albums/two.jpg"), "x");
+            model.reload();
+            QTRY_COMPARE(albums(), 2);
+            for (const QList<QVariant> &change : changed)
+                QVERIFY(change.at(0).toModelIndex().row() != model.indexOfPath(photos));
+        }
+        QTRY_VERIFY(!model.loading());
+
+        // Left before the count is in, and a file changed meanwhile: back on its remembered rows, the folder is counted.
+        write(dir.filePath("Photos/d.jpg"), "x");
+        write(dir.filePath("less.txt"), "x");
+        once = connect(&model, &FolderModel::loaded, &model, [&model, &once, &other] {
+            disconnect(once);
+            QMetaObject::invokeMethod(&model, [&model, &other] { model.setPath(other.path()); }, Qt::QueuedConnection);
+        });
+        model.reload();
+        QTRY_COMPARE(model.path(), other.path());
+        QTRY_VERIFY(!model.loading());
+        write(dir.filePath("notes.txt"), "xx");
+        model.setPath(dir.path());
+        QCOMPARE(count(), 3);
+        QTRY_COMPARE(notes().toLongLong(), 2);
+        QTRY_COMPARE(count(), 4);
+        QTRY_VERIFY(!model.loading());
+
+        // Hidden files shown, and the rows are the same: the count made without them goes at once, said to the views, and the folder is counted with them.
+        countAtLanding.clear();
+        QSignalSpy changed(&model, &FolderModel::dataChanged);
+        model.setShowHidden(true);
+        QCOMPARE(count(), -1);
+        QVERIFY(!changed.isEmpty() && changed.first().at(2).value<QList<int>>() == QList<int>{FolderModel::ItemCountRole});
+        QTRY_VERIFY(!countAtLanding.isEmpty());
+        QCOMPARE(countAtLanding.first(), -1);
+        QTRY_COMPARE(count(), 5);
+        QTRY_VERIFY(!model.loading());
+
+        // Hidden again while a count made with hidden files waits to land: that count is dropped, never shown.
+        write(dir.filePath("Photos/e.jpg"), "x");
+        write(dir.filePath("Photos/f.jpg"), "x");
+        connect(&model, &FolderModel::dataChanged, &model, [&countsSeen, count] { countsSeen << count(); });
+        once = connect(&model, &FolderModel::loaded, &model, [&model, &once] {
+            disconnect(once);
+            // Queued, this runs after the count is started and ahead of its landing; the wait lets the count finish first.
+            QMetaObject::invokeMethod(&model, [&model] {
+                QThreadPool::globalInstance()->waitForDone();
+                model.setShowHidden(false);
+            }, Qt::QueuedConnection);
+        });
+        model.reload();
+        QTRY_VERIFY(!model.showHidden());
+        QTRY_COMPARE(count(), 6);
+        QTRY_VERIFY(!model.loading());
+        QVERIFY(!countsSeen.contains(7));
     }
 
     void folderModelKeepsTheDateAFolderWasCountedWith()

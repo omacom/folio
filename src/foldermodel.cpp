@@ -103,6 +103,7 @@ void FolderModel::takeSizesAndDates(QVector<Entry> entries) {
         Entry &next = entries[row];
         const Entry &now = m_entries.at(row);
         next.itemCount = now.itemCount;
+        next.countKept = now.countKept;
         if (next.unread && !now.unread) {
             // Read since the re-read began.
             next.unread = false;
@@ -288,6 +289,19 @@ void FolderModel::setShowHidden(bool show) {
     if (show == m_showHidden)
         return;
     m_showHidden = show;
+    // A count made with hidden files the other way says nothing of the folder now: it goes at once, and the folder is counted again.
+    bool counted = false;
+    for (int row = 0; row < m_entries.size(); ++row) {
+        if (m_entries.at(row).isDir && m_entries.at(row).itemCount >= 0) {
+            m_entries[row].itemCount = -1;
+            m_entries[row].countKept = false;
+            counted = true;
+        }
+    }
+    if (counted) {
+        emit dataChanged(index(0), index(m_entries.size() - 1), {ItemCountRole});
+        emit countChanged();
+    }
     emit showHiddenChanged();
     // A search's walk took or left the hidden files: it ends here, and the folders are read anew.
     closeSearch();
@@ -874,6 +888,17 @@ void FolderModel::read() {
         if (!same) {
             // A folder found changed has its rows' types read again, as its sizes and dates are.
             m_types.clear();
+            // A folder the rows before these had keeps its count in sight while it is counted again: without it, the counts on screen would blink out for a turn at every key of a search.
+            QHash<QString, int> counts;
+            for (const Entry &now : std::as_const(m_entries))
+                if (now.isDir && now.itemCount >= 0)
+                    counts.insert(now.path, now.itemCount);
+            for (Entry &next : entries) {
+                if (next.isDir && next.itemCount < 0 && counts.contains(next.path)) {
+                    next.itemCount = counts.value(next.path);
+                    next.countKept = true;
+                }
+            }
             setEntries(entries);
         } else {
             takeSizesAndDates(std::move(entries));
@@ -1017,7 +1042,7 @@ void FolderModel::countFolders(quint64 generation) {
     // counting was overtaken by a re-read (and so remembered without them).
     QVector<QPair<int, Entry>> folders;
     for (int row = 0; row < m_entries.size(); ++row)
-        if (m_entries.at(row).isDir && m_entries.at(row).itemCount < 0)
+        if (m_entries.at(row).isDir && (m_entries.at(row).itemCount < 0 || m_entries.at(row).countKept))
             folders.push_back({row, m_entries.at(row)});
     if (folders.isEmpty())
         return;
@@ -1034,6 +1059,7 @@ void FolderModel::countFolders(quint64 generation) {
                 continue;
             Entry &entry = m_entries[row];
             entry.itemCount = summary.itemCount;
+            entry.countKept = false;
             QList<int> roles{ItemCountRole};
             // A count goes with the date read before it: one a view read meanwhile may be newer, and would hide the change from a re-read.
             if (!summary.unread && (entry.unread || entry.modified != summary.modified)) {

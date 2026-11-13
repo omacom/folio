@@ -73,6 +73,8 @@ public:
         QString icon;
         QVariantList details;
         int itemCount = -1;
+        // The count shown was made for the rows before these: the folder is counted again.
+        bool countKept = false;
         // The first pictures in a folder, for the preview window.
         QStringList peek;
     };
