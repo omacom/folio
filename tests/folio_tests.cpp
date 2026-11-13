@@ -1474,9 +1474,13 @@ private slots:
         QCOMPARE(FileOps::archiveName({dir.filePath("a.txt"), dir.filePath("b.txt")}, dir.path()), QString("Archive.zip"));
 
         QSignalSpy done(&ops, &FileOps::done);
+        QSignalSpy created(&ops, &FileOps::folderCreated);
         ops.newFolder(dir.path());
         ops.newFolder(dir.path());
         QCOMPARE(done.count(), 2);
+        // Each new folder is also announced, for naming straight away.
+        QCOMPARE(created.count(), 2);
+        QCOMPARE(created.first().at(1).toString(), QString("Untitled Folder"));
         QCOMPARE(done.takeFirst().at(1).toString(), QString("Untitled Folder"));
         QCOMPARE(done.takeFirst().at(1).toString(), QString("Untitled Folder 2"));
     }

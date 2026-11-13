@@ -277,6 +277,8 @@ signals:
     void drivesChanged();
     // Work finished in `folder`, which now holds `name` (to select it).
     void done(const QString &folder, const QString &name);
+    // A new folder was made in `folder`, named `name`, for naming right away.
+    void folderCreated(const QString &folder, const QString &name);
 
 private:
     void setBusy(const QString &busy);
