@@ -95,7 +95,7 @@ public:
         qsizetype answers = 0;
     };
 
-    // Reads `root` and the folders below, breadth first, on its drive and out of symlinked folders. False and empty once `stop` says; adding under `lock`, it's answered from as it reads.
+    // Reads `root` and the folders below, breadth first, on its drive, past no link. False and empty once `stop` says; adding under `lock`, it's answered from as it reads.
     bool walk(const QString &root, bool showHidden, const std::function<bool()> &stop = {}, QMutex *lock = nullptr);
     // Called with how many folders have been read, after each, so a test can hold a walk partway.
     inline static std::function<void(qsizetype folders)> afterFolder;

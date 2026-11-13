@@ -7,12 +7,15 @@
 #include <QHash>
 #include <QMimeDatabase>
 #include <QMutex>
+#include <QScopeGuard>
 #include <QVarLengthArray>
 #include <algorithm>
 #include <cstring>
 #include <dirent.h>
 #include <fcntl.h>
+#include <linux/openat2.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <unistd.h>
 
 static char lower(char c) {
@@ -205,9 +208,18 @@ int SearchMatcher::align(QByteArrayView text) const {
 }
 
 bool SearchIndex::walk(const QString &root, bool showHidden, const std::function<bool()> &stop, QMutex *lock) {
-    ++counts.walks;
-    m_root = root;
-    const QByteArray top = QFile::encodeName(root);
+    {
+        // An answer on another thread reads the root under the lock.
+        QMutexLocker hold(lock);
+        ++counts.walks;
+        m_root = root;
+    }
+    // Every folder is opened from the root's own descriptor: the tree read stays one tree, whatever its path leads to later.
+    const int top = ::open(QFile::encodeName(root).constData(), O_PATH | O_DIRECTORY | O_CLOEXEC);
+    const auto closed = qScopeGuard([top] {
+        if (top >= 0)
+            ::close(top);
+    });
     dev_t drive = 0;
     // Gone partway: nothing is kept.
     const auto stopped = [&] {
@@ -259,9 +271,12 @@ bool SearchIndex::walk(const QString &root, bool showHidden, const std::function
         if (stop && stop())
             return stopped();
         const quint32 parent = folder < 0 ? None : quint32(folder);
-        const QByteArray at = folder < 0 ? top : top + '/' + joined(m_folders[folder].parent, name(m_folders[folder].name));
-        // Below the root, a folder that's become a link since it was listed isn't followed.
-        const int fd = ::open(at.constData(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | (folder < 0 ? 0 : O_NOFOLLOW));
+        const QByteArray at = folder < 0 ? QByteArray(".") : joined(m_folders[folder].parent, name(m_folders[folder].name));
+        // No link is followed below the root: not a folder that's become one since it was listed, nor one on the way to it.
+        open_how how = {};
+        how.flags = O_RDONLY | O_DIRECTORY | O_CLOEXEC;
+        how.resolve = RESOLVE_NO_SYMLINKS;
+        const int fd = int(::syscall(SYS_openat2, top, at.constData(), &how, sizeof how));
         if (fd < 0)
             continue;
         struct stat st;

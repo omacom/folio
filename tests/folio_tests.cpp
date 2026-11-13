@@ -25,6 +25,7 @@
 #include <QQmlPropertyMap>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QScopeGuard>
 #include <QSemaphore>
 #include <QSettings>
 #include <QSignalSpy>
@@ -1390,6 +1391,54 @@ private slots:
         const auto nearest = index.find("beach", "name", 1);
         QCOMPARE(nearest.size(), 1);
         QCOMPARE(nearest.first().name, QString("beach.txt"));
+    }
+
+    void searchFollowsNoLinkThatTookAFoldersPlaceOnTheWay()
+    {
+        // A folder is listed, then swapped for a link while its own folders wait to be read: what the link leads to is not read under its name.
+        QTemporaryDir dir, elsewhere;
+        QDir(dir.path()).mkpath("album/inner");
+        write(dir.filePath("album/inner/photo.txt"), "x");
+        QDir(elsewhere.path()).mkpath("inner");
+        write(elsewhere.filePath("inner/secret.txt"), "x");
+        const auto restore = qScopeGuard([] { SearchIndex::afterFolder = {}; });
+        bool swapped = false;
+        // Two folders read are the root and album: album/inner is next.
+        SearchIndex::afterFolder = [&](qsizetype read) {
+            if (read == 2)
+                swapped = QDir().rename(dir.filePath("album"), dir.filePath("album.was")) && QFile::link(elsewhere.path(), dir.filePath("album"));
+        };
+        SearchIndex index;
+        QVERIFY(index.walk(dir.path(), false));
+        QVERIFY(swapped);
+        QCOMPARE(index.size(), 2);
+        QCOMPARE(index.answer("secret"), 0);
+        QCOMPARE(index.answer("photo"), 0);
+    }
+
+    void searchReadsTheFolderItsPathLedToAtFirst()
+    {
+        // The folder searched is reached through a link, turned to another folder once its own names are read: the tree read stays the first one.
+        QTemporaryDir dir, elsewhere, links;
+        QDir(dir.path()).mkdir("album");
+        QDir(elsewhere.path()).mkdir("album");
+        write(dir.filePath("album/photo.txt"), "x");
+        write(elsewhere.filePath("album/secret.txt"), "x");
+        const QString shown = links.filePath("shown");
+        QVERIFY(QFile::link(dir.path(), shown));
+        const auto restore = qScopeGuard([] { SearchIndex::afterFolder = {}; });
+        bool turned = false;
+        // One folder read is the root: album is next.
+        SearchIndex::afterFolder = [&](qsizetype read) {
+            if (read == 1)
+                turned = QFile::remove(shown) && QFile::link(elsewhere.path(), shown);
+        };
+        SearchIndex index;
+        QVERIFY(index.walk(shown, false));
+        QVERIFY(turned);
+        QCOMPARE(index.size(), 2);
+        QCOMPARE(index.answer("photo"), 1);
+        QCOMPARE(index.answer("secret"), 0);
     }
 
     void searchAnswersALaterKeyBeforeItsFoldersAreReadAgain()
