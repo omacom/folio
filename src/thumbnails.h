@@ -23,6 +23,9 @@ public:
     // cache when it is fresh, or a null image when none can be made.
     QImage load(const QString &path, const QString &mime, int size) const;
 
+    // Read only an existing, fresh PNG; never start a decoder on a miss.
+    QImage cached(const QString &path, int size) const;
+
     static QString cacheKey(const QString &path);
     static QString bucketFor(int size);
     // A text file's first lines set on a page in the given colors. Made
@@ -51,9 +54,11 @@ private:
 class ThumbnailProvider : public QQuickAsyncImageProvider {
 public:
     explicit ThumbnailProvider(const Thumbnails *thumbnails);
+    ~ThumbnailProvider() override;
     QQuickImageResponse *requestImageResponse(const QString &id, const QSize &requestedSize) override;
 
 private:
     const Thumbnails *m_thumbnails;
     QThreadPool m_pool;
+    QThreadPool m_cachePool;
 };

@@ -5391,6 +5391,109 @@ private slots:
         QCOMPARE(free(120'000'000'000), QLocale("ar_EG").toString(120.0, 'f', 1) + " GB free");
     }
 
+    void thumbnailsCachedImagesDoNotWaitForGenerators()
+    {
+        QTemporaryDir dir;
+        const QString release = dir.filePath("release");
+        QImage frame(64, 32, QImage::Format_RGB32);
+        frame.fill(Qt::green);
+        const QString photo = dir.filePath("photo.png");
+        QVERIFY(frame.save(photo));
+        write(dir.filePath("render"), "#!/bin/sh\nprintf started > \"$1.started\"\n"
+              "while [ ! -e \"" + release.toUtf8() + "\" ]; do /bin/sleep 0.01; done\n"
+              "/bin/cp \"" + photo.toUtf8() + "\" \"$2\"\n");
+        write(dir.filePath("slow.thumbnailer"), "[Thumbnailer Entry]\nExec=/bin/sh \""
+              + dir.filePath("render").toUtf8() + "\" %i %o\nMimeType=video/mp4;\n");
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
+        QVERIFY(!thumbnails.load(photo, "image/png", 256).isNull());
+        auto provider = std::make_unique<ThumbnailProvider>(&thumbnails);
+        QList<QQuickImageResponse *> responses;
+        const auto cleanup = qScopeGuard([&] {
+            write(release, "go");
+            // A direct provider caller owns responses until all workers finish.
+            provider.reset();
+            qDeleteAll(responses);
+        });
+        auto request = [&](const QString &path, const QString &mime) {
+            auto *response = provider->requestImageResponse("256/0/" + QUrl::toPercentEncoding(mime)
+                                                           + "/" + QUrl::toPercentEncoding(path), {});
+            responses.append(response);
+            return response;
+        };
+        const int workers = qBound(2, QThread::idealThreadCount() / 2, 6);
+        for (int i = 0; i < workers; ++i) {
+            const QString path = dir.filePath(QString::number(i) + ".mp4");
+            write(path, "clip");
+            request(path, "video/mp4");
+        }
+        QVERIFY(QTest::qWaitFor([&] {
+            return QDir(dir.path()).entryList({"*.started"}, QDir::Files).size() == workers;
+        }, 3000));
+        // The engine observes completion even if a very fast cache hit
+        // finishes before requestImageResponse() returns to its caller.
+        class BorrowedProvider : public QQuickAsyncImageProvider {
+        public:
+            explicit BorrowedProvider(ThumbnailProvider *provider) : target(provider) {}
+            QQuickImageResponse *requestImageResponse(const QString &id, const QSize &size) override {
+                return target->requestImageResponse(id, size);
+            }
+            ThumbnailProvider *target;
+        };
+        QQmlEngine engine;
+        engine.addImageProvider("thumb", new BorrowedProvider(provider.get()));
+        QQmlComponent image(&engine);
+        image.setData("import QtQuick\nImage { asynchronous: true; cache: false }", QUrl());
+        QVERIFY2(image.isReady(), qPrintable(image.errorString()));
+        std::unique_ptr<QObject> warm(image.createWithInitialProperties({
+            {"source", QUrl("image://thumb/256/0/image%2Fpng/" + QUrl::toPercentEncoding(photo))}}));
+        QVERIFY(warm);
+        QTRY_COMPARE_WITH_TIMEOUT(warm->property("status").toInt(), 1, 500);
+        QVERIFY(warm->property("implicitWidth").toInt() > 0);
+        warm.reset(); // The forwarding provider must not outlive the real one.
+        engine.removeImageProvider("thumb");
+        // Queued misses cancelled before a generator is available must finish
+        // without starting a helper or marking the file as failed.
+        const QString queued = dir.filePath("queued.mp4");
+        write(queued, "clip");
+        for (int i = 0; i < 64; ++i)
+            request(queued, "video/mp4")->cancel();
+        write(release, "go");
+        provider.reset(); // Drains both stages, including cancelled responses.
+        QVERIFY(!QFile::exists(queued + ".started"));
+        QVERIFY(!QFile::exists(dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(queued))));
+    }
+
+    void thumbnailsCacheLookupNeverGeneratesOrReturnsStalePictures()
+    {
+        QTemporaryDir dir;
+        const QString photo = dir.filePath("photo.png"), cache = dir.filePath("cache");
+        QImage frame(64, 32, QImage::Format_RGB32);
+        frame.fill(Qt::blue);
+        QVERIFY(frame.save(photo));
+        Thumbnails thumbnails(cache, {dir.path()});
+        QVERIFY(thumbnails.cached(photo, 256).isNull());
+        const QSize expected = thumbnails.load(photo, "image/png", 256).size();
+        QVERIFY(!expected.isEmpty());
+        QCOMPARE(thumbnails.cached(photo, 256).size(), expected);
+
+        QFile changed(photo);
+        QVERIFY(changed.open(QIODevice::ReadWrite));
+        QVERIFY(changed.setFileTime(QFileInfo(photo).lastModified().addSecs(2), QFileDevice::FileModificationTime));
+        changed.close();
+        QVERIFY(thumbnails.cached(photo, 256).isNull());
+        QVERIFY(!thumbnails.load(photo, "image/png", 256).isNull());
+        const QString png = cache + "/" + Thumbnails::bucketFor(256) + "/" + Thumbnails::cacheKey(photo);
+        write(png, "not a PNG");
+        QVERIFY(thumbnails.cached(photo, 256).isNull());
+        QCOMPARE(thumbnails.load(photo, "image/png", 256).size(), expected);
+        QVERIFY(QFile::remove(photo));
+        QVERIFY(thumbnails.cached(photo, 256).isNull());
+
+        const QString recursive = cache + "/inside.png";
+        QVERIFY(frame.save(recursive));
+        QVERIFY(thumbnails.cached(recursive, 256).isNull());
+    }
+
     void thumbnailsFollowTheFreedesktopCache()
     {
         QTemporaryDir dir;
