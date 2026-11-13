@@ -431,11 +431,22 @@ void FolderModel::summarize(Entry &entry, bool showHidden) {
     }
 }
 
-int FolderModel::itemCount(const QString &folder, bool showHidden) {
+int FolderModel::itemCount(const QString &folder, bool showHidden, const std::function<bool()> &stop) {
+    if (stop && stop())
+        return -1;
     int count = 0;
-    for (QDirIterator it(folder, entryFilters(showHidden)); it.hasNext(); it.next())
-        ++count;
-    return count;
+    // Let hidden entries through too: filtering a long run inside Qt would
+    // give this loop no chance to notice cancellation. On Linux a dot name
+    // is hidden, as in listRecent(). The iterator still excludes . and ...
+    QDirIterator it(folder, entryFilters(true));
+    while (it.hasNext()) {
+        if (stop && stop())
+            return -1;
+        it.next();
+        if (showHidden || !it.fileName().startsWith('.'))
+            ++count;
+    }
+    return stop && stop() ? -1 : count;
 }
 
 void FolderModel::reload() {
@@ -527,10 +538,11 @@ void FolderModel::countFolders(quint64 generation) {
     watcher->setFuture(QtConcurrent::run([folders, showHidden, latest, generation]() mutable {
         // Overtaken (another folder, or a re-read), the counts would be
         // thrown away, so it stops instead of listing every subfolder.
+        const auto overtaken = [&] { return *latest != generation; };
         for (auto &folder : folders) {
-            if (*latest != generation)
+            if (overtaken())
                 break;
-            folder.second.itemCount = itemCount(folder.second.path, showHidden);
+            folder.second.itemCount = itemCount(folder.second.path, showHidden, overtaken);
         }
         return folders;
     }));

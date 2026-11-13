@@ -120,7 +120,8 @@ public:
     static void summarize(Entry &entry, bool showHidden);
     // Only how many items a folder holds, for the folder counts, which have
     // no use for its pictures or their order.
-    static int itemCount(const QString &folder, bool showHidden);
+    // Returns -1 (unknown) if stopped, never a partially counted folder.
+    static int itemCount(const QString &folder, bool showHidden, const std::function<bool()> &stop = {});
     static QStringList sortModes();
     static void sortEntries(QVector<Entry> &entries, const QString &sort, const QLocale &locale = QLocale());
     // The Recents view: a path that isn't a folder, listing recently used files.

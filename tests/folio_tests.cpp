@@ -561,6 +561,35 @@ private slots:
         QCOMPARE(FolderModel::itemCount(dir.path(), true), 5);
     }
 
+    void folderCountStopsInsideTheFolderAndCanBeRetried()
+    {
+        QTemporaryDir dir;
+        for (int i = 0; i < 64; ++i)
+            write(dir.filePath(QString::number(i) + ".txt"), "x");
+        int checks = 0;
+        // Cancellation arrives during one folder, rather than between folders.
+        const int count = FolderModel::itemCount(dir.path(), false, [&] { return ++checks >= 4; });
+        QCOMPARE(count, -1); // Unknown, never a partial count.
+        QVERIFY(checks >= 4);
+        QVERIFY(checks < 64);
+        QCOMPARE(FolderModel::itemCount(dir.path(), false), 64);
+
+        // An empty or not-yet-started folder is unknown too once cancelled.
+        QTemporaryDir empty;
+        QCOMPARE(FolderModel::itemCount(empty.path(), false, [] { return true; }), -1);
+        QCOMPARE(FolderModel::itemCount(dir.path(), true, [] { return true; }), -1);
+        QCOMPARE(FolderModel::itemCount(empty.path(), false), 0);
+
+        // Hidden entries still take work to enumerate, even when not counted.
+        QTemporaryDir hidden;
+        for (int i = 0; i < 64; ++i)
+            write(hidden.filePath("." + QString::number(i) + ".txt"), "x");
+        checks = 0;
+        QCOMPARE(FolderModel::itemCount(hidden.path(), false, [&] { return ++checks >= 4; }), -1);
+        QCOMPARE(FolderModel::itemCount(hidden.path(), false), 0);
+        QCOMPARE(FolderModel::itemCount(hidden.path(), true), 64);
+    }
+
     void folderModelLoadsInTheBackground()
     {
         QTemporaryDir dir;
