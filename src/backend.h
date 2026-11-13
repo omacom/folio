@@ -121,6 +121,9 @@ signals:
     void detailsChanged();
     void newWindowRequested(const QString &path);
     void selectRequested(const QString &name);
+    // The preview's ↑ or ↓ on a file it can't scroll: move one row in the
+    // folder view, whose layout only this window knows.
+    void stepRequested(int direction);
     void activateRequested();
 
 private:

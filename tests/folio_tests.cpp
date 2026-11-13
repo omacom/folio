@@ -5793,6 +5793,82 @@ private slots:
         }
     }
 
+    void previewerStepsByRowOnItsOwn()
+    {
+        QTemporaryDir dir;
+        write(dir.filePath("a.png"), "a");
+        write(dir.filePath("b.png"), "b");
+        write(dir.filePath("c.png"), "c");
+
+        // Without a Folio window to ask for the row above or below, ↑ and ↓
+        // fall back to the previous and next file.
+        Previewer previewer;
+        previewer.start(dir.filePath("b.png"), false, "name");
+        QTRY_COMPARE(previewer.count(), 3);
+        QCOMPARE(previewer.index(), 1);
+        previewer.stepRow(1);
+        QCOMPARE(previewer.index(), 2);
+        previewer.stepRow(1);
+        QCOMPARE(previewer.index(), 2);
+        previewer.stepRow(-1);
+        previewer.stepRow(-1);
+        QCOMPARE(previewer.index(), 0);
+    }
+
+    void previewerHoldsArrowsUntilFolioHasStepped()
+    {
+        QTemporaryDir dir;
+        for (const char *name : {"a.png", "b.png", "c.png", "d.png"})
+            write(dir.filePath(name), "x");
+
+        Previewer previewer;
+        previewer.connectToFolio(false);
+        QSignalSpy reported(&previewer, &Previewer::reported);
+        previewer.start(dir.filePath("a.png"), false, "name");
+        QTRY_COMPARE(previewer.count(), 4);
+
+        // ↓ then → before Folio answers: → waits, and is taken from the item
+        // Folio moved to, not from a.png.
+        previewer.stepRow(1);
+        previewer.next();
+        QCOMPARE(reported.count(), 1);
+        QCOMPARE(reported.at(0).at(0).toString(), QString("step 1"));
+        previewer.receive(dir.filePath("c.png"));
+        QCOMPARE(previewer.index(), 2);
+        QCOMPARE(reported.count(), 1);
+        previewer.receive("stepped");
+        QCOMPARE(previewer.index(), 3);
+        QCOMPARE(reported.count(), 2);
+        QCOMPARE(reported.at(1).at(0).toString(), QFileInfo(dir.filePath("d.png")).absoluteFilePath());
+
+        // At the last row Folio doesn't move, and only says it has stepped.
+        previewer.stepRow(1);
+        previewer.previous();
+        previewer.receive("stepped");
+        QCOMPARE(previewer.index(), 2);
+
+        // A reply that never comes holds the arrows for a moment only.
+        previewer.stepRow(-1);
+        previewer.previous();
+        QCOMPARE(previewer.index(), 2);
+        QTRY_COMPARE(previewer.index(), 1);
+    }
+
+    void previewerSaysWhileItReadsText()
+    {
+        QTemporaryDir dir;
+        write(dir.filePath("long.txt"), QByteArray(4096, 'x'));
+        write(dir.filePath("b.png"), "b");
+
+        Previewer previewer;
+        previewer.start(dir.filePath("long.txt"), false, "name");
+        QVERIFY(previewer.readingText());
+        QTRY_VERIFY(!previewer.readingText());
+        QCOMPARE(previewer.text().size(), 4096);
+        previewer.show(dir.filePath("b.png"));
+        QVERIFY(!previewer.readingText());
+    }
+
     void themeFallsBack()
     {
         QTemporaryDir dir;

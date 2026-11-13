@@ -18,6 +18,8 @@ Item {
 
     Selecting { id: selecting; view: here }
     function focusView() { here.forceActiveFocus() }
+    // The preview's ↑ and ↓: the row above or below in the current column.
+    function stepRow(direction) { direction < 0 ? here.decrementCurrentIndex() : here.incrementCurrentIndex() }
     function menuAnchor() { return here.currentItem }
 
     // Every column has a menu: on an item there, or on the column's folder.

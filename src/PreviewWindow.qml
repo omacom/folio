@@ -53,8 +53,24 @@ ApplicationWindow {
     Shortcut { sequence: "Left"; context: Qt.ApplicationShortcut; onActivated: win.rtl ? previewer.next() : previewer.previous() }
     Shortcut { sequence: "Right"; context: Qt.ApplicationShortcut; onActivated: win.rtl ? previewer.previous() : previewer.next() }
     Shortcut { sequences: ["Return", "Enter"]; context: Qt.ApplicationShortcut; onActivated: previewer.open() }
-    Shortcut { sequences: ["Up"]; context: Qt.ApplicationShortcut; onActivated: win.call("scroll", -1) }
-    Shortcut { sequences: ["Down"]; context: Qt.ApplicationShortcut; onActivated: win.call("scroll", 1) }
+    // ↑ and ↓ scroll what's taller than the window (a long text, a zoomed
+    // picture, a PDF); anything that fits moves to the item above or below,
+    // as the arrows do in the folder.
+    function upDown(direction) {
+        // A text still being read looks short; stepping past it then would
+        // skip a long one. The next press, once it's in, knows which.
+        if (previewer.readingText)
+            return
+        const v = win.view
+        const scrolls = v && typeof v.scroll === "function"
+            && (v.contentHeight === undefined || v.contentHeight > v.height + 1)
+        if (scrolls)
+            v.scroll(direction)
+        else
+            previewer.stepRow(direction)
+    }
+    Shortcut { sequences: ["Up"]; context: Qt.ApplicationShortcut; onActivated: win.upDown(-1) }
+    Shortcut { sequences: ["Down"]; context: Qt.ApplicationShortcut; onActivated: win.upDown(1) }
     Shortcut { sequences: [StandardKey.MoveToPreviousPage]; context: Qt.ApplicationShortcut; onActivated: win.call("page", -1) }
     Shortcut { sequences: [StandardKey.MoveToNextPage]; context: Qt.ApplicationShortcut; onActivated: win.call("page", 1) }
     Shortcut { sequences: [StandardKey.ZoomIn, "Ctrl+="]; context: Qt.ApplicationShortcut; onActivated: win.call("zoomBy", 1.25) }
@@ -182,7 +198,7 @@ ApplicationWindow {
             visible: win.helpVisible
             onDismissed: win.helpVisible = false
             shortcuts: [
-                [win.rtl ? "→ / ←" : "← / →", qsTr("Previous / next file")],
+                [win.rtl ? "→ ← ↑ ↓" : "← → ↑ ↓", qsTr("Previous / next file")],
                 ["⏎", qsTr("Open in its app")],
                 ["↑ ↓ PgUp PgDn", qsTr("Scroll")],
                 ["Ctrl+= / Ctrl+-", qsTr("Zoom in / out")],

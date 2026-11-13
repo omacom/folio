@@ -41,6 +41,15 @@ Backend::Backend(const QString &home, QObject *parent)
     connect(&m_preview, &QProcess::readyReadStandardOutput, this, [this] {
         while (m_preview.canReadLine()) {
             const QString shown = QString::fromUtf8(m_preview.readLine()).trimmed();
+            if (shown.startsWith("step ")) {
+                // The view moves and sends its new item right away (or
+                // nothing, at the first or last row); "stepped" after it
+                // lets the preview take the arrows that came meanwhile.
+                emit stepRequested(shown.mid(5).toInt() < 0 ? -1 : 1);
+                if (previewing())
+                    m_preview.write("stepped\n");
+                continue;
+            }
             m_previewed = shown;
             const QFileInfo info(shown);
             if (info.absolutePath() == path())

@@ -14,7 +14,10 @@
 //
 // Talks to the Folio window that started it over stdin and stdout, one path
 // per line: Folio writes the item selected in its grid, the preview writes
-// the item it steps to, and each side follows the other.
+// the item it steps to, and each side follows the other. ↑ and ↓ are written
+// as "step -1" and "step 1": rows belong to the folder view, so Folio moves
+// its selection, sends the new item back, then "stepped". Arrows pressed
+// before that wait for it: taken from the old item, they'd undo the move.
 class Previewer : public QObject {
     Q_OBJECT
     // Listing the folder only changes where the item sits among its
@@ -26,6 +29,9 @@ class Previewer : public QObject {
     Q_PROPERTY(QString viewer READ viewer NOTIFY changed)
     Q_PROPERTY(QString url READ url NOTIFY changed)
     Q_PROPERTY(QString text READ text NOTIFY changed)
+    // A text's opening part is still being read: until it's in, its length
+    // (whether ↑ and ↓ scroll it or step past it) isn't known.
+    Q_PROPERTY(bool readingText READ readingText NOTIFY changed)
     Q_PROPERTY(QString type READ type NOTIFY changed)
 
 public:
@@ -34,8 +40,12 @@ public:
     // Shows the file right away, then lists its folder in the background so
     // the arrow keys can step to its neighbours.
     void start(const QString &path, bool showHidden, const QString &sort);
-    // Reads paths from stdin and reports steps on stdout.
-    void connectToFolio();
+    // Reads paths from stdin and reports steps on stdout; the tests leave
+    // stdin and stdout alone and talk through receive() and reported().
+    void connectToFolio(bool overStdio = true);
+    // One line from Folio: a path to show, or "stepped" once it has moved a
+    // row for ↑ or ↓.
+    void receive(const QString &line);
     // Shows another file; one in the same folder keeps the list.
     void show(const QString &path);
     // Lists the folder again, keeping the file shown: after a language
@@ -48,10 +58,14 @@ public:
     QString viewer() const { return m_viewer; }
     QString url() const;
     QString text() const { return m_text; }
+    bool readingText() const { return m_readingText; }
     QString type() const;
 
     Q_INVOKABLE void next();
     Q_INVOKABLE void previous();
+    // ↑ or ↓: the item above or below in the Folio window's view, or the
+    // previous or next file when the preview runs on its own.
+    Q_INVOKABLE void stepRow(int direction);
     Q_INVOKABLE void open();
 
     // Which view shows a type: image, animated, thumbnail, video, audio,
@@ -69,14 +83,21 @@ public:
 signals:
     void changed();
     void listed();
+    // A line for Folio: the path stepped to, or "step -1" / "step 1".
+    void reported(const QString &line);
 
 private:
+    enum class Move { Previous, Next, Up, Down };
+    void move(Move move);
+    void stepped();
     void setIndex(int index, bool report);
+    void report(const QString &line);
 
     QVector<FolderModel::Entry> m_entries;
     int m_index = -1;
     QString m_viewer;
     QString m_text;
+    bool m_readingText = false;
     bool m_showHidden = false;
     QString m_sort = "name";
     quint64 m_generation = 0;
@@ -84,6 +105,12 @@ private:
     // or skipped when they haven't started.
     std::shared_ptr<std::atomic<quint64>> m_reading = std::make_shared<std::atomic<quint64>>(0);
     bool m_reporting = false;
+    bool m_overStdio = false;
+    // Set from a "step" until Folio's "stepped"; the arrows pressed meanwhile
+    // wait in m_queued, in order.
+    bool m_awaitingStep = false;
+    quint64 m_step = 0;
+    QVector<Move> m_queued;
     QSocketNotifier *m_stdin = nullptr;
     QByteArray m_pending;
 };
