@@ -6,6 +6,7 @@
 #include <QObject>
 #include <QProcess>
 #include <QTimer>
+#include <functional>
 
 // The Omarchy palette, followed live. A file manager draws far more surface
 // than a one-tool app, so it reads the whole colors.toml rather than only the
@@ -28,6 +29,13 @@ class Theme : public QObject {
     Q_PROPERTY(QColor orange READ orange NOTIFY changed)
     Q_PROPERTY(bool light READ light NOTIFY changed)
     Q_PROPERTY(int radius READ radius NOTIFY changed)
+    Q_PROPERTY(QColor accentMark READ accentMark NOTIFY changed)
+    Q_PROPERTY(QColor quietMark READ quietMark NOTIFY changed)
+    Q_PROPERTY(QColor folderFill READ folderFill NOTIFY changed)
+    Q_PROPERTY(QColor disabledForeground READ disabledForeground NOTIFY changed)
+    Q_PROPERTY(QColor redText READ redText NOTIFY changed)
+    Q_PROPERTY(QColor accentText READ accentText NOTIFY changed)
+    Q_PROPERTY(QColor yellowText READ yellowText NOTIFY changed)
 
 public:
     explicit Theme(const QString &currentDirectory = {}, QObject *parent = nullptr, const QString &hyprctl = {});
@@ -49,6 +57,17 @@ public:
     QColor orange() const { return color("orange"); }
     bool light() const { return m_light; }
     int radius() const { return m_radius; }
+    QColor accentMark() const;
+    QColor quietMark() const;
+    QColor folderFill() const;
+    QColor disabledForeground() const;
+    QColor redText() const;
+    QColor accentText() const;
+    QColor yellowText() const;
+    Q_INVOKABLE QColor inkOn(const QColor &fill) const;
+
+    // Makes the first window with gray text asked for, unless the environment chose: Qt Quick draws new glyphs with LCD fringes, reused ones gray.
+    static void grayText(const std::function<void()> &firstWindow);
 
 signals:
     void changed();

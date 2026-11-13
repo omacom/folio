@@ -34,6 +34,7 @@
         <file>PreviewWindow.qml</file>
         <file>PdfPreview.qml</file>
         <file>MediaPreview.qml</file>
+        <file>FileDrop.qml</file>
         <file>Format.js</file>
         <file>i18n/en.json</file>
         <file>i18n/ar.json</file>

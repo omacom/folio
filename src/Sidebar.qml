@@ -32,11 +32,12 @@ Rectangle {
     // Each plugin section's rows, then the row for its view.
     function sectionRows(section) { return section.view ? section.rows.concat([section.view]) : section.rows }
     readonly property var pluginRows: plugins.sections.reduce((all, section) => all.concat(sectionRows(section)), [])
-    readonly property var rows: [].concat(places.places, places.pinned, places.views, places.devices, pluginRows)
-    readonly property int pinnedAt: places.places.length
-    readonly property int viewsAt: pinnedAt + places.pinned.length
-    readonly property int devicesAt: viewsAt + places.views.length
+    readonly property var rows: [].concat([homeRow], places.places, places.views, places.pinned, places.devices, pluginRows)
+    readonly property int pinnedAt: viewsAt + places.views.length
+    readonly property int viewsAt: 1 + places.places.length
+    readonly property int devicesAt: pinnedAt + places.pinned.length
     readonly property int pluginsAt: devicesAt + places.devices.length
+    readonly property var homeRow: ({ path: places.home })
     // Where a plugin section's rows start in `rows`.
     function sectionAt(index) {
         let at = pluginsAt
@@ -89,7 +90,7 @@ Rectangle {
     // A pinned folder is unpinned, a plugin's item taken off the sidebar.
     Keys.onDeletePressed: {
         const row = rows[cursor]
-        if (cursor >= pinnedAt && cursor < viewsAt)
+        if (cursor >= pinnedAt && cursor < devicesAt)
             places.unpin(row.path)
         else if (row && row.forgettable)
             plugins.forget(row.plugin, row.id)
@@ -125,7 +126,7 @@ Rectangle {
     readonly property string activePath: {
         let best = ""
         const here = sidebar.target.path
-        for (const list of [places.places, places.pinned, places.views, places.devices,
+        for (const list of [[homeRow], places.places, places.pinned, places.views, places.devices,
                             plugins.sections.filter(section => section.view).map(section => section.view)]) {
             for (const p of list) {
                 if (p.path !== "/" && (here === p.path || here.startsWith(p.path + "/")) && p.path.length > best.length)
@@ -183,25 +184,27 @@ Rectangle {
 
         background: Rectangle {
             radius: Math.min(4, theme.radius)
-            color: row.active || row.dropHover ? Qt.alpha(theme.accent, 0.16)
+            // Accent only while the sidebar holds the keyboard; grey while the files do.
+            color: row.dropHover || row.active && sidebar.activeFocus ? Qt.alpha(theme.accent, 0.16)
+                 : row.active ? Qt.alpha(theme.foreground, 0.10)
                  : row.hovered && row.enabled ? Qt.alpha(theme.foreground, 0.06) : "transparent"
             border.width: row.dropHover ? 2 : row.keyed ? 1 : 0
-            border.color: theme.accent
+            border.color: theme.accentMark
         }
 
-        DropArea {
+        FileDrop {
             id: rowDrop
             anchors.fill: parent
             enabled: row.dropPath.length > 0 || row.dropTrashes
-            keys: ["text/uri-list"]
+            folder: row.dropPath
             onEntered: (drag) => { drag.accepted = row.dropTrashes ? drag.hasUrls : fileOps.canDrop(drag.urls, row.dropPath) }
             onDropped: (drop) => {
                 if (row.dropTrashes) {
                     fileOps.trash(fileOps.localPaths(drop.urls))
+                    drop.accept(Qt.MoveAction)
                 } else {
-                    fileOps.dropInto(drop.urls, row.dropPath)
+                    drop.accept(fileOps.dropInto(drop.urls, row.dropPath, fileOps.ctrlHeld()))
                 }
-                drop.accept(Qt.MoveAction)
             }
         }
         contentItem: RowLayout {
@@ -222,6 +225,7 @@ Rectangle {
                     Layout.fillWidth: true
                     horizontalAlignment: Text.AlignLeft
                     text: row.text
+                    textFormat: Text.PlainText
                     elide: Text.ElideRight
                     color: row.active ? theme.brightForeground : theme.foreground
                 }
@@ -239,10 +243,11 @@ Rectangle {
                 readonly property string said: row.mark ? row.mark.status : row.status
                 visible: said.length > 0
                 text: said
-                color: !row.mark ? row.statusColor : row.mark.tone === "error" ? theme.red
-                     : row.mark.tone === "warning" ? theme.yellow : theme.secondaryForeground
+                color: !row.mark ? row.statusColor : row.mark.tone === "error" ? theme.redText
+                     : row.mark.tone === "warning" ? theme.yellowText : theme.secondaryForeground
                 font.pixelSize: 11
             }
+            Text { visible: rowDrop.containsDrag && !row.dropTrashes; text: rowDrop.copies ? qsTr("Copy here") : qsTr("Move here"); color: theme.foreground; font.pixelSize: 11 }
         }
     }
 
@@ -274,15 +279,15 @@ Rectangle {
             width: sidebar.width - 24
             spacing: 1
 
-            // The section's label is home itself: click it to go there.
-            SectionLabel {
-                Layout.topMargin: 0
+            PlaceRow {
+                dropPath: places.home
+                onDropHoverChanged: sidebar.dropHovers += dropHover ? 1 : -1
+                keyed: sidebar.activeFocus && sidebar.cursor === 0
+                onKeyedChanged: if (keyed) sidebar.reveal(this)
                 text: qsTr("Home")
-                color: sidebar.target.path === places.home ? theme.accent
-                     : homeHover.hovered ? theme.foreground : theme.secondaryForeground
-                Accessible.role: Accessible.Button
-                HoverHandler { id: homeHover; cursorShape: Qt.PointingHandCursor }
-                TapHandler { onTapped: sidebar.target.navigate(places.home) }
+                glyph: "home"
+                active: sidebar.activePath === places.home
+                onClicked: sidebar.target.navigate(places.home)
             }
             Repeater {
                 model: places.places
@@ -291,12 +296,29 @@ Rectangle {
                     required property int index
                     dropPath: modelData.path
                     onDropHoverChanged: sidebar.dropHovers += dropHover ? 1 : -1
-                    keyed: sidebar.activeFocus && sidebar.cursor === 0 + index
+                    keyed: sidebar.activeFocus && sidebar.cursor === 1 + index
                     onKeyedChanged: if (keyed) sidebar.reveal(this)
                     text: modelData.name
                     glyph: modelData.icon
                     active: sidebar.activePath === modelData.path
                     onClicked: sidebar.target.navigate(modelData.path)
+                }
+            }
+
+            // Views: lists that aren't a folder of their own.
+            Repeater {
+                model: places.views
+                PlaceRow {
+                    required property var modelData
+                    required property int index
+                    dropTrashes: modelData.icon === "trash"
+                    onDropHoverChanged: sidebar.dropHovers += dropHover ? 1 : -1
+                    text: modelData.icon === "trash" ? qsTr("Trash") : qsTr("Recents")
+                    glyph: modelData.icon
+                    active: sidebar.activePath === modelData.path
+                    onClicked: sidebar.target.navigate(modelData.path)
+                    keyed: sidebar.activeFocus && sidebar.cursor === sidebar.viewsAt + index
+                    onKeyedChanged: if (keyed) sidebar.reveal(this)
                 }
             }
 
@@ -339,14 +361,15 @@ Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: 34
                 visible: sidebar.dragging
+                // Theme's accentText floors on this 0.22 tint, so the two change together.
                 color: Qt.alpha(theme.accent, pinDrop.containsDrag ? 0.22 : 0.08)
                 border.width: pinDrop.containsDrag ? 2 : 1
-                border.color: theme.accent
+                border.color: theme.accentMark
                 radius: Math.min(4, theme.radius)
                 Text {
                     anchors.centerIn: parent
                     text: qsTr("Drop to pin")
-                    color: theme.accent
+                    color: theme.accentText
                     font.pixelSize: 12
                 }
                 DropArea {
@@ -361,24 +384,6 @@ Rectangle {
                         }
                         drop.accept(Qt.LinkAction)
                     }
-                }
-            }
-
-            // Views: lists that aren't a folder of their own.
-            SectionLabel { text: qsTr("Views") }
-            Repeater {
-                model: places.views
-                PlaceRow {
-                    required property var modelData
-                    required property int index
-                    dropTrashes: modelData.icon === "trash"
-                    onDropHoverChanged: sidebar.dropHovers += dropHover ? 1 : -1
-                    text: modelData.icon === "trash" ? qsTr("Trash") : qsTr("Recents")
-                    glyph: modelData.icon
-                    active: sidebar.activePath === modelData.path
-                    onClicked: sidebar.target.navigate(modelData.path)
-                    keyed: sidebar.activeFocus && sidebar.cursor === sidebar.viewsAt + index
-                    onKeyedChanged: if (keyed) sidebar.reveal(this)
                 }
             }
 

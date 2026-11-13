@@ -30,8 +30,12 @@ class FolderModel : public QAbstractListModel {
     Q_PROPERTY(int selectedCount READ selectedCount NOTIFY selectionChanged)
     // Set, the folder lists what matches it here and in every folder below.
     Q_PROPERTY(QString query READ query WRITE setQuery NOTIFY queryChanged)
+    Q_PROPERTY(qint64 selectedSize READ selectedSize NOTIFY selectionChanged)
+    Q_PROPERTY(int selectedFolderCount READ selectedFolderCount NOTIFY selectionChanged)
     // The items a plugin's view lists, as Plugins::views gives them.
     Q_PROPERTY(QVariantList items READ items WRITE setItems NOTIFY itemsChanged)
+    // A search stops at this many matches, so a count this high may be cut.
+    Q_PROPERTY(int searchLimit READ searchLimit CONSTANT)
 
 public:
     enum Role {
@@ -46,6 +50,8 @@ public:
         ItemCountRole,
         SelectedRole,
         IconRole,
+        FileNameRole,
+        FolderRole,
     };
 
     struct Entry {
@@ -64,6 +70,8 @@ public:
         int itemCount = -1;
         // The first pictures in a folder, for the preview window.
         QStringList peek;
+        // A search result's folder, from the searched one; empty when it is there.
+        QString folder;
     };
 
     explicit FolderModel(QObject *parent = nullptr);
@@ -93,6 +101,8 @@ public:
     // By path, for Recents, where two files from different folders can
     // share a name.
     Q_INVOKABLE int indexOfPath(const QString &path) const;
+    // Where the query starts in a file's name, matched as the search matches it; -1 for none.
+    Q_INVOKABLE int matchStart(const QString &fileName) const;
 
     // The selection, kept by path so it survives a re-read or a re-sort.
     // The views keep the cursor (the current item) themselves.
@@ -105,6 +115,9 @@ public:
     Q_INVOKABLE void clearSelection();
     Q_INVOKABLE bool isSelected(int row) const;
     Q_INVOKABLE QStringList selectedPaths() const;
+    // The selected files' bytes together, and how many selected are folders.
+    qint64 selectedSize() const;
+    int selectedFolderCount() const;
 
     // Synchronous building blocks, used by the background passes and tests.
     // A listing stops, empty, as soon as `stop` returns true. Names sort
@@ -140,8 +153,10 @@ public:
     // named by its path from `root`. Stops at `limit` matches, at other
     // filesystems and at symlinks, and as soon as `stop` returns true.
     static QVector<Entry> search(const QString &root, const QString &query, bool showHidden, const QString &sort,
-                                 const std::function<bool()> &stop = {}, int limit = 1000,
+                                 const std::function<bool()> &stop = {}, int limit = maxSearchResults,
                                  const QLocale &locale = QLocale());
+    static constexpr int maxSearchResults = 1000;
+    int searchLimit() const { return maxSearchResults; }
 
 signals:
     void pathChanged();

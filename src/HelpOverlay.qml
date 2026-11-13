@@ -52,6 +52,7 @@ Rectangle {
         ["Ctrl+I", qsTr("Show or hide the details pane")],
         ["Ctrl+P", qsTr("Pin or unpin the folder (or drag it to the sidebar)")],
         ["Ctrl+C / X / V", qsTr("Copy, cut, paste files")],
+        [qsTr("Drag / Ctrl+drag"), qsTr("Move files to a folder / copy them")],
         ["Ctrl+Shift+C", qsTr("Copy the path as text")],
         ["F2 / Ctrl+Shift+D", qsTr("Rename / duplicate")],
         ["Ctrl+N", qsTr("New window")],
@@ -74,6 +75,7 @@ Rectangle {
     // Sized to what it holds: two columns of shortcuts side by side when
     // the window is wide enough, and scrolling when it's too short for them.
     Rectangle {
+        id: card
         anchors.centerIn: parent
         width: Math.min(parent.width - 64, content.implicitWidth + 56)
         height: Math.min(parent.height - 64, content.implicitHeight + 56)
@@ -90,7 +92,14 @@ Rectangle {
             contentHeight: content.implicitHeight
             clip: true
             boundsBehavior: Flickable.StopAtBounds
-            ScrollBar.vertical: FolioScrollBar { }
+            // In the card's margin, clear of the descriptions; at rest too, so the rows below are known.
+            ScrollBar.vertical: FolioScrollBar {
+                policy: ScrollBar.AlwaysOn
+                parent: card
+                anchors.right: parent.right
+                y: flick.y
+                height: flick.height
+            }
 
             ColumnLayout {
                 id: content

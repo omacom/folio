@@ -8,6 +8,7 @@
 #include <QFileInfo>
 #include <QFutureWatcher>
 #include <QGuiApplication>
+#include <QIcon>
 #include <QLocale>
 #include <QMimeData>
 #include <QMimeDatabase>
@@ -757,10 +758,39 @@ bool FileOps::canDrop(const QList<QUrl> &urls, const QString &folder) const {
     return any;
 }
 
-void FileOps::dropInto(const QList<QUrl> &urls, const QString &folder) {
+Qt::DropAction FileOps::dropInto(const QList<QUrl> &urls, const QString &folder, bool copy) {
     if (!canDrop(urls, folder) || !idle())
-        return;
-    transferInBackground(localPaths(urls), folder, Drop, false);
+        return Qt::IgnoreAction;
+    // canDrop passed, so at least one item is from elsewhere.
+    const QStringList paths = fromElsewhere(urls, folder);
+    // Asked before the work starts, which can move items away.
+    const Qt::DropAction action = dropCopies(urls, folder, copy) ? Qt::CopyAction : Qt::MoveAction;
+    transferInBackground(paths, folder, copy ? Copy : Drop, false);
+    return action;
+}
+
+bool FileOps::ctrlHeld() const {
+    // Asked of the system, not the last event: the drop's own event doesn't say.
+    return QGuiApplication::queryKeyboardModifiers().testFlag(Qt::ControlModifier);
+}
+
+bool FileOps::dropCopies(const QList<QUrl> &urls, const QString &folder, bool copy) const {
+    if (copy)
+        return true;
+    const QStringList paths = fromElsewhere(urls, folder);
+    // One item on the folder's drive makes it a move; a folder may be a mount so asks itself, a file or link asks its folder once.
+    const QByteArray drive = QStorageInfo(folder).device();
+    QSet<QString> asked;
+    for (const QString &path : paths) {
+        const QFileInfo item(path);
+        const QString checked = item.isDir() && !item.isSymLink() ? path : item.absolutePath();
+        if (asked.contains(checked))
+            continue;
+        asked.insert(checked);
+        if (QStorageInfo(checked).device() == drive)
+            return false;
+    }
+    return !paths.isEmpty();
 }
 
 QString FileOps::uriList(const QStringList &paths) const {
@@ -775,6 +805,14 @@ QStringList FileOps::localPaths(const QList<QUrl> &urls) const {
     for (const QUrl &url : urls)
         if (url.isLocalFile())
             paths << url.toLocalFile();
+    return paths;
+}
+
+QStringList FileOps::fromElsewhere(const QList<QUrl> &urls, const QString &folder) const {
+    QStringList paths;
+    for (const QString &path : localPaths(urls))
+        if (!alreadyIn(path, folder))
+            paths << path;
     return paths;
 }
 
@@ -1998,8 +2036,11 @@ QVariantList FileOps::appsFor(const QString &path) const {
         // even a hidden one (Omarchy's editor handler), so it can be named.
         if (!g_app_info_should_show(info) && id != defaultId)
             continue;
+        GIcon *icon = g_app_info_get_icon(info);
+        char *iconName = icon ? g_icon_to_string(icon) : nullptr;
         const QVariantMap app{{"id", id}, {"name", QString::fromUtf8(g_app_info_get_name(info))},
-                              {"isDefault", id == defaultId}};
+                              {"icon", QString::fromUtf8(iconName)}, {"isDefault", id == defaultId}};
+        g_free(iconName);
         if (id == defaultId)
             apps.prepend(app);
         else
@@ -2008,6 +2049,21 @@ QVariantList FileOps::appsFor(const QString &path) const {
     g_list_free_full(all, g_object_unref);
     g_free(type);
     return apps;
+}
+
+QImage AppIconProvider::requestImage(const QString &id, QSize *size, const QSize &requestedSize) {
+    // Open With's icon column, for an Image that names no size.
+    constexpr int menuIconSize = 16;
+    const QSize want = requestedSize.isValid() ? requestedSize : QSize(menuIconSize, menuIconSize);
+    const QString name = QUrl::fromPercentEncoding(id.toUtf8());
+    const QIcon icon = QFileInfo(name).isAbsolute() ? QIcon(name) : QIcon::fromTheme(name);
+    QImage image = icon.pixmap(want).toImage();
+    if (image.isNull()) {
+        image = QImage(want, QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::transparent);
+    }
+    *size = image.size();
+    return image;
 }
 
 void FileOps::openWith(const QString &path, const QString &appId) {

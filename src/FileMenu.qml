@@ -123,6 +123,8 @@ FolioMenu {
             FolioMenuItem {
                 required property var modelData
                 text: modelData.isDefault ? qsTr("%1 (default)").arg(modelData.name) : modelData.name
+                iconColumn: true
+                icon.source: modelData.icon ? "image://appicon/" + encodeURIComponent(modelData.icon) : ""
                 onTriggered: fileOps.openWith(fileMenu.target.path, modelData.id)
             }
         }

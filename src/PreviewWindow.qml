@@ -33,6 +33,7 @@ ApplicationWindow {
     LayoutMirroring.childrenInherit: true
 
     property bool helpVisible: false
+    onHelpVisibleChanged: if (helpVisible) help.forceActiveFocus()
 
     readonly property bool rtl: Qt.application.layoutDirection === Qt.RightToLeft
     readonly property var item: previewer.item
@@ -49,14 +50,15 @@ ApplicationWindow {
 
     Shortcut { sequences: ["Space", "Escape", "Q"]; context: Qt.ApplicationShortcut; onActivated: win.helpVisible ? win.helpVisible = false : Qt.quit() }
     Shortcut { sequence: "?"; context: Qt.ApplicationShortcut; onActivated: win.helpVisible = !win.helpVisible }
-    // The folder's files run right to left when mirrored, so Left is next.
-    Shortcut { sequence: "Left"; context: Qt.ApplicationShortcut; onActivated: win.rtl ? previewer.next() : previewer.previous() }
-    Shortcut { sequence: "Right"; context: Qt.ApplicationShortcut; onActivated: win.rtl ? previewer.previous() : previewer.next() }
     Shortcut { sequences: ["Return", "Enter"]; context: Qt.ApplicationShortcut; onActivated: previewer.open() }
-    Shortcut { sequences: ["Up"]; context: Qt.ApplicationShortcut; onActivated: win.call("scroll", -1) }
-    Shortcut { sequences: ["Down"]; context: Qt.ApplicationShortcut; onActivated: win.call("scroll", 1) }
-    Shortcut { sequences: [StandardKey.MoveToPreviousPage]; context: Qt.ApplicationShortcut; onActivated: win.call("page", -1) }
-    Shortcut { sequences: [StandardKey.MoveToNextPage]; context: Qt.ApplicationShortcut; onActivated: win.call("page", 1) }
+    // The folder's files run right to left when mirrored, so Left is next.
+    Shortcut { sequence: "Left"; context: Qt.ApplicationShortcut; enabled: !win.helpVisible; onActivated: win.rtl ? previewer.next() : previewer.previous() }
+    Shortcut { sequence: "Right"; context: Qt.ApplicationShortcut; enabled: !win.helpVisible; onActivated: win.rtl ? previewer.previous() : previewer.next() }
+    // While the shortcut sheet is up, these keys and the two above leave the preview behind it alone.
+    Shortcut { sequences: ["Up"]; context: Qt.ApplicationShortcut; enabled: !win.helpVisible; onActivated: win.call("scroll", -1) }
+    Shortcut { sequences: ["Down"]; context: Qt.ApplicationShortcut; enabled: !win.helpVisible; onActivated: win.call("scroll", 1) }
+    Shortcut { sequences: [StandardKey.MoveToPreviousPage]; context: Qt.ApplicationShortcut; enabled: !win.helpVisible; onActivated: win.call("page", -1) }
+    Shortcut { sequences: [StandardKey.MoveToNextPage]; context: Qt.ApplicationShortcut; enabled: !win.helpVisible; onActivated: win.call("page", 1) }
     Shortcut { sequences: [StandardKey.ZoomIn, "Ctrl+="]; context: Qt.ApplicationShortcut; onActivated: win.call("zoomBy", 1.25) }
     Shortcut { sequences: [StandardKey.ZoomOut]; context: Qt.ApplicationShortcut; onActivated: win.call("zoomBy", 0.8) }
     Shortcut { sequence: "Ctrl+0"; context: Qt.ApplicationShortcut; onActivated: win.call("fit") }
@@ -92,6 +94,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             horizontalAlignment: Text.AlignLeft
                             text: win.item.name || ""
+                            textFormat: Text.PlainText
                             color: theme.brightForeground
                             font.pixelSize: 15
                             font.weight: Font.DemiBold
@@ -178,6 +181,7 @@ ApplicationWindow {
         }
 
         HelpOverlay {
+            id: help
             anchors.fill: parent
             visible: win.helpVisible
             onDismissed: win.helpVisible = false
@@ -298,8 +302,8 @@ ApplicationWindow {
                 selectByMouse: true
                 activeFocusOnPress: false
                 wrapMode: TextEdit.Wrap
-                textFormat: win.viewer === "markdown" ? TextEdit.MarkdownText : TextEdit.PlainText
-                text: previewer.text
+                textFormat: win.viewer === "markdown" ? TextEdit.RichText : TextEdit.PlainText
+                text: win.viewer === "markdown" ? previewer.html : previewer.text
                 color: theme.foreground
                 selectionColor: theme.accent
                 selectedTextColor: theme.accentForeground
@@ -380,7 +384,8 @@ ApplicationWindow {
                 Text {
                     Layout.alignment: Qt.AlignHCenter
                     text: win.item.extension || ""
-                    color: theme.accent
+                    textFormat: Text.PlainText
+                    color: theme.accentText
                     font.weight: Font.DemiBold
                 }
                 Text {

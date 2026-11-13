@@ -10,8 +10,10 @@ ScrollBar {
         implicitWidth: 4
         implicitHeight: 4
         radius: Math.min(2, theme.radius)
-        color: Qt.alpha(theme.foreground, bar.pressed ? 0.5 : 0.28)
-        visible: bar.size < 1 && (bar.active || bar.hovered)
+        // Shown at rest it is the only sign of more below, so it takes the theme's quiet text ink (3:1 at least).
+        color: bar.policy === ScrollBar.AlwaysOn ? (bar.pressed ? theme.foreground : theme.secondaryForeground)
+             : Qt.alpha(theme.foreground, bar.pressed ? 0.5 : 0.28)
+        visible: bar.size < 1 && (bar.active || bar.hovered || bar.policy === ScrollBar.AlwaysOn)
     }
     background: null
     // Material fades the bar in and out of its active state; drop that.

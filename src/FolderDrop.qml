@@ -5,10 +5,9 @@ import QtQuick
 // where it refuses one (it's the folder being dropped, or the one the drop
 // is already in), this refuses too, rather than catching the drop as it
 // falls through and landing it in this folder instead.
-DropArea {
+FileDrop {
     id: area
 
-    property string folder
     // The list or grid whose items lie over this area.
     property Item items
 
@@ -18,14 +17,12 @@ DropArea {
         return !(item && item.isDir) && fileOps.canDrop(drag.urls, folder)
     }
 
-    keys: ["text/uri-list"]
     onEntered: (drag) => { drag.accepted = takes(drag) }
     onPositionChanged: (drag) => { drag.accepted = takes(drag) }
     onDropped: (drop) => {
         if (!takes(drop))
             return
-        fileOps.dropInto(drop.urls, folder)
-        drop.accept(Qt.MoveAction)
+        drop.accept(fileOps.dropInto(drop.urls, folder, fileOps.ctrlHeld()))
     }
 
     Rectangle {
@@ -34,7 +31,17 @@ DropArea {
         visible: area.containsDrag
         color: Qt.alpha(theme.accent, 0.05)
         border.width: 2
-        border.color: theme.accent
+        border.color: theme.accentMark
         radius: Math.min(6, theme.radius)
+        Text {
+            // A dragged tile's picture hangs 52 px below the pointer, so the label sits 8 px under that.
+            readonly property int belowPointer: 60
+            readonly property int edgeMargin: 12
+            x: Math.max(edgeMargin, Math.min(parent.width - width - edgeMargin, area.drag.x - parent.x - width / 2))
+            y: Math.max(edgeMargin, Math.min(parent.height - height - edgeMargin, area.drag.y - parent.y + belowPointer))
+            text: area.copies ? qsTr("Copy here") : qsTr("Move here")
+            color: theme.foreground
+            font.pixelSize: 12
+        }
     }
 }

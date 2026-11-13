@@ -12,6 +12,7 @@ FocusScope {
 
     // The window this pane is in, for the state the panes share.
     readonly property var host: ApplicationWindow.window
+    readonly property Item dialogLayer: host ? host.dialogLayer : pane
     readonly property bool active: !!host && host.activePane === pane
     readonly property var paneBackend: backend
     readonly property var paneFileOps: fileOps
@@ -50,13 +51,16 @@ FocusScope {
     property bool cursorLetGo: false
     // While a text field has the keyboard (renaming, a password), single-key
     // and clipboard shortcuts stand aside so typing works.
-    readonly property bool typing: rename.visible || confirm.visible || clash.visible || formatDialog.visible || backend.mounter.asking || pathBar.editing || pathBar.searchFocused || (!!host && host.helpVisible)
+    readonly property bool typing: dialogShowing || pathBar.editing || pathBar.searchFocused || (!!host && (host.dialogOpen || host.helpVisible))
+    readonly property bool dialogShowing: rename.visible || confirm.visible || clash.visible || formatDialog.visible || backend.mounter.asking
     // Keys for the pane as a whole (undo, a new window, typing a path) work
     // wherever the keyboard is; keys for its files only while the files
     // have it, not while Tab has put it in the sidebar or the details, where
     // Delete or Space would act on files out of the keyboard's sight.
     readonly property bool paneKeys: active && !typing
     readonly property bool keys: paneKeys && activeFocus
+    // With the keys in another pane, a search field, the sidebar or the details, the views draw their selection without the accent.
+    readonly property bool keysElsewhere: !active || pathBar.searchFocused || (!!host && host.keysBesidePanes)
     // What file actions act on: everything selected, or the item under
     // the cursor when nothing is.
     function selectedPaths() {
@@ -84,6 +88,8 @@ FocusScope {
     readonly property bool inView: backend.path.startsWith("plugin:")
     readonly property bool fileKeys: keys && !inView
     Binding { target: backend.folder; property: "items"; value: (plugins.views[backend.path] || {}).items || [] }
+    // The bands showing above the files, which push the view down.
+    readonly property int bandsHeight: (banner.visible ? banner.height : 0) + (trashBand.visible ? trashBand.height : 0)
     function deleteSelected() {
         const paths = pane.selectedPaths()
         if (pane.inTrash)
@@ -95,9 +101,8 @@ FocusScope {
         if (paths.length === 0)
             return
         const name = paths[0].slice(paths[0].lastIndexOf("/") + 1)
-        confirm.ask(qsTr("Delete for good?"),
-                    paths.length === 1 ? qsTr("%1 will be deleted permanently. This can't be undone.").arg(name)
-                                       : qsTr("%Ln items will be deleted permanently. This can't be undone.", "", paths.length),
+        confirm.ask(paths.length === 1 ? qsTr("Delete “%1” permanently?").arg(name) : qsTr("Delete %Ln items permanently?", "", paths.length),
+                    qsTr("This can't be undone."),
                     qsTr("Delete"), () => fileOps.deleteForever(paths))
     }
     function emptyTrash() {
@@ -122,6 +127,14 @@ FocusScope {
     // details pane follow.
     onActiveFocusChanged: if (activeFocus && host) host.activePane = pane
     function focusView() { if (view.item) view.item.focusView() }
+    // A dialog sits outside this scope, so it makes this pane active, and the last one to close hands the keys back.
+    function dialogShown(shown) {
+        if (shown && host)
+            host.activePane = pane
+        else if (!shown)
+            Qt.callLater(pane.handBack)
+    }
+    function handBack() { if (!(host && host.dialogOpen)) focusView() }
 
     // Pins a folder to the sidebar, or unpins it when it's pinned already.
     function togglePin(target) {
@@ -221,7 +234,8 @@ FocusScope {
 
     Connections {
         target: view.item
-        function onContextMenu(item, folder, at) { fileMenu.show(item, folder, null, at) }
+        // A right click in the other pane makes it the one the keys and the menu act on, as a left click does.
+        function onContextMenu(item, folder, at) { pane.focusView(); fileMenu.show(item, folder, null, at) }
         function onCursorLetGo() { pane.cursorLetGo = true }
         // The cursor's item is remembered as the cursor moves, and once the
         // folder's loaded has placed it. Not when a re-read leaves the cursor
@@ -333,6 +347,7 @@ FocusScope {
         }
         // Problems and slow work are said in the window, not swallowed.
         Rectangle {
+            id: banner
             Layout.fillWidth: true
             implicitHeight: 40
             visible: bannerText.text.length > 0
@@ -345,8 +360,9 @@ FocusScope {
                     id: bannerText
                     Layout.fillWidth: true
                     text: backend.message || backend.folder.error || (slowWork.shown ? slowWork.working : "") || backend.notice
+                    textFormat: Text.PlainText
                     color: theme.brightForeground
-                    elide: Text.ElideRight
+                    elide: Text.ElideMiddle
                 }
                 // File work can be stopped where it's shown. A click leaves
                 // the keyboard with the files, since the button goes once
@@ -369,6 +385,7 @@ FocusScope {
 
         // The trash offers one thing: emptying it.
         Rectangle {
+            id: trashBand
             Layout.fillWidth: true
             implicitHeight: 48
             visible: pane.inTrash && backend.folder.count > 0
@@ -412,9 +429,9 @@ FocusScope {
                 items: view.item
             }
         }
-        Component { id: gridView; FolderGrid { zoom: pane.zoom; onZoomRequested: (step) => pane.zoomBy(step) } }
-        Component { id: listView; FolderList { } }
-        Component { id: columnsView; FolderColumns { } }
+        Component { id: gridView; FolderGrid { zoom: pane.zoom; inactive: pane.keysElsewhere; captionOffset: -pane.bandsHeight / 2; onZoomRequested: (step) => pane.zoomBy(step) } }
+        Component { id: listView; FolderList { inactive: pane.keysElsewhere; captionOffset: -pane.bandsHeight / 2 } }
+        Component { id: columnsView; FolderColumns { inactive: pane.keysElsewhere } }
     }
 
     // Drawn over the window's top bar. It reaches back over the sidebar for
@@ -433,6 +450,8 @@ FocusScope {
         onTogglePreview: if (pane.host) pane.host.previewVisible = !pane.host.previewVisible
         onCycleView: pane.cycleView()
         onCloseRequested: pane.closeRequested()
+        split: !!pane.host && pane.host.split
+        onToggleSplit: if (pane.host) pane.host.split ? pane.host.closeSplit() : pane.host.openSplit()
     }
 
     // With two panes, a line along the top marks the one keys go to.
@@ -441,7 +460,7 @@ FocusScope {
         y: pathBar.height - 1
         width: parent.width
         height: 2
-        color: pane.active ? theme.accent : "transparent"
+        color: pane.active ? theme.accentMark : "transparent"
     }
 
     // The mouse's back and forward thumb buttons move through history, as in
@@ -456,31 +475,36 @@ FocusScope {
     // A dialog takes the keyboard while it's open; closing only hides it,
     // so the keyboard is handed back to the files.
     MountPrompt {
+        parent: pane.dialogLayer
         anchors.fill: parent
-        onVisibleChanged: if (!visible) pane.focusView()
+        onVisibleChanged: pane.dialogShown(visible)
     }
 
     RenameDialog {
         id: rename
+        parent: pane.dialogLayer
         anchors.fill: parent
-        onVisibleChanged: if (!visible) pane.focusView()
+        onVisibleChanged: pane.dialogShown(visible)
     }
 
     ConfirmDialog {
         id: confirm
+        parent: pane.dialogLayer
         anchors.fill: parent
-        onVisibleChanged: if (!visible) pane.focusView()
+        onVisibleChanged: pane.dialogShown(visible)
     }
 
     FormatDialog {
         id: formatDialog
+        parent: pane.dialogLayer
         anchors.fill: parent
-        onVisibleChanged: if (!visible) pane.focusView()
+        onVisibleChanged: pane.dialogShown(visible)
     }
 
     ClashDialog {
         id: clash
+        parent: pane.dialogLayer
         anchors.fill: parent
-        onVisibleChanged: if (!visible) pane.focusView()
+        onVisibleChanged: pane.dialogShown(visible)
     }
 }

@@ -8,6 +8,11 @@ AbstractButton {
 
     property string glyph
     property bool active: false
+    // An on/off switch: off draws in the secondary ink, so on and off differ by brightness alone.
+    property bool toggle: false
+    // Some themes set brightForeground dimmer than foreground; on takes whichever stands out more.
+    readonly property color onInk: (theme.brightForeground.hslLightness > theme.foreground.hslLightness) !== theme.light
+                                   ? theme.brightForeground : theme.foreground
 
     implicitWidth: 36
     implicitHeight: 36
@@ -26,7 +31,8 @@ AbstractButton {
 
     background: Rectangle {
         radius: Math.min(4, theme.radius)
-        color: button.active ? Qt.alpha(theme.accent, 0.16)
+        // A toggle says on by its ink alone; any other active button keeps the plate.
+        color: button.active && !button.toggle ? Qt.alpha(theme.accent, 0.16)
              : button.hovered && button.enabled ? Qt.alpha(theme.foreground, 0.08)
              : "transparent"
     }
@@ -35,7 +41,9 @@ AbstractButton {
         Glyph {
             anchors.centerIn: parent
             name: button.glyph
-            color: !button.enabled ? Qt.alpha(theme.foreground, 0.35)
+            // Opaque on the bar: a translucent stroke blends twice, so 0.35 drew at 4.0:1, next to off's 5.1:1.
+            color: !button.enabled ? theme.disabledForeground
+                 : button.toggle ? (button.active ? button.onInk : theme.secondaryForeground)
                  : button.active ? theme.brightForeground : theme.foreground
         }
     }

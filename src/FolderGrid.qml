@@ -5,6 +5,11 @@ import QtQuick.Controls
 GridView {
     id: grid
 
+    // In a pane the keys don't go to: the selection is drawn without the accent.
+    property bool inactive: false
+    // Keeps the empty caption on the pane's middle line, level with the details pane's, while bands push the view down.
+    property real captionOffset: 0
+
     function select(row, keep) { selecting.select(row, keep) }
     // A click on empty space lets go of the cursor; the pane then keeps it
     // let go of through a re-read or a switch of view.
@@ -95,15 +100,28 @@ GridView {
         height: grid.cellHeight
         zoom: grid.tileZoom
         current: selected
+        inactive: grid.inactive
         onClicked: (modifiers) => { selecting.click(index, modifiers); grid.forceActiveFocus() }
         onActivated: backend.open(path)
     }
 
     Text {
         anchors.centerIn: parent
+        anchors.verticalCenterOffset: grid.captionOffset
         visible: grid.count === 0 && !backend.folder.loading && backend.folder.error.length === 0
         text: backend.folder.query ? qsTr("Nothing matches “%1”").arg(backend.folder.query)
             : plugins.views[backend.path] ? plugins.views[backend.path].empty : qsTr("This folder is empty")
+        textFormat: Text.PlainText
         color: theme.secondaryForeground
+        // The way out of a search that found nothing.
+        Text {
+            anchors.top: parent.bottom
+            anchors.topMargin: 6
+            anchors.horizontalCenter: parent.horizontalCenter
+            visible: backend.folder.query.length > 0
+            text: qsTr("Escape ends the search")
+            color: theme.secondaryForeground
+            font.pixelSize: 12
+        }
     }
 }

@@ -40,12 +40,13 @@ AbstractButton {
             radius: parent.radius + 3
             color: "transparent"
             border.width: 2
-            border.color: button.destructive ? theme.red : theme.accent
+            border.color: button.destructive ? theme.red : theme.accentMark
         }
     }
     contentItem: Text {
         id: label
         text: button.text
+        textFormat: Text.PlainText
         color: button.destructive ? theme.background : button.primary ? theme.accentForeground : theme.foreground
         font.weight: button.filled ? Font.DemiBold : Font.Normal
         horizontalAlignment: Text.AlignHCenter

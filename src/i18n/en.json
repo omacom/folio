@@ -28,17 +28,32 @@
   "%1 of %2": "%1 of %2",
   "%1 printed too much.": "%1 printed too much.",
   "%1 stopped with code %2.": "%1 stopped with code %2.",
-  "%1 will be deleted permanently. This can't be undone.": "%1 will be deleted permanently. This can't be undone.",
   "%1 · %2": "%1 · %2",
   "%1 × %2": "%1 × %2",
   "%1: %2": "%1: %2",
+  "%Ln folders": {
+    "one": "%Ln folder",
+    "other": "%Ln folders"
+  },
+  "%Ln found in %1 and below": {
+    "one": "%Ln found in %1 and below",
+    "other": "%Ln found in %1 and below"
+  },
   "%Ln items": {
     "one": "%Ln item",
     "other": "%Ln items"
   },
+  "%Ln items selected": {
+    "one": "%Ln item selected",
+    "other": "%Ln items selected"
+  },
   "%Ln items will be deleted permanently. This can't be undone.": {
     "one": "%Ln item will be deleted permanently. This can't be undone.",
     "other": "%Ln items will be deleted permanently. This can't be undone."
+  },
+  "%Ln or more found in %1 and below": {
+    "one": "%Ln or more found in %1 and below",
+    "other": "%Ln or more found in %1 and below"
   },
   "A folder, or a server's address like sftp://host/": "A folder, or a server's address like sftp://host/",
   "A name can't contain \"/\".": "A name can't contain \"/\".",
@@ -65,6 +80,7 @@
   "Check the server": "Check the server",
   "Choose": "Choose",
   "Close": "Close",
+  "Close the split": "Close the split",
   "Close the window": "Close the window",
   "Close this pane": "Close this pane",
   "Compress": "Compress",
@@ -80,6 +96,7 @@
   "Copied %1, but couldn't remove the original.": "Copied %1, but couldn't remove the original.",
   "Copy": "Copy",
   "Copy Path": "Copy Path",
+  "Copy here": "Copy here",
   "Copy the path as text": "Copy the path as text",
   "Copy, cut, paste files": "Copy, cut, paste files",
   "Copying %1: %2 of %3…": "Copying %1: %2 of %3…",
@@ -127,9 +144,13 @@
   "Couldn't unmount %1: %2": "Couldn't unmount %1: %2",
   "Cut": "Cut",
   "Delete": "Delete",
-  "Delete for good?": "Delete for good?",
+  "Delete %Ln items permanently?": {
+    "one": "Delete %Ln item permanently?",
+    "other": "Delete %Ln items permanently?"
+  },
   "Delete in the sidebar": "Delete in the sidebar",
   "Delete permanently (asks first)": "Delete permanently (asks first)",
+  "Delete “%1” permanently?": "Delete “%1” permanently?",
   "Deleted": "Deleted",
   "Delete…": "Delete…",
   "Deleting %L1 of %Ln items…": {
@@ -148,6 +169,7 @@
     "one": "Do this for the other %Ln clash",
     "other": "Do this for the other %Ln clashes"
   },
+  "Drag / Ctrl+drag": "Drag / Ctrl+drag",
   "Drag on empty space": "Drag on empty space",
   "Drives can't be changed without udisks2.": "Drives can't be changed without udisks2.",
   "Drop to pin": "Drop to pin",
@@ -167,6 +189,7 @@
     "other": "Emptying the trash: %L1 of %Ln items…"
   },
   "Emptying the trash…": "Emptying the trash…",
+  "Escape ends the search": "Escape ends the search",
   "Everything else, for files and for drives in the sidebar": "Everything else, for files and for drives in the sidebar",
   "Everything on this drive will be erased. This can't be undone.": "Everything on this drive will be erased. This can't be undone.",
   "Extract": "Extract",
@@ -220,6 +243,8 @@
   "Modified": "Modified",
   "Mount": "Mount",
   "Move between the sidebar, the panes and the details": "Move between the sidebar, the panes and the details",
+  "Move files to a folder / copy them": "Move files to a folder / copy them",
+  "Move here": "Move here",
   "Move the selection": "Move the selection",
   "Move to the trash": "Move to the trash",
   "Moved only part of %1: %2": "Moved only part of %1: %2",
@@ -346,6 +371,7 @@
   "Search %1": "Search %1",
   "Search %1 and below": "Search %1 and below",
   "Search this folder and below": "Search this folder and below",
+  "Searched %1 and below": "Searched %1 and below",
   "Select All": "Select All",
   "Select a range": "Select a range",
   "Select everything": "Select everything",
@@ -366,6 +392,7 @@
   "Sort: name, kind, newest, oldest, size": "Sort: name, kind, newest, oldest, size",
   "Sorted by kind": "Sorted by kind",
   "Sorted by name": "Sorted by name",
+  "Split": "Split",
   "Split into two panes / close the right one": "Split into two panes / close the right one",
   "Stop the file work under way, or dismiss what went wrong": "Stop the file work under way, or dismiss what went wrong",
   "Stopped after %L1 of %Ln items.": {
@@ -390,6 +417,7 @@
   "There's nothing in %1 to extract.": "There's nothing in %1 to extract.",
   "There's nothing to redo.": "There's nothing to redo.",
   "There's nothing to undo.": "There's nothing to undo.",
+  "This can't be undone.": "This can't be undone.",
   "This computer can't make %1 drives.": "This computer can't make %1 drives.",
   "This folder is empty": "This folder is empty",
   "This folder no longer exists.": "This folder no longer exists.",
@@ -438,7 +466,6 @@
   "Untitled Folder": "Untitled Folder",
   "Untitled Folder %1": "Untitled Folder %1",
   "User": "User",
-  "Views": "Views",
   "Works almost anywhere, old cameras and car stereos too, but no file can be over 4 GB.": "Works almost anywhere, old cameras and car stereos too, but no file can be over 4 GB.",
   "Works with Mac, Windows and Linux, and holds big files.": "Works with Mac, Windows and Linux, and holds big files.",
   "You don't have permission to open this folder.": "You don't have permission to open this folder.",

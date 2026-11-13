@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 
 // The frame Rename, Confirm and the mount prompt share: a scrim over the
-// pane and a card in its middle, titled, holding the dialog's own fields
+// window and a card in its middle, titled, holding the dialog's own fields
 // and buttons. A click on the scrim is the dialog's to answer; one on the
 // card stays there. Tab and Shift+Tab go round the dialog's own fields and
 // buttons, never on to the buttons behind it.
@@ -61,6 +61,7 @@ FocusScope {
                 Layout.fillWidth: true
                 text: dialog.title
                 wrapMode: Text.Wrap
+                textFormat: Text.PlainText
                 color: theme.brightForeground
                 font.pixelSize: 16
                 font.weight: Font.DemiBold

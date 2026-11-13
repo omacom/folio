@@ -23,8 +23,12 @@ Item {
     required property var size
     required property var modified
     required property bool selected
+    required property string fileName
+    required property string folder
 
     property bool current: false
+    // In a pane the keys don't go to: the selection is drawn without the accent.
+    property bool inactive: false
 
     signal clicked(int modifiers)
     signal activated()
@@ -32,6 +36,8 @@ Item {
     // Pictures and drawings round their corners with the theme: square on
     // Omarchy's default, softly rounded on themes that round windows.
     readonly property real iconRadius: Math.min(10, theme.radius)
+    // With nothing selected, keys act on the cursor's item.
+    readonly property bool cursor: GridView.isCurrentItem && backend.folder.selectedCount === 0
 
     // The badge and stand-in color for each kind, from the theme's palette.
     readonly property color kindColor: kind === "pdf" ? theme.red
@@ -69,12 +75,15 @@ Item {
 
     Text {
         id: label
+        // A search result lights the run of its name that matched.
+        readonly property string lit: Format.lit(tile.fileName, backend.folder.matchStart(tile.fileName), backend.folder.query.length, theme.brightForeground)
         anchors.top: artBox.bottom
         anchors.topMargin: 12
         anchors.horizontalCenter: parent.horizontalCenter
         width: parent.width - 28
-        text: tile.name
-        color: tile.current ? theme.accent : theme.foreground
+        text: lit || tile.fileName
+        textFormat: lit ? Text.StyledText : Text.PlainText
+        color: tile.current ? theme.brightForeground : theme.foreground
         font.pixelSize: 12
         horizontalAlignment: Text.AlignHCenter
         wrapMode: Text.WrapAtWordBoundaryOrAnywhere
@@ -95,13 +104,18 @@ Item {
             translator.language // Re-read when the language (and so the default locale) changes.
             if (tile.kind === "item")
                 return tile.extension
+            if (folderDrop.containsDrag)
+                return folderDrop.copies ? qsTr("Copy here") : qsTr("Move here")
             const size = tile.isDir ? Format.count(tile.itemCount) : Format.size(tile.size)
             // A folder's own date says little (it changes when anything in
             // it is added or removed), so only files show one.
-            const date = tile.isDir ? "" : Format.when(tile.modified)
-            return size && date ? qsTr("%1 · %2").arg(size).arg(date) : size || date
+            const date = tile.isDir || tile.folder ? "" : Format.when(tile.modified) // A search result's folder takes the date's room.
+            const rest = size && date ? qsTr("%1 · %2").arg(size).arg(date) : size || date
+            // Both in one arg() call, so a "%2" in a folder's name stays as written.
+            return tile.folder && rest ? qsTr("%1 · %2").arg(tile.folder, rest) : tile.folder || rest
         }
-        color: theme.secondaryForeground
+        textFormat: Text.PlainText
+        color: tile.current ? theme.foreground : theme.secondaryForeground
         font.pixelSize: 10
         horizontalAlignment: Text.AlignHCenter
         elide: Text.ElideRight
@@ -110,13 +124,13 @@ Item {
     // A folder takes files dropped anywhere on its tile, picture or name,
     // lighting up while they hover: the view's own drop area refuses the
     // whole cell, so the tile has to take all of it.
-    DropArea {
+    FileDrop {
         id: folderDrop
         anchors.fill: parent
         enabled: tile.isDir
-        keys: ["text/uri-list"]
+        folder: tile.path
         onEntered: (drag) => { drag.accepted = fileOps.canDrop(drag.urls, tile.path) }
-        onDropped: (drop) => { fileOps.dropInto(drop.urls, tile.path); drop.accept(Qt.MoveAction) }
+        onDropped: (drop) => drop.accept(fileOps.dropInto(drop.urls, tile.path, fileOps.ctrlHeld()))
     }
 
     HoverHandler {
@@ -175,11 +189,13 @@ Item {
             height: 92
             preferredRendererType: Shape.CurveRenderer
             ShapePath {
-                fillColor: tile.current || folderDrop.containsDrag ? Qt.tint(theme.lighterBackground, Qt.alpha(theme.accent, 0.3))
-                    : hover.hovered ? Qt.tint(theme.lighterBackground, Qt.alpha(theme.foreground, 0.06))
-                    : theme.lighterBackground
-                strokeColor: tile.current || folderDrop.containsDrag ? theme.accent : "transparent"
-                strokeWidth: folderDrop.containsDrag ? 2.5 : 1.5
+                fillColor: tile.current && !tile.inactive || folderDrop.containsDrag ? Qt.tint(theme.folderFill, Qt.alpha(theme.accent, 0.3))
+                    : tile.current ? Qt.tint(theme.folderFill, Qt.alpha(theme.foreground, 0.08))
+                    : hover.hovered ? Qt.tint(theme.folderFill, Qt.alpha(theme.foreground, 0.06))
+                    : theme.folderFill
+                strokeColor: (tile.current || tile.cursor) && !tile.inactive || folderDrop.containsDrag ? theme.accentMark
+                           : tile.current || tile.cursor ? theme.quietMark : "transparent"
+                strokeWidth: folderDrop.containsDrag ? 2.5 : tile.cursor ? 1 : 1.5
                 joinStyle: tile.iconRadius > 0 ? ShapePath.RoundJoin : ShapePath.MiterJoin
                 PathSvg { path: tile.folderPath(tile.iconRadius) }
             }
@@ -257,14 +273,14 @@ Item {
                 return Qt.rect((w - 66) / 2, 0, 66, h)
             }
             Rectangle {
-                visible: tile.current || hover.hovered
+                visible: tile.current || tile.cursor || hover.hovered
                 x: parent.shown.x - 3
                 y: parent.shown.y - 3
                 width: parent.shown.width + 6
                 height: parent.shown.height + 6
                 color: "transparent"
                 border.width: tile.current ? 2 : 1
-                border.color: tile.current ? theme.accent : Qt.alpha(theme.foreground, 0.2)
+                border.color: (tile.current || tile.cursor) && !tile.inactive ? theme.accentMark : tile.current || tile.cursor ? theme.quietMark : Qt.alpha(theme.foreground, 0.2)
                 radius: tile.iconRadius > 0 ? tile.iconRadius + 3 : 0
             }
         }
@@ -280,15 +296,15 @@ Item {
                 name: tile.icon
                 size: 76
                 stroke: 1.2
-                color: tile.current ? theme.accent : theme.foreground
+                color: tile.current && !tile.inactive ? theme.accent : theme.foreground
             }
             Rectangle {
-                visible: tile.current || hover.hovered
+                visible: tile.current || tile.cursor || hover.hovered
                 anchors.fill: computer
                 anchors.margins: -3
                 color: "transparent"
                 border.width: tile.current ? 2 : 1
-                border.color: tile.current ? theme.accent : Qt.alpha(theme.foreground, 0.2)
+                border.color: (tile.current || tile.cursor) && !tile.inactive ? theme.accentMark : tile.current || tile.cursor ? theme.quietMark : Qt.alpha(theme.foreground, 0.2)
                 radius: tile.iconRadius > 0 ? tile.iconRadius + 3 : 0
             }
         }
@@ -307,6 +323,7 @@ Item {
                 border.color: Qt.alpha(theme.foreground, 0.16)
                 radius: tile.iconRadius
                 Column {
+                    visible: tile.kind !== "archive"
                     x: 9; y: 11
                     spacing: 6
                     Rectangle { width: 34; height: 4; color: tile.kindColor }
@@ -315,16 +332,31 @@ Item {
                         Rectangle { required property int modelData; width: modelData; height: 2; color: Qt.alpha(theme.foreground, 0.3) }
                     }
                 }
+                // An archive is the lidded box its row draws, not a page of text.
+                Glyph { anchors.centerIn: parent; visible: tile.kind === "archive"; name: "archive"; size: 32; color: tile.kindColor }
             }
-            Rectangle {
-                visible: tile.extension.length > 0
-                anchors.left: page.left
-                anchors.bottom: page.bottom
-                anchors.bottomMargin: 6
-                width: badge.implicitWidth + 8
-                height: badge.implicitHeight + 2
-                color: tile.kindColor
-                Text { id: badge; anchors.centerIn: parent; text: tile.extension.slice(0, 4); font.pixelSize: 9; font.bold: true; color: theme.background }
+            ExtensionBadge { anchors.left: page.left }
+        }
+    }
+
+    // The extension on a stand-in, as a chip in its kind's color at the foot's left.
+    component ExtensionBadge: Rectangle {
+        visible: tile.extension.length > 0
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 6
+        width: badge.implicitWidth + 8
+        height: badge.implicitHeight + 2
+        color: tile.kindColor
+        Text {
+            id: badge
+            anchors.centerIn: parent
+            text: tile.extension.slice(0, 4)
+            textFormat: Text.PlainText
+            font.pixelSize: 9
+            font.bold: true
+            color: {
+                theme.background // Re-read when the theme changes, not only the fill.
+                return theme.inkOn(tile.kindColor)
             }
         }
     }
@@ -335,6 +367,12 @@ Item {
         // Decorative, not the real waveform: bars seeded from the name so each
         // file keeps its own shape. Album art replaces it when the file has some.
         Rectangle {
+            id: wave
+            readonly property int seed: {
+                let h = 0
+                for (let i = 0; i < tile.name.length; ++i) h = (h * 31 + tile.name.charCodeAt(i)) % 997
+                return h
+            }
             color: theme.lighterBackground
             radius: tile.iconRadius
             Row {
@@ -344,18 +382,15 @@ Item {
                     model: 18
                     Rectangle {
                         required property int index
+                        readonly property int step: (wave.seed + index * 389) % 997
                         anchors.verticalCenter: parent.verticalCenter
                         width: 3
-                        height: {
-                            let h = 0
-                            for (let i = 0; i < tile.name.length; ++i) h = (h * 31 + tile.name.charCodeAt(i) + index * 7) % 997
-                            return 10 + (h % 40)
-                        }
+                        height: 20 + (step * step % 997) % 29
                         color: tile.kindColor
                     }
                 }
             }
-            Text { anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: 5; text: tile.extension; font.pixelSize: 9; color: theme.secondaryForeground }
+            ExtensionBadge { anchors.left: parent.left }
         }
     }
 

@@ -26,6 +26,7 @@ class Previewer : public QObject {
     Q_PROPERTY(QString viewer READ viewer NOTIFY changed)
     Q_PROPERTY(QString url READ url NOTIFY changed)
     Q_PROPERTY(QString text READ text NOTIFY changed)
+    Q_PROPERTY(QString html READ html NOTIFY changed)
     Q_PROPERTY(QString type READ type NOTIFY changed)
 
 public:
@@ -48,6 +49,8 @@ public:
     QString viewer() const { return m_viewer; }
     QString url() const;
     QString text() const { return m_text; }
+    // A Markdown file's text as the page to show; empty for any other.
+    QString html() const { return m_html; }
     QString type() const;
 
     Q_INVOKABLE void next();
@@ -65,6 +68,10 @@ public:
     // `cells` cells: laid out, each costs the UI thread about as much as a
     // whole line of prose, and a long table froze the preview for seconds.
     static QString markdownOpening(const QString &text, int cells = 600);
+    // Markdown as HTML for text `pixels` high, with room between its blocks; a picture is its alt text, so showing it loads nothing, and raw HTML stays text.
+    static QString markdownHtml(const QString &markdown, int pixels);
+    // The sizes the preview window and the details pane's card set their text in, which a Markdown page's room is cut to.
+    static constexpr int windowPixels = 13, cardPixels = 10;
 
 signals:
     void changed();
@@ -77,6 +84,7 @@ private:
     int m_index = -1;
     QString m_viewer;
     QString m_text;
+    QString m_html;
     bool m_showHidden = false;
     QString m_sort = "name";
     quint64 m_generation = 0;

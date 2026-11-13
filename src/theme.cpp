@@ -9,6 +9,7 @@
 #include <QJsonObject>
 #include <QRegularExpression>
 #include <QStandardPaths>
+#include <algorithm>
 #include <cmath>
 
 namespace {
@@ -41,6 +42,57 @@ double luminance(const QColor &c) {
 QColor mix(const QColor &a, const QColor &b, double t) {
     return QColor::fromRgbF(a.redF() * (1 - t) + b.redF() * t, a.greenF() * (1 - t) + b.greenF() * t,
                             a.blueF() * (1 - t) + b.blueF() * t);
+}
+
+double ratio(const QColor &a, const QColor &b) {
+    const double x = luminance(a), y = luminance(b);
+    return (std::max(x, y) + .05) / (std::min(x, y) + .05);
+}
+
+// WCAG's minimum contrast for text.
+constexpr double textFloor = 4.5;
+// The ground luminance where black and white read equally.
+constexpr double midLuminance = .179;
+// Bisection steps in ensureRatio, finer than one eight-bit level.
+constexpr int bisectionSteps = 18;
+// One eight-bit channel's range, so the rounding repair can never step further.
+constexpr int channelRange = 255;
+// WCAG's minimum contrast for marks and frames, which aren't text.
+constexpr double markFloor = 3;
+// The least contrast a folder card's fill keeps on the pane: a surface, so well under markFloor.
+constexpr double folderFloor = 1.4;
+// The pin box's accent tint in Sidebar.qml while a drop hovers it, the strongest ground under its words.
+constexpr double strongestPinTint = 0.22;
+// At or under this saturation a theme's red is a grey.
+constexpr double greyRedSaturation = 0.2;
+
+// The ink when it already reads at need, else the least mix toward black or white that still does once rounded.
+QColor ensureRatio(const QColor &ink, const QColor &ground, double need) {
+    if (ratio(ink, ground) >= need)
+        return ink;
+    const QColor toward = luminance(ground) > midLuminance ? QColor(Qt::black) : QColor(Qt::white);
+    double low = 0, high = 1;
+    QColor best = toward;
+    for (int i = 0; i < bisectionSteps; ++i) {
+        const double middle = (low + high) / 2;
+        const QColor candidate = mix(ink, toward, middle);
+        if (ratio(candidate, ground) >= need) {
+            best = candidate;
+            high = middle;
+        } else {
+            low = middle;
+        }
+    }
+    best = QColor(best.red(), best.green(), best.blue());
+    const int step = toward == QColor(Qt::white) ? 1 : -1;
+    for (int i = 0; i < channelRange && ratio(best, ground) < need; ++i) {
+        const QColor next(qBound(0, best.red() + step, channelRange), qBound(0, best.green() + step, channelRange),
+                          qBound(0, best.blue() + step, channelRange));
+        if (next == best)
+            break;
+        best = next;
+    }
+    return best;
 }
 
 struct Palette {
@@ -157,11 +209,14 @@ QColor Theme::accentForeground() const {
     return luminance(accent()) > .179 ? QColor("black") : QColor("white");
 }
 
-// Themes' own dim foregrounds are often too faint for small text, so derive a
-// secondary color by mixing the foreground toward the background, keeping
-// roughly a 4.5:1 contrast for metadata and labels.
+// Metadata and labels: the foreground mixed toward the background, raised to textFloor on each ground they're on.
 QColor Theme::secondaryForeground() const {
-    return mix(background(), foreground(), 0.68);
+    // The foreground's share of the secondary ink before the floor.
+    constexpr double share = 0.68;
+    QColor ink = mix(background(), foreground(), share);
+    for (const QColor &ground : {background(), lighterBackground(), darkBackground()})
+        ink = ensureRatio(ink, ground, textFloor);
+    return ink;
 }
 
 void Theme::reload() {
@@ -189,4 +244,74 @@ void Theme::reload() {
         m_light = palette.light;
         emit changed();
     }
+}
+
+// The accent as a thin frame or ring, raised to 3:1; fills and tints keep the accent itself.
+QColor Theme::accentMark() const {
+    QColor mark = accent();
+    for (const QColor &ground : {background(), lighterBackground(), darkBackground()})
+        mark = ensureRatio(mark, ground, markFloor);
+    return mark;
+}
+
+// The other pane's ring: the foreground at 60% where that reads on background and cards, else an opaque ink that does.
+QColor Theme::quietMark() const {
+    // The foreground's share of the ring, as its alpha or as an opaque mix.
+    constexpr double share = 0.6;
+    const QColor bg = background(), card = lighterBackground(), fg = foreground();
+    if (ratio(mix(bg, fg, share), bg) >= markFloor && ratio(mix(card, fg, share), card) >= markFloor) {
+        QColor ring = fg;
+        ring.setAlphaF(share);
+        return ring;
+    }
+    return ensureRatio(ensureRatio(mix(bg, fg, share), bg, markFloor), card, markFloor);
+}
+
+// A folder card's fill: the lighter background, raised to folderFloor so the card stands off the pane.
+QColor Theme::folderFill() const {
+    return ensureRatio(lighterBackground(), background(), folderFloor);
+}
+
+// A disabled glyph: 3:1 on the bar, while the secondary ink of an off toggle keeps 4.5:1.
+QColor Theme::disabledForeground() const {
+    // The foreground's share of a disabled glyph before the floor.
+    constexpr double share = 0.5;
+    return ensureRatio(mix(background(), foreground(), share), background(), markFloor);
+}
+
+// Red as words, raised to textFloor, or the foreground when the theme's red is a grey; fills keep the theme's red.
+QColor Theme::redText() const {
+    return red().hsvSaturationF() <= greyRedSaturation ? foreground() : ensureRatio(red(), background(), textFloor);
+}
+
+// The accent as words, raised to textFloor on the background, the preview window and the pin box's strongest tint.
+QColor Theme::accentText() const {
+    const QColor bg = background(), tint = mix(bg, accent(), strongestPinTint);
+    QColor ink = accent();
+    for (const QColor &ground : {bg, darkBackground(), tint})
+        ink = ensureRatio(ink, ground, textFloor);
+    return ink;
+}
+
+// Yellow as words (a plugin mark's "warning" tone), raised to 4.5:1 on the background.
+QColor Theme::yellowText() const {
+    return ensureRatio(yellow(), background(), textFloor);
+}
+
+// Words on a palette fill (a tile's badge): the background where it reads, else the better of it and the foreground.
+QColor Theme::inkOn(const QColor &fill) const {
+    const QColor bg = background(), fg = foreground();
+    if (ratio(bg, fill) >= textFloor)
+        return bg;
+    return ensureRatio(ratio(bg, fill) >= ratio(fg, fill) ? bg : fg, fill, textFloor);
+}
+
+void Theme::grayText(const std::function<void()> &firstWindow) {
+    // Qt reads it once per process, as the first window is made, so apps opened from Folio don't inherit it.
+    const bool ask = !qEnvironmentVariableIsSet("QSG_DISTANCEFIELD_ANTIALIASING");
+    if (ask)
+        qputenv("QSG_DISTANCEFIELD_ANTIALIASING", "gray");
+    firstWindow();
+    if (ask)
+        qunsetenv("QSG_DISTANCEFIELD_ANTIALIASING");
 }
