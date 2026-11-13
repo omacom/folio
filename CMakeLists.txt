@@ -37,3 +37,8 @@ add_test(NAME folio_tests COMMAND folio_tests)
 set_tests_properties(folio_tests PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)
 # The bundled plugins, which the tests run against stubs.
 target_compile_definitions(folio_tests PRIVATE FOLIO_PLUGINS="${CMAKE_SOURCE_DIR}/plugins")
+
+add_executable(rowreuse_tests tests/rowreuse_tests.cpp)
+target_link_libraries(rowreuse_tests PRIVATE folio_core Qt6::Test)
+add_test(NAME rowreuse_tests COMMAND rowreuse_tests)
+set_tests_properties(rowreuse_tests PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)

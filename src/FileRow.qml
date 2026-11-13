@@ -27,6 +27,31 @@ Item {
     property bool detailed: false
     property bool chevron: false
 
+    // Model roles change on reuse; drag assets belong to the old file.
+    property bool pooled: false
+    property int dragGeneration: 0
+    function clearDragAssets() {
+        ++dragGeneration
+        Drag.imageSource = ""
+        Drag.mimeData = ({})
+    }
+    onPathChanged: clearDragAssets()
+    ListView.onPooled: {
+        pooled = true
+        clearDragAssets()
+    }
+    ListView.onReused: pooled = false
+
+    function captureDragPicture() {
+        const target = row
+        const generation = ++dragGeneration
+        const path = row.path
+        return grabToImage(result => {
+            if (target && !target.pooled && target.path === path && target.dragGeneration === generation)
+                target.Drag.imageSource = result.url
+        })
+    }
+
     signal clicked(int modifiers)
     signal activated()
 
@@ -50,7 +75,7 @@ Item {
     DropArea {
         id: folderDrop
         anchors.fill: parent
-        enabled: row.isDir
+        enabled: !row.pooled && row.isDir
         keys: ["text/uri-list"]
         onEntered: (drag) => { drag.accepted = fileOps.canDrop(drag.urls, row.path) }
         onDropped: (drop) => { fileOps.dropInto(drop.urls, row.path); drop.accept(Qt.MoveAction) }
@@ -90,7 +115,7 @@ Item {
                 }
                 asynchronous: true
                 fillMode: Image.PreserveAspectCrop
-                source: row.kind === "image" || row.kind === "video" ? Format.thumb(row.path, row.mime, 128, row.modified) : ""
+                source: !row.pooled && (row.kind === "image" || row.kind === "video") ? Format.thumb(row.path, row.mime, 128, row.modified) : ""
                 visible: status === Image.Ready
             }
             Rectangle {
@@ -152,12 +177,19 @@ Item {
 
     HoverHandler {
         id: hover
-        onHoveredChanged: if (hovered) row.grabToImage(result => row.Drag.imageSource = result.url)
+        enabled: !row.pooled
+        onHoveredChanged: if (hovered) row.captureDragPicture()
     }
-    TapHandler {
-        id: tap
-        onTapped: row.clicked(tap.point.modifiers)
-        onDoubleTapped: row.activated()
+    // A TapHandler remembers the previous tap even when disabled. A reused
+    // row must not join clicks on two different files into a double click.
+    Loader {
+        active: !row.pooled
+        sourceComponent: TapHandler {
+            id: tap
+            parent: row
+            onTapped: row.clicked(tap.point.modifiers)
+            onDoubleTapped: row.activated()
+        }
     }
 
     // Like the tiles: dragged, a row is a file for the sidebar or another app.
@@ -168,7 +200,7 @@ Item {
     Drag.hotSpot.x: LayoutMirroring.enabled ? row.width : 0
     DragHandler {
         target: null
-        enabled: row.kind !== "item"
+        enabled: !row.pooled && row.kind !== "item"
         // Dragging a selected item takes the whole selection along. The list
         // is built as the drag starts, not again on every change of selection.
         onActiveChanged: {

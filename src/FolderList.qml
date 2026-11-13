@@ -41,6 +41,10 @@ ListView {
         onTapped: (point) => list.contextMenu(selecting.menuAt(point), backend.path, point.scenePosition)
     }
 
+    // Never recycle an active drag into another file. While dragging,
+    // disposal follows the existing non-reusing behavior.
+    property Item dragSource: null
+    reuseItems: dragSource === null
     clip: true
     focus: true
     keyNavigationEnabled: true
@@ -54,6 +58,11 @@ ListView {
     ScrollBar.vertical: FolioScrollBar { }
 
     delegate: FileRow {
+        id: entry
+        Drag.onActiveChanged: {
+            if (Drag.active) list.dragSource = entry
+            else if (list.dragSource === entry) list.dragSource = null
+        }
         width: list.width
         detailed: true
         current: selected
