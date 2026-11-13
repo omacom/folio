@@ -6090,6 +6090,71 @@ private slots:
         QVERIFY(polls() <= 4);
     }
 
+    void pluginWatchThatKeepsPrintingStillGetsDetailsShown()
+    {
+        // Its watch prints a line every 0.2 seconds for as long as `go` is
+        // there; its details command takes longer than the lines are apart.
+        QTemporaryDir folder, files;
+        write(files.filePath("a.txt"), "x");
+        writePlugin(folder.path(), "sync", R"({"folio": 1, "details": {"command": ["./describe"]},
+            "watch": {"command": ["./watch"]}})",
+                    {{"describe", "#!/bin/sh\necho asked >> asked\nsleep 0.8\n"
+                                  "echo \"[[\\\"State\\\", \\\"$(cat word 2>/dev/null || echo waiting)\\\"]]\"\n"},
+                     {"watch", "#!/bin/sh\nwhile :; do\n  [ -e go ] && echo changed\n  sleep 0.2\ndone\n"}});
+        auto asked = [&] { return contents(folder.filePath("sync/asked")).count('\n'); };
+        Plugins plugins("en", {folder.path()}, files.filePath("folio.conf"));
+        QSignalSpy changed(&plugins, &Plugins::detailsChanged);
+        QVERIFY(changed.wait(5000));
+        const QString path = files.filePath("a.txt");
+        const QDateTime when = QFileInfo(path).lastModified();
+        int answered = 0;
+        // As the details pane does: it asks again whenever it's told to.
+        auto describe = [&] { plugins.describe(path, "text/plain", when, [] { return true; }, [&] { ++answered; }); };
+        connect(&plugins, &Plugins::detailsChanged, this, describe);
+
+        // The file gets its rows while the lines keep coming, from a
+        // command run one at a time and not once a line.
+        write(folder.filePath("sync/go"), "");
+        QVERIFY(changed.wait(3000));
+        QElapsedTimer clock;
+        clock.start();
+        QTRY_VERIFY_WITH_TIMEOUT(answered > 0, 3000);
+        QCOMPARE(plugins.details(path, when), QVariantList({QVariantList{"State", "waiting"}}));
+        QTest::qWait(2000);
+        QVERIFY(asked() <= clock.elapsed() / 800 + 1);
+
+        // Once they stop, what's shown is what the plugin says now.
+        write(folder.filePath("sync/word"), "synced");
+        QFile::remove(folder.filePath("sync/go"));
+        QTRY_COMPARE_WITH_TIMEOUT(plugins.details(path, when), QVariantList({QVariantList{"State", "synced"}}), 5000);
+        disconnect(&plugins, &Plugins::detailsChanged, this, nullptr);
+    }
+
+    void pluginWatchSaysWhyItEndedWithoutANewline()
+    {
+        // Folio's standard error, read back from a file.
+        QTemporaryDir folder, files;
+        writePlugin(folder.path(), "quits", R"({"folio": 1, "watch": {"command": ["./watch"]}})",
+                    {{"watch", "#!/bin/sh\nprintf 'no such folder' >&2\n"}});
+        const QString log = files.filePath("stderr");
+        fflush(stderr);
+        const int kept = ::dup(2);
+        const int file = ::open(qPrintable(log), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+        QVERIFY(kept >= 0 && file >= 0);
+        ::dup2(file, 2);
+        ::close(file);
+        {
+            Plugins plugins("en", {folder.path()}, files.filePath("folio.conf"));
+            QTRY_VERIFY_WITH_TIMEOUT(contents(log).contains("its watch ended"), 5000);
+        }
+        fflush(stderr);
+        ::dup2(kept, 2);
+        ::close(kept);
+        const QByteArray said = contents(log);
+        QVERIFY2(said.contains("folio: plugin quits: no such folder\n"), said.constData());
+        QVERIFY(said.indexOf("no such folder") < said.indexOf("its watch ended"));
+    }
+
     void pluginWatchIsStartedAgainAndEndsWithItsPlugin()
     {
         // One watch ends as soon as it starts; the others stay, each with a

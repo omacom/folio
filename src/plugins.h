@@ -266,15 +266,17 @@ private:
     QSet<QString> m_failing, m_failingDetails;
     // What details commands printed, by plugin, path and modification time;
     // who waits for those still running, the first deciding whether its
-    // command runs; and how often each plugin's have been forgotten, so
-    // forgetting one plugin's leaves the others' answers on their way.
+    // command runs; those whose plugin's state changed while they ran, so
+    // they're run once more when done; and how often everything has been
+    // forgotten, so answers on their way then are dropped.
     struct Asker {
         std::function<bool()> wanted;
         std::function<void()> done;
     };
     QHash<QString, QJsonArray> m_details;
     QHash<QString, QList<Asker>> m_asking;
-    QHash<QString, quint64> m_detailsGeneration;
+    QSet<QString> m_askAgain;
+    quint64 m_detailsGeneration = 0;
     QHash<QString, QTimer *> m_timers;
     QHash<QString, QList<std::function<void()>>> m_queue;
     QVariantList m_sections;

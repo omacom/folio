@@ -711,6 +711,10 @@ void Plugins::startWatch(const QString &plugin) {
         // Whatever it left running in the background goes with it.
         if (watch->group > 0)
             ::kill(-pid_t(watch->group), SIGKILL);
+        // Its last line may not have ended, and can say why it stopped.
+        const QString said = QString::fromUtf8(watch->error).trimmed();
+        if (!said.isEmpty())
+            complain(plugin, said);
         // Said once each time the watch goes from working to ending.
         if (!m_failingWatch.contains(plugin))
             complain(plugin, QString("its watch ended, and is started again every %1 seconds").arg(watchRestart / 1000));
@@ -962,22 +966,29 @@ bool Plugins::describe(const QString &path, const QString &mime, const QDateTime
 void Plugins::ask(const Manifest &plugin, const QString &path, const QString &key) {
     auto *watcher = new QFutureWatcher<std::optional<Run>>(this);
     connect(watcher, &QFutureWatcherBase::finished, this,
-            [this, watcher, id = plugin.id, path, key, generation = m_detailsGeneration[plugin.id]] {
+            [this, watcher, id = plugin.id, path, key, generation = m_detailsGeneration] {
         watcher->deleteLater();
-        // What was said is forgotten meanwhile, so this answer may be
-        // older than the one that replaces it.
-        if (generation != m_detailsGeneration.value(id))
+        // Everything said was forgotten meanwhile (F5), so this answer may
+        // be older than the one that replaces it.
+        if (generation != m_detailsGeneration)
             return;
+        // Its plugin's state changed while it ran, so it may have been too
+        // early to see the change.
+        const bool early = m_askAgain.remove(key);
         const std::optional<Run> run = watcher->result();
         if (!run) {
             // Its first caller moved on before its turn; the next, if any,
             // has it run for them.
             QList<Asker> &askers = m_asking[key];
             askers.removeFirst();
-            if (askers.isEmpty())
-                m_asking.remove(key);
-            else if (const Manifest *m = manifest(id))
+            if (const Manifest *m = askers.isEmpty() ? nullptr : manifest(id)) {
                 ask(*m, path, key);
+                return;
+            }
+            // Nobody's left to run it for. An early answer it was to
+            // replace isn't kept, so the next to ask gets a new one.
+            m_asking.remove(key);
+            m_details.remove(key);
             return;
         }
         // One that fails or takes too long has no rows for the file,
@@ -994,8 +1005,15 @@ void Plugins::ask(const Manifest &plugin, const QString &path, const QString &ke
         if (m_details.size() >= 5000)
             m_details.clear();
         m_details.insert(key, said.array());
-        for (const Asker &asker : m_asking.take(key))
+        // An early answer is shown all the same, or a state that keeps
+        // changing would leave the file with none; its command runs once
+        // more, for the same callers.
+        const Manifest *m = early ? manifest(id) : nullptr;
+        const QList<Asker> askers = m ? m_asking.value(key) : m_asking.take(key);
+        for (const Asker &asker : askers)
             asker.done();
+        if (m && m_asking.contains(key))
+            ask(*m, path, key);
     });
     // Stepping through files faster than they're answered for queues
     // commands; those overtaken before their turn aren't run, so they
@@ -1011,20 +1029,22 @@ void Plugins::ask(const Manifest &plugin, const QString &path, const QString &ke
 }
 
 void Plugins::forgetDetails(const QString &plugin) {
-    // Answers on their way are dropped too, and their callers asked to ask
-    // again (detailsChanged), so nothing waits on them. Only the plugin's
-    // own: another's still running answer is as good as it was.
+    // Every plugin's: answers on their way are dropped too, and their
+    // callers asked to ask again (detailsChanged), so nothing waits on them.
     if (plugin.isEmpty()) {
         m_details.clear();
         m_asking.clear();
-        for (quint64 &generation : m_detailsGeneration)
-            ++generation;
+        m_askAgain.clear();
+        ++m_detailsGeneration;
         return;
     }
-    const auto its = [&](const auto &it) { return it.key().startsWith(plugin + '\n'); };
-    m_details.removeIf(its);
-    m_asking.removeIf(its);
-    ++m_detailsGeneration[plugin];
+    // One plugin's: a command still running is left to finish and run once
+    // more after, as a poll is. Dropping its answer each time would leave
+    // nothing to show while the plugin's state keeps changing.
+    m_details.removeIf([&](const auto &it) { return it.key().startsWith(plugin + '\n'); });
+    for (auto it = m_asking.cbegin(); it != m_asking.cend(); ++it)
+        if (it.key().startsWith(plugin + '\n'))
+            m_askAgain.insert(it.key());
 }
 
 void Plugins::run(const QString &itemPath, const Done &done) {
