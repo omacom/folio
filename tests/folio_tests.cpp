@@ -461,15 +461,20 @@ static int lastWindowClosed()
     return qScopeGuard([old] { qputenv("PATH", old); });
 }
 
-// Longer than a search holds before it shows what it has (150 ms) and than a folder's watcher waits for changes to settle (250 ms).
+// Longer than a search holds before it shows what it has (150 ms) and asks once more (100 ms).
 static constexpr int PastTheSearchHold = 400;
 
 // Holds each walk of a search after its `at`th folder until let go, and counts the walks and the folders they read.
 struct WalksHeld {
     QSemaphore reached, go;
     std::atomic<int> walks{0}, folders{0};
+    // A held walk keeps one thread of the shared pool and the answers beside it take another.
+    static constexpr int WalkAndAnswers = 2;
+    const int threads = QThreadPool::globalInstance()->maxThreadCount();
     explicit WalksHeld(qsizetype at = 1)
     {
+        // A machine with one processor gives the pool one thread.
+        QThreadPool::globalInstance()->setMaxThreadCount(std::max(threads, WalkAndAnswers));
         SearchIndex::afterFolder = [this, at](qsizetype read) {
             ++folders;
             walks += read == 1;
@@ -486,6 +491,7 @@ struct WalksHeld {
         go.release();
         QThreadPool::globalInstance()->waitForDone();
         SearchIndex::afterFolder = {};
+        QThreadPool::globalInstance()->setMaxThreadCount(threads);
     }
 };
 
@@ -1368,9 +1374,7 @@ private slots:
 
     void searchAsksAboutFoldersAndShownRowsOnly()
     {
-        // A search reads names and types as each folder gives them: one stat
-        // for each folder it opens and one for each match it shows, none for
-        // every other file.
+        // One stat for each folder a search opens and one for each match it shows, none for any other file.
         QTemporaryDir dir;
         QDir(dir.path()).mkpath("a/b");
         QDir(dir.path()).mkpath("c");
@@ -1576,14 +1580,13 @@ private slots:
         QVERIFY(!model.searchIndex());
         QTRY_VERIFY(second.expired());
 
-        // The next search reads again, so it finds what's new; showing
-        // hidden files reads again too.
+        // The next search, and showing hidden files, read the folders again.
         write(dir.filePath("Photos/beach2.jpg"), "x");
         model.setQuery("beach");
-        QVERIFY(loaded.wait(3000));
+        QTRY_VERIFY(!model.reading() && !model.loading());
         QCOMPARE(model.count(), 2);
         model.setShowHidden(true);
-        QVERIFY(loaded.wait(3000));
+        QTRY_VERIFY(!model.reading() && !model.loading());
         QCOMPARE(model.count(), 3);
         QCOMPARE(model.searchIndex()->counts.walks, 1);
     }
@@ -1611,9 +1614,7 @@ private slots:
 
     void searchListsTheBestMatchesFirst()
     {
-        // The name itself first, however deep; then names that start with
-        // it, then a word that does, then its letters in order. A folder
-        // goes before a file that matches as well, and a shorter path first.
+        // Best first: the name itself, a name that starts with it, a word that does, its letters in order; of equals a folder, then the shorter path.
         QTemporaryDir dir;
         QDir(dir.path()).mkpath("deep/down/frame");
         QDir(dir.path()).mkpath("src/frame_old");
@@ -1638,8 +1639,7 @@ private slots:
 
     void searchShowsItsMatchesAWindowAtATime()
     {
-        // The first matches show at once and the rest as the view scrolls,
-        // each looked at only when it's shown; nothing is cut off.
+        // Matches show a window at a time, each looked at only when it's shown, and none is cut off.
         QTemporaryDir dir;
         for (int i = 0; i < 1100; ++i)
             write(dir.filePath(QString("match%1.txt").arg(i)), "x");
@@ -1649,7 +1649,7 @@ private slots:
         QVERIFY(loaded.wait(3000));
         QCOMPARE(model.matches(), -1);
         model.setQuery("match");
-        QVERIFY(loaded.wait(3000));
+        QTRY_VERIFY(!model.reading() && !model.loading());
         QCOMPARE(model.matches(), 1100);
         QCOMPARE(model.count(), 350);
         QCOMPARE(model.get(0).value("name").toString(), QString("match0.txt"));
@@ -1684,7 +1684,7 @@ private slots:
         model.setPath(dir.path());
         QVERIFY(loaded.wait(3000));
         model.setQuery("match");
-        QVERIFY(loaded.wait(3000));
+        QTRY_VERIFY(!model.reading() && !model.loading());
         QCOMPARE(model.count(), 350);
         model.selectAll();
         QCOMPARE(model.selectedCount(), 500);
@@ -1723,7 +1723,7 @@ private slots:
         model.setPath(dir.path());
         QVERIFY(loaded.wait(3000));
         model.setQuery("match");
-        QVERIFY(loaded.wait(3000));
+        QTRY_VERIFY(!model.reading() && !model.loading());
         model.selectAll();
         const QString last = model.selectedPaths().constLast();
         QVERIFY(QFile::remove(last));
@@ -1817,8 +1817,10 @@ private slots:
 
     void searchReadAgainDuringADownloadKeepsItsRows()
     {
-        // Files landing in the searched folder ask for it again and again: one walk runs at a time and one more follows it, and the rows never drop or say they're still reading.
+        // Asked for again and again as files land: one walk runs at a time and one more follows it, and the rows never drop or say they're still reading.
         QTemporaryDir dir;
+        // Nothing below the searched folder is watched, so the asks are the ones made here.
+        QVERIFY(QDir(dir.path()).mkdir("landing"));
         for (int i = 0; i < 20; ++i)
             write(dir.filePath(QString("match%1.txt").arg(i)), "x");
         FolderModel model;
@@ -1831,12 +1833,12 @@ private slots:
         QSignalSpy reading(&model, &FolderModel::readingChanged);
         int fewest = model.count();
         connect(&model, &FolderModel::countChanged, &model, [&] { fewest = std::min(fewest, model.count()); });
-        WalksHeld walks;
+        WalksHeld walks(2);
         model.reload();
         QVERIFY(walks.reached.tryAcquire(1, 3000));
-        // Written after the held walk read its only folder: the walk that follows it finds them.
+        // Written after the held walk read both folders: the walk that follows it finds them.
         for (int i = 20; i < 26; ++i) {
-            write(dir.filePath(QString("match%1.txt").arg(i)), "x");
+            write(dir.filePath(QString("landing/match%1.txt").arg(i)), "x");
             model.reload();
         }
         QTest::qWait(PastTheSearchHold);
@@ -1858,15 +1860,15 @@ private slots:
         QDir(dir.path()).mkdir("a");
         write(dir.filePath("match.txt"), "x");
         write(dir.filePath("a/match.txt"), "x");
-        WalksHeld walks;
+        WalksHeld walks(2);
         FolderModel model;
         QSignalSpy loaded(&model, &FolderModel::loaded);
         model.setPath(dir.path());
         QVERIFY(loaded.wait(3000));
         model.setQuery("match");
         QVERIFY(walks.reached.tryAcquire(1, 3000));
-        // In the folder the held walk has read already.
-        write(dir.filePath("match too.txt"), "x");
+        // In a folder the held walk has read already, below the one watched: the ask is this one alone.
+        write(dir.filePath("a/match too.txt"), "x");
         model.reload();
         QTest::qWait(PastTheSearchHold);
         QCOMPARE(walks.walks.load(), 1);
@@ -1897,8 +1899,9 @@ private slots:
         QVERIFY(pool->waitForDone(5000));
         {
             PoolHeld held;
-            // The walk's end is taken in here, and the answer it asks for waits behind the held pool.
-            QCoreApplication::processEvents();
+            // The walk's end is taken in here: only then is the answer it asks for on its way, and it waits behind the held pool.
+            QVERIFY(!model.loading());
+            QTRY_VERIFY(model.loading());
             QCOMPARE(model.searchIndex(), before);
             model.selectAll();
             QCOMPARE(model.matches(), 500);
@@ -1966,8 +1969,9 @@ private slots:
         QVERIFY(pool->waitForDone(5000));
         {
             PoolHeld held;
-            // The walk's end is taken in here with nothing selected, and the answer it asks for waits behind the held pool.
-            QCoreApplication::processEvents();
+            // The walk's end is taken in here with nothing selected: only then is the answer it asks for on its way, and it waits behind the held pool.
+            QVERIFY(!model.loading());
+            QTRY_VERIFY(model.loading());
             QCOMPARE(model.searchIndex(), before);
             model.selectRows({348, 349});
             QCOMPARE(model.selectedCount(), 2);
@@ -2252,11 +2256,13 @@ private slots:
         QVERIFY(loaded.wait(3000));
         model.setQuery("match");
         QTRY_VERIFY(!model.reading() && !model.loading());
-        QStringList seen;
-        connect(&model, &FolderModel::selectionChanged, &model, [&] { seen = model.selectedPaths(); });
+        QList<QStringList> seen;
+        connect(&model, &FolderModel::selectionChanged, &model, [&] { seen << model.selectedPaths(); });
         model.selectAll();
-        QCOMPARE(seen.size(), 550);
-        QCOMPARE(seen, model.selectedPaths());
+        // Said once: nobody was handed a part of it before.
+        QCOMPARE(seen.size(), 1);
+        QCOMPARE(seen.constFirst().size(), 550);
+        QCOMPARE(seen.constFirst(), model.selectedPaths());
     }
 
     void searchClearedForgetsHowManyMatched()
@@ -2318,7 +2324,7 @@ private slots:
         model.setPath(dir.path());
         QVERIFY(loaded.wait(3000));
         model.setQuery("match");
-        QVERIFY(loaded.wait(3000));
+        QTRY_VERIFY(!model.reading() && !model.loading());
         model.fetchMore({});
         QTRY_COMPARE(model.count(), 500);
         model.selectOnly(420);
@@ -2335,9 +2341,7 @@ private slots:
 
     void searchMatchesWordsAlongThePath()
     {
-        // With a "/", the folders take what's before it and the name the
-        // rest. Each folder is matched at most once a query, however many
-        // rows it holds.
+        // Before a "/" is for the folders and after it for the name; a folder is matched once a query, however many rows it holds.
         QTemporaryDir dir;
         QDir(dir.path()).mkpath("projects/editor/src/components");
         QDir(dir.path()).mkpath("projects/viewer/src");
@@ -2399,9 +2403,7 @@ private slots:
 
     void searchForgivesATypoWhenNoNameSpellsTheQuery()
     {
-        // No name spelling the query out, a name a letter off (a swapped
-        // pair counts as one) is found; a name that holds it whole, or in
-        // runs that each start a word, means the typo pass never runs.
+        // A name a letter off (a swapped pair is one) is found only when no name spells the query, whole or in runs that each start a word.
         QTemporaryDir dir;
         for (const char *folder : {"projects/src", "editor/render"})
             QDir(dir.path()).mkpath(folder);
@@ -2423,8 +2425,7 @@ private slots:
         for (const char *query : {"render", "rend", "fuzzy", "report", "renfr", "ort2024"})
             QVERIFY(index.answer(query) > 0);
         QCOMPARE(index.counts.typos, 3);
-        // Letters scattered through a name (thread_runner) or along a path
-        // (editor/render/pipeline) don't stand in for the name meant: it comes first.
+        // The name meant comes before letters scattered through a name (thread_runner) or along a path (editor/render/pipeline).
         QCOMPARE(index.answer("redner"), 4);
         QCOMPARE(index.counts.typos, 4);
         const QVector<quint32> rows = index.rows(0, 4);
@@ -2436,9 +2437,7 @@ private slots:
 
     void searchShowsMatchesWhileItsStillReading()
     {
-        // A folder that takes a while to read shows its best matches so far
-        // (saying it's still reading) until it's all been read, and then
-        // all of them.
+        // A folder slow to read shows its best matches so far, saying it's still reading, then all of them.
         QTemporaryDir dir;
         for (const char *folder : {"a", "b", "c"}) {
             QDir(dir.path()).mkdir(folder);
@@ -2460,12 +2459,51 @@ private slots:
         QCOMPARE(model.matches(), 2);
         QCOMPARE(model.count(), 2);
         walks.letGo();
-        QTRY_VERIFY(!model.reading() && !model.loading());
+        // The walk's end is taken in by itself: no timer runs here, so no partial answer is asked for that the end would overtake.
+        QVERIFY(QThreadPool::globalInstance()->waitForDone(5000));
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::FutureCallOut);
+        QVERIFY(!model.reading());
+        QTRY_VERIFY(!model.loading());
         QCOMPARE(model.matches(), 4);
         QCOMPARE(model.count(), 4);
         QCOMPARE(model.searchIndex()->counts.walks, 1);
         // One answer for each time it showed.
         QCOMPARE(model.searchIndex()->counts.answers, loaded.count());
+    }
+
+    void searchDropsAnAnswerTheWalksEndOvertook()
+    {
+        // The other order: an answer asked for before the walk's end is taken in lands after it, and never shows.
+        QTemporaryDir dir;
+        for (const char *folder : {"a", "b"}) {
+            QDir(dir.path()).mkdir(folder);
+            write(dir.filePath(QString("%1/match.txt").arg(folder)), "x");
+        }
+        write(dir.filePath("match.txt"), "x");
+        WalksHeld walks(2);
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        loaded.clear();
+        model.setQuery("match");
+        QVERIFY(walks.reached.tryAcquire(1, 3000));
+        QVERIFY(loaded.wait(3000));
+        QVERIFY(model.loading());
+        const auto index = model.searchIndex();
+        // The walk ends on its thread and its end waits to be taken in: no events run here.
+        walks.letGo();
+        QVERIFY(QThreadPool::globalInstance()->waitForDone(5000));
+        // Another order asks for an answer now, whose own end waits behind the walk's.
+        model.setSortMode("size");
+        QVERIFY(QThreadPool::globalInstance()->waitForDone(5000));
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::FutureCallOut);
+        QVERIFY(!model.reading());
+        QTRY_VERIFY(!model.loading());
+        QCOMPARE(model.matches(), 3);
+        // Three answers were worked out and two shown: the one overtaken landed nowhere.
+        QCOMPARE(index->counts.answers, 3);
+        QCOMPARE(loaded.count(), 2);
     }
 
     void folderModelSwapsFoldersWithoutAnEmptyFrame()
@@ -2607,8 +2645,7 @@ private slots:
         QTemporaryDir big, small, other, tree;
         for (int i = 0; i < 20000; ++i)
             write(big.filePath(QString("%1.txt").arg(i)), "x");
-        // A search asks nothing about a file, so what it takes time over is
-        // opening folders.
+        // A search asks nothing about a file, so what it takes time over is opening folders.
         for (int i = 0; i < 5000; ++i)
             QDir(tree.path()).mkdir(QString::number(i));
         write(small.filePath("a.txt"), "x");
