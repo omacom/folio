@@ -102,7 +102,7 @@ public:
     // Called for org.freedesktop.FileManager1: open a folder, or open the
     // folder holding a file and select it.
     void showFolder(const QString &path);
-    void showItem(const QString &path);
+    Q_INVOKABLE void showItem(const QString &path);
 
     static QString expandTyped(const QString &text, const QString &home, const QString &current);
     static QString complete(const QString &text, const QString &home, const QString &current);
