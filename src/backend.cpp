@@ -419,10 +419,11 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
             const QString text = Previewer::readText(path, 6000).section('\n', 0, 40);
             // Table cells cost the UI thread most to lay out; this many keep the card under a 10 ms frame.
             constexpr int markdownCells = 300;
-            if (mime == "text/markdown")
-                read.insert("markdown", Previewer::markdownHtml(Previewer::markdownOpening(text, markdownCells)));
-            else
+            // A Markdown file with no text to show gets no page, as in the preview window.
+            if (mime != "text/markdown")
                 read.insert("text", text);
+            else if (const QString opening = Previewer::markdownOpening(text, markdownCells); !opening.isEmpty())
+                read.insert("markdown", Previewer::markdownHtml(opening, Previewer::cardPixels));
         }
         return read;
     }));

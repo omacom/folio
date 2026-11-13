@@ -302,8 +302,8 @@ ApplicationWindow {
                 selectByMouse: true
                 activeFocusOnPress: false
                 wrapMode: TextEdit.Wrap
-                textFormat: win.viewer === "markdown" ? TextEdit.MarkdownText : TextEdit.PlainText
-                text: previewer.text
+                textFormat: win.viewer === "markdown" ? TextEdit.RichText : TextEdit.PlainText
+                text: win.viewer === "markdown" ? previewer.html : previewer.text
                 color: theme.foreground
                 selectionColor: theme.accent
                 selectedTextColor: theme.accentForeground

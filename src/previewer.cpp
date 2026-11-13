@@ -3,15 +3,19 @@
 #include "fileops.h"
 #include <QFile>
 #include <QFileInfo>
+#include <QFontDatabase>
 #include <QFutureWatcher>
 #include <QImageReader>
 #include <QMimeDatabase>
 #include <QRegularExpression>
 #include <QTextCursor>
 #include <QTextDocument>
+#include <QTextList>
+#include <QTextTable>
 #include <QUrl>
 #include <QtConcurrent>
 #include <cstdio>
+#include <utility>
 #include <unistd.h>
 
 Previewer::Previewer(QObject *parent) : QObject(parent) {}
@@ -111,7 +115,7 @@ QString Previewer::markdownOpening(const QString &text, int cells) {
     return text;
 }
 
-QString Previewer::markdownHtml(const QString &markdown) {
+QString Previewer::markdownHtml(const QString &markdown, int pixels) {
     QTextDocument document;
     document.setMarkdown(markdown, QTextDocument::MarkdownFeatures(QTextDocument::MarkdownDialectGitHub | QTextDocument::MarkdownNoHTML));
     // Drawing a picture would fetch it, a remote one too, just because the file was selected.
@@ -120,6 +124,89 @@ QString Previewer::markdownHtml(const QString &markdown) {
         const QTextCharFormat format = cursor.charFormat();
         if (format.isImageFormat())
             cursor.insertText(format.property(QTextFormat::ImageAltText).toString(), QTextCharFormat());
+    }
+    // The room Qt leaves between Markdown blocks follows neither their kind nor the text's size, so each kind is given its own here.
+    const auto part = [pixels](qreal of) { return qRound(of * pixels); };
+    // Greys let through enough to stay quiet on a dark ground and on a light one: a table's rules, and the ground under code.
+    const QColor rule(128, 128, 128, 96), ground(128, 128, 128, 36);
+    constexpr int linePercent = 120;
+    // The room above and below each kind of block, in parts of the text's size.
+    constexpr qreal headingAbove = 1.1, smallHeadingAbove = 0.8, headingBelow = 0.55, listAbove = 0.45, itemBelow = 0.15, textBelow = 0.75, cellRoom = 0.5, tableAbove = 0.3, tableBelow = 0.9;
+    // Headings from this level on are the smaller ones.
+    constexpr int smallHeading = 3;
+    // The font Qt sets code in when it reads Markdown, which is how a run of code is told from the text around it.
+    const QStringList codeFont = QFontDatabase::systemFont(QFontDatabase::FixedFont).families();
+    const auto isCode = [](const QTextBlockFormat &of) { return of.hasProperty(QTextFormat::BlockCodeFence) || of.hasProperty(QTextFormat::BlockCodeLanguage); };
+    const QTextList *list = nullptr, *edge = nullptr;
+    for (QTextBlock block = document.begin(); block.isValid(); block = block.next()) {
+        QTextCursor at(block);
+        QTextBlockFormat format = block.blockFormat();
+        const QTextList *before = std::exchange(list, block.textList());
+        const bool item = list != nullptr, wasListed = before != nullptr;
+        // A list at the page's edge that follows another there is a list of its own, whatever the one before ended on; one further in belongs to the item above it.
+        const bool atEdge = item && list->format().indent() <= 1;
+        const bool nextList = atEdge && wasListed && edge && list != edge;
+        if (atEdge)
+            edge = list;
+        const bool code = isCode(format);
+        // Code in a line gets the ground a code block has, and a link the text's own color: it can't be followed from here, and Qt's blue is lost on a dark ground.
+        struct Run { int position, length; QTextCharFormat shown; };
+        QVector<Run> runs;
+        for (QTextBlock::iterator run = block.begin(); !code && !run.atEnd(); ++run) {
+            QTextCharFormat shown = run.fragment().charFormat();
+            if (shown.isAnchor()) {
+                shown.clearProperty(QTextFormat::AnchorHref);
+                shown.clearForeground();
+                shown.setFontUnderline(true);
+            } else if (shown.fontFamilies().toStringList() == codeFont) {
+                shown.setBackground(ground);
+            } else {
+                continue;
+            }
+            runs.append({run.fragment().position(), run.fragment().length(), shown});
+        }
+        // Set after the walk: a run given its neighbor's format joins it, and the walk would lose its place.
+        for (const Run &run : runs) {
+            QTextCursor over(&document);
+            over.setPosition(run.position);
+            over.setPosition(run.position + run.length, QTextCursor::KeepAnchor);
+            over.setCharFormat(run.shown);
+        }
+        if (at.currentTable()) {
+            // A cell's room is its padding.
+            continue;
+        } else if (format.headingLevel() > 0) {
+            format.setTopMargin(block == document.begin() ? 0 : part(format.headingLevel() < smallHeading ? headingAbove : smallHeadingAbove));
+            format.setBottomMargin(part(headingBelow));
+        } else if (item) {
+            format.setTopMargin(nextList ? part(listAbove) : 0);
+            format.setBottomMargin(part(itemBelow));
+            format.setLineHeight(linePercent, QTextBlockFormat::ProportionalHeight);
+        } else {
+            // The lines of one code block touch. Qt files two blocks in a row as one run of lines, so only a change of language tells them apart.
+            const QTextBlockFormat next = block.next().blockFormat();
+            const bool more = code && block.next().isValid() && isCode(next) && next.property(QTextFormat::BlockCodeLanguage) == format.property(QTextFormat::BlockCodeLanguage);
+            format.setTopMargin(wasListed ? part(listAbove) : 0);
+            format.setBottomMargin(more ? 0 : part(textBelow));
+            if (code)
+                format.setBackground(ground);
+            else
+                format.setLineHeight(linePercent, QTextBlockFormat::ProportionalHeight);
+        }
+        at.setBlockFormat(format);
+    }
+    for (QTextFrame *frame : document.rootFrame()->childFrames()) {
+        auto *table = qobject_cast<QTextTable *>(frame);
+        if (!table)
+            continue;
+        QTextTableFormat format = table->format();
+        format.setCellPadding(part(cellRoom));
+        format.setCellSpacing(0);
+        format.setBorderStyle(QTextFrameFormat::BorderStyle_Solid);
+        format.setBorderBrush(rule);
+        format.setTopMargin(part(tableAbove));
+        format.setBottomMargin(part(tableBelow));
+        table->setFormat(format);
     }
     // toHtml writes <body style=" font-family:'Sans Serif'; font-size:9pt; font-weight:400; font-style:normal;">.
     // Without the document's own font the text takes the one it's shown in.
@@ -226,6 +313,7 @@ void Previewer::setIndex(int index, bool report) {
     const FolderModel::Entry e = m_entries.at(index);
     m_viewer = viewerFor(e.mime, e.isDir);
     m_text.clear();
+    m_html.clear();
 
     // A folder's count and first pictures, and a text's opening part, are
     // read off the UI thread: a big folder, or any file on a slow mount,
@@ -234,14 +322,15 @@ void Previewer::setIndex(int index, bool report) {
     const bool count = e.isDir && e.itemCount < 0;
     const bool text = m_viewer == "text" || m_viewer == "markdown";
     if (count || text) {
-        auto *watcher = new QFutureWatcher<QPair<FolderModel::Entry, QString>>(this);
+        auto *watcher = new QFutureWatcher<QPair<FolderModel::Entry, QStringList>>(this);
         connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, text] {
             watcher->deleteLater();
             if (generation != *m_reading)
                 return; // Stepped on to another item while this was read.
             const auto [entry, read] = watcher->result();
             m_entries[m_index] = entry;
-            m_text = read;
+            m_text = read.value(0);
+            m_html = read.value(1);
             // A ".txt" that turns out to be binary is shown as a plain file.
             if (text && m_text.isEmpty() && entry.size > 0)
                 m_viewer = "other";
@@ -252,11 +341,15 @@ void Previewer::setIndex(int index, bool report) {
         watcher->setFuture(QtConcurrent::run([entry = e, showHidden, count, text, markdown,
                                               latest = m_reading, generation]() mutable {
             if (*latest != generation)
-                return qMakePair(entry, QString());
+                return qMakePair(entry, QStringList());
             if (count)
                 FolderModel::summarize(entry, showHidden);
             const QString read = text ? readText(entry.path) : QString();
-            return qMakePair(entry, markdown ? markdownOpening(read) : read);
+            if (!markdown)
+                return qMakePair(entry, QStringList{read});
+            // The page is made here too, off the UI thread, at the size the window sets its text in; a file with no text to show gets none.
+            const QString opening = markdownOpening(read);
+            return qMakePair(entry, QStringList{opening, opening.isEmpty() ? QString() : markdownHtml(opening, windowPixels)});
         }));
     }
     emit changed();

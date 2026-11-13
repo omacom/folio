@@ -26,6 +26,10 @@
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTemporaryDir>
+#include <QTextBlock>
+#include <QTextCursor>
+#include <QTextDocument>
+#include <QTextTable>
 #include <QUrl>
 #include <QtConcurrent>
 #include <QtTest>
@@ -3423,6 +3427,11 @@ private slots:
         QVERIFY(!backend.details().contains("text"));
         const QString html = backend.details().value("markdown").toString();
         QVERIFY2(!html.contains("<img", Qt::CaseInsensitive), qPrintable(html));
+        // The page's room is cut to the card's text size, not the preview window's: under the heading, 6 and not 7.
+        QTextDocument card;
+        card.setHtml(html);
+        QCOMPARE(card.begin().text(), QString("Field notes"));
+        QCOMPARE(card.begin().blockFormat().bottomMargin(), 6.0);
         for (const char *url : {"shore.png", "tide.png", "cliff.png", "bare.png", "logo.png", "src=\""})
             QVERIFY2(!html.contains(url), url);
         // Each picture's alt text stands in for it, and raw HTML stays text.
@@ -3439,6 +3448,13 @@ private slots:
         QTRY_COMPARE(backend.details().value("text").toString(), QString("# Field notes\n![shore](shore.png)\n"));
         QVERIFY(!backend.details().contains("markdown"));
 
+        // A binary file named like Markdown gets no page in the card either.
+        write(dir.filePath("d.md"), QByteArray("\x00\x01\x02\x03 not text", 13));
+        QSignalSpy described(&backend, &Backend::detailsChanged);
+        backend.describe({{"path", dir.filePath("d.md")}, {"kind", "text"}, {"mime", "text/markdown"}});
+        QTRY_COMPARE(described.count(), 2);
+        QVERIFY(!backend.details().contains("markdown"));
+
         // A wide table, its 41 lines thousands of cells, stops where the card still lays it out in a frame.
         QByteArray wide;
         for (int row = 0; row < 41; ++row)
@@ -3450,6 +3466,174 @@ private slots:
         const QString cut = backend.details().value("markdown").toString();
         QVERIFY(cut.count("<td") + cut.count("<th") > 0);
         QVERIFY2(cut.count("<td") + cut.count("<th") <= 300, qPrintable(QString::number(cut.count("<td"))));
+    }
+
+    void markdownHasRoomBetweenItsBlocks()
+    {
+        // Qt reads Markdown with its blocks touching: a heading on its text, a table on the lines around it.
+        const QString markdown = "# Log\n\nPrints from the roll.\n\n## Worked\n\n- one\n  - within\n- two\n\n1. first of all\n2. then\n\nAfter the lists.\n\n| Frame | Grade |\n|---|---|\n| 12 | 2.5 |\n\n"
+                                 "Dodge the sky.\n\n### Later\n\n```\nfirst\nsecond\n```\n\n> said\n\nA `flag` and a [site](https://example.com) here.\n";
+        QTextDocument page;
+        page.setHtml(Previewer::markdownHtml(markdown, 10));
+        const auto block = [&page](const QString &text) {
+            QTextBlock found = page.begin();
+            while (found.isValid() && found.text() != text)
+                found = found.next();
+            return found;
+        };
+        for (const char *text : {"Log", "Prints from the roll.", "Worked", "one", "within", "two", "first of all", "then", "After the lists.", "12", "Dodge the sky.", "Later", "first", "second", "said"})
+            QVERIFY2(block(text).isValid(), text);
+        // The first heading starts the page; a later one stands off what came before, a smaller one by less.
+        QCOMPARE(block("Log").blockFormat().topMargin(), 0.0);
+        QCOMPARE(block("Log").blockFormat().bottomMargin(), 6.0);
+        QCOMPARE(block("Worked").blockFormat().topMargin(), 11.0);
+        QCOMPARE(block("Later").blockFormat().topMargin(), 8.0);
+        QCOMPARE(block("Prints from the roll.").blockFormat().bottomMargin(), 8.0);
+        // A list's items keep close, and what follows the list stands off it.
+        QCOMPARE(block("one").blockFormat().bottomMargin(), 2.0);
+        QCOMPARE(block("two").blockFormat().bottomMargin(), 2.0);
+        QCOMPARE(block("After the lists.").blockFormat().topMargin(), 5.0);
+        QCOMPARE(block("Dodge the sky.").blockFormat().topMargin(), 0.0);
+        QVERIFY(block("one").textList());
+        // A list inside an item keeps to it, and a second list at the page's edge stands off the first.
+        QCOMPARE(block("within").blockFormat().topMargin(), 0.0);
+        QCOMPARE(block("two").blockFormat().topMargin(), 0.0);
+        QCOMPARE(block("first of all").blockFormat().topMargin(), 5.0);
+        QCOMPARE(block("then").blockFormat().topMargin(), 0.0);
+        // A table's cells have room, between quiet rules, and the table stands off the text after it.
+        const QTextTable *table = QTextCursor(block("12")).currentTable();
+        QVERIFY(table);
+        QCOMPARE(table->format().cellPadding(), 5.0);
+        // Qt's Markdown reader gives a table its one pixel rule and joins the cells' rules; the look stands on both.
+        QCOMPARE(table->format().border(), 1.0);
+        QVERIFY(table->format().borderCollapse());
+        QCOMPARE(table->format().borderStyle(), QTextFrameFormat::BorderStyle_Solid);
+        QCOMPARE(table->format().borderBrush().color().alpha(), 96);
+        QCOMPARE(table->format().cellSpacing(), 0.0);
+        QCOMPARE(table->format().topMargin(), 3.0);
+        QCOMPARE(table->format().bottomMargin(), 9.0);
+        QCOMPARE(block("12").blockFormat().bottomMargin(), 0.0);
+        QCOMPARE(block("Dodge the sky.").blockFormat().bottomMargin(), 8.0);
+        // The lines of a code block touch, on a ground of their own; a quote keeps its own indent.
+        QCOMPARE(block("first").blockFormat().bottomMargin(), 0.0);
+        QCOMPARE(block("second").blockFormat().bottomMargin(), 8.0);
+        QVERIFY(block("first").blockFormat().background().style() != Qt::NoBrush);
+        QVERIFY(block("Dodge the sky.").blockFormat().background().style() == Qt::NoBrush);
+        QVERIFY(block("said").blockFormat().leftMargin() > 0);
+        // Lines of text and of a list stand a little apart; a code block's keep the font's own step.
+        QCOMPARE(block("Prints from the roll.").blockFormat().lineHeight(), 120.0);
+        QCOMPARE(block("one").blockFormat().lineHeight(), 120.0);
+        QCOMPARE(block("first").blockFormat().lineHeight(), 0.0);
+        // Code in a line stands on the same ground, and a link is underlined text in the text's own color: nothing here follows it.
+        const QTextBlock line = block("A flag and a site here.");
+        QVERIFY(line.isValid());
+        const auto formatOf = [&line](const QString &word) {
+            for (QTextBlock::iterator run = line.begin(); !run.atEnd(); ++run)
+                if (run.fragment().text() == word)
+                    return run.fragment().charFormat();
+            return QTextCharFormat();
+        };
+        QVERIFY(formatOf("flag").background().style() != Qt::NoBrush);
+        QVERIFY(formatOf("A ").isValid() && formatOf("A ").background().style() == Qt::NoBrush);
+        QVERIFY(formatOf("site").fontUnderline());
+        QVERIFY(!formatOf("site").isAnchor());
+        QVERIFY(!formatOf("site").hasProperty(QTextFormat::ForegroundBrush));
+
+        // A list at the page's edge stands off the one before it also when that one ended on an item further in.
+        page.setHtml(Previewer::markdownHtml("- outer\n  - inner\n\n1. numbered\n", 10));
+        QCOMPARE(block("inner").blockFormat().topMargin(), 0.0);
+        QCOMPARE(block("numbered").blockFormat().topMargin(), 5.0);
+        // Two code blocks in a row are two when their languages differ; code in a list item and code set in by four spaces get the ground too.
+        page.setHtml(Previewer::markdownHtml("```sh\nasked\n```\n\n```\nanswered\nagain\n```\n\n- step\n\n  ```\n  made\n  ```\n\nThen:\n\n    set in\n", 10));
+        QCOMPARE(block("asked").blockFormat().bottomMargin(), 8.0);
+        QCOMPARE(block("answered").blockFormat().bottomMargin(), 0.0);
+        for (const char *text : {"asked", "answered", "made", "set in"})
+            QVERIFY2(block(text).blockFormat().background().style() != Qt::NoBrush, text);
+        QCOMPARE(block("made").blockFormat().lineHeight(), 0.0);
+
+        // The room follows the size the text is shown in.
+        page.setHtml(Previewer::markdownHtml(markdown, 20));
+        QCOMPARE(block("Log").blockFormat().bottomMargin(), 11.0);
+        QCOMPARE(block("Worked").blockFormat().topMargin(), 22.0);
+        QCOMPARE(QTextCursor(block("12")).currentTable()->format().cellPadding(), 10.0);
+    }
+
+    void previewShowsMarkdownAsAPage()
+    {
+        // The preview window shows a Markdown file as the page made of it, and any other text as written.
+        QTemporaryDir dir;
+        write(dir.filePath("a.md"), "# Rows\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nAfter.\n");
+        write(dir.filePath("b.txt"), "# Rows\n");
+        write(dir.filePath("c.md"), "# Other\n");
+        Previewer previewer;
+        previewer.start(dir.filePath("a.md"), false, "name");
+        QTRY_VERIFY(!previewer.html().isEmpty());
+        QCOMPARE(previewer.viewer(), QString("markdown"));
+        QVERIFY(previewer.text().startsWith("# Rows\n"));
+        QTextDocument page;
+        page.setHtml(previewer.html());
+        const QTextTable *table = nullptr;
+        for (QTextFrame *frame : page.rootFrame()->childFrames())
+            if (auto *found = qobject_cast<QTextTable *>(frame))
+                table = found;
+        // The cells' room is half the window's text size, rounded: the page was cut for the window, not for the details pane's card.
+        QVERIFY(table);
+        QCOMPARE(table->format().cellPadding(), 7.0);
+        QVERIFY(page.toPlainText().startsWith("Rows"));
+        QVERIFY(page.toPlainText().contains("After."));
+        QVERIFY(!page.toPlainText().contains('|'));
+        // A step to another Markdown file takes the old page down at once, ahead of the read of the new one.
+        previewer.show(dir.filePath("c.md"));
+        QVERIFY(previewer.html().isEmpty());
+        QTRY_VERIFY(previewer.html().contains("Other"));
+        QVERIFY(!previewer.html().contains("After."));
+        previewer.show(dir.filePath("b.txt"));
+        QTRY_COMPARE(previewer.text(), QString("# Rows\n"));
+        QVERIFY(previewer.html().isEmpty());
+        // A binary file named like Markdown is shown as a plain file, with no page of its own.
+        write(dir.filePath("d.md"), QByteArray("\x00\x01\x02\x03 not text", 13));
+        previewer.show(dir.filePath("d.md"));
+        QTRY_COMPARE(previewer.viewer(), QString("other"));
+        QVERIFY(previewer.html().isEmpty());
+    }
+
+    void previewWindowSetsAMarkdownFileAsItsPage()
+    {
+        // The window's text is the page for a Markdown file, in the size the page's room was cut to, and the file as written for any other text.
+        QTemporaryDir home;
+        // Nothing here should write settings; any that did would land in the test's home, not the user's.
+        QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, home.path());
+        write(home.filePath("a.md"), "# Rows\n\n| a | b |\n|---|---|\n| 1 | 2 |\n");
+        write(home.filePath("b.txt"), "# Rows\n");
+        Theme theme(home.filePath("theme"));
+        Translator translator(home.filePath("language"), sourceFolder() + "/i18n");
+        Previewer previewer;
+        previewer.start(home.filePath("a.md"), false, "name");
+        QTRY_VERIFY(!previewer.html().isEmpty());
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("previewer", &previewer);
+        QQmlComponent component(&engine, QUrl::fromLocalFile(sourceFolder() + "/PreviewWindow.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        const auto body = [&root] {
+            QQuickItem *edit = nullptr;
+            for (QQuickItem *child : root->findChildren<QQuickItem *>())
+                if (child->inherits("QQuickTextEdit"))
+                    edit = child;
+            return edit;
+        };
+        QTRY_VERIFY(body());
+        QCOMPARE(body()->property("textFormat").toInt(), int(Qt::RichText));
+        QCOMPARE(body()->property("font").value<QFont>().pixelSize(), Previewer::windowPixels);
+        // What is drawn is the page: the heading without its mark and the cells without their bars.
+        QString drawn;
+        QVERIFY(QMetaObject::invokeMethod(body(), "getText", Q_RETURN_ARG(QString, drawn), Q_ARG(int, 0), Q_ARG(int, body()->property("length").toInt())));
+        QVERIFY2(drawn.contains("Rows") && !drawn.contains('#') && !drawn.contains('|') && !drawn.contains('<'), qPrintable(drawn));
+        previewer.show(home.filePath("b.txt"));
+        QTRY_COMPARE(body()->property("text").toString(), QString("# Rows\n"));
+        QCOMPARE(body()->property("textFormat").toInt(), int(Qt::PlainText));
     }
 
     void backendReadsTrashNotesOffTheUiThread()
@@ -4533,6 +4717,48 @@ private slots:
         backend.folder()->selectAll();
         QCOMPARE(backend.folder()->selectedCount(), 2);
         QTRY_COMPARE(glyph->property("name").toString(), QString("file"));
+    }
+
+    void detailsSetAMarkdownFileInTheSizeItsRoomWasCutTo()
+    {
+        // The details card draws a Markdown file's page in the size its room was cut to.
+        QTemporaryDir home;
+        // The window remembers its view in QSettings; here that file lands in the test's home, not the user's.
+        QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, home.path());
+        Theme theme(home.filePath("theme"));
+        Translator translator(home.filePath("language"), sourceFolder() + "/i18n");
+        Places places(home.path());
+        Plugins plugins("en", {}, home.filePath("folio.conf"));
+        Backend backend(home.path());
+        backend.setPlugins(&plugins);
+        FileOps ops;
+        QQmlEngine engine;
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("places", &places);
+        engine.rootContext()->setContextProperty("plugins", &plugins);
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("fileOps", &ops);
+        QQmlComponent component(&engine, QUrl::fromLocalFile(sourceFolder() + "/Main.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(window);
+
+        // The page is the one rich text inside the pane.
+        std::function<QQuickItem *(QQuickItem *, bool)> find = [&](QQuickItem *item, bool inPane) -> QQuickItem * {
+            const QByteArray type = item->metaObject()->className();
+            if (inPane && item->inherits("QQuickTextEdit") && item->property("textFormat").toInt() == int(Qt::RichText))
+                return item;
+            for (QQuickItem *child : item->childItems())
+                if (QQuickItem *found = find(child, inPane || type.startsWith("PreviewPane")))
+                    return found;
+            return nullptr;
+        };
+        QQuickItem *page = find(window->contentItem(), false);
+        QVERIFY(page);
+        QCOMPARE(page->property("font").value<QFont>().pixelSize(), Previewer::cardPixels);
     }
 
     void pluginPollsArentHeldUpByActions()
