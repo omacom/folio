@@ -32,8 +32,7 @@ static bool isSeparator(char c) {
     return c == '/' || c == '-' || c == '_' || c == '.' || c == ' ';
 }
 
-// A word starts after a separator, and at a capital after a small letter
-// or a digit ("renderFrame", "2024Report").
+// A word starts after a separator, and at a capital after a small letter or a digit ("renderFrame", "2024Report").
 static bool wordStart(QByteArrayView text, qsizetype at) {
     return at == 0 || isSeparator(text[at - 1]) || (lower(text[at]) != text[at] && lower(text[at - 1]) == text[at - 1]);
 }
@@ -48,9 +47,9 @@ quint64 SearchMatcher::bitsOf(QByteArrayView text) {
         if (c >= 'a' && c <= 'z')
             bits |= 1ull << (c - 'a');
         else if (c >= '0' && c <= '9')
-            bits |= 1ull << (26 + c - '0');
+            bits |= 1ull << (DigitBit + c - '0');
         else if (mark)
-            bits |= 1ull << (36 + (mark - marks));
+            bits |= 1ull << (MarkBit + (mark - marks));
         else
             bits |= Unknown;
     }
@@ -69,8 +68,7 @@ SearchMatcher::SearchMatcher(const QString &query)
         m_typos = letters >= 2 * oneTypoFrom ? 2 : letters >= oneTypoFrom ? 1 : 0;
 }
 
-// Optimal string alignment from each word start, so a swapped pair is one
-// typo: only letters are added, dropped or changed, never digits or marks.
+// Optimal string alignment from each word start, so a swapped pair is one typo: only letters are added, dropped or changed, never digits or marks.
 int SearchMatcher::typo(QByteArrayView hay) const {
     // Each typo costs this much of the class's score.
     constexpr int typoCost = 1000;
@@ -181,8 +179,7 @@ void SearchMatcher::Alignment::reset(qsizetype length) {
     hit = length == 0 ? 0 : Dead;
 }
 
-// best[k]: the best score with the query's first k letters placed so far;
-// end[k]: the same with the k-th placed on the letter just read.
+// best[k]: the best score with the query's first k letters placed so far; end[k]: the same with the k-th placed on the letter just read.
 void SearchMatcher::Alignment::advance(QByteArrayView needle, QByteArrayView text, bool own) {
     for (qsizetype i = 0; i < text.size(); ++i) {
         const char c = lower(text[i]);
@@ -220,9 +217,7 @@ bool SearchIndex::walk(const QString &root, bool showHidden, const std::function
         counts = spent;
         return false;
     };
-    // A folder's names are read first and added all at once, so an answer
-    // given meanwhile sees whole folders. While an answer holds the lock,
-    // the folders already found are read on and wait here, in order.
+    // A folder's names go in all at once, so an answer sees whole folders; while an answer holds the lock, the folders found are read on and wait here, in order.
     struct Read {
         quint32 parent;
         QByteArray names;
@@ -252,8 +247,7 @@ bool SearchIndex::walk(const QString &root, bool showHidden, const std::function
         }
         waiting.clear();
     };
-    // The folders found are the queue: each is read in the order it was
-    // found, which is breadth first. -1 is the root.
+    // The folders found are the queue: each is read in the order it was found, which is breadth first. -1 is the root.
     for (qsizetype folder = -1;; ++folder) {
         // Out of folders to read, those waiting go in, and perhaps bring more.
         if (folder >= m_folders.size() && !waiting.empty()) {
@@ -271,8 +265,7 @@ bool SearchIndex::walk(const QString &root, bool showHidden, const std::function
         if (fd < 0)
             continue;
         struct stat st;
-        // Other filesystems (a mounted drive, another machine, /proc from
-        // /) are listed but not read.
+        // Other filesystems (a mounted drive, another machine, /proc from /) are listed but not read.
         const bool same = ::fstat(fd, &st) == 0 && (folder < 0 || st.st_dev == drive);
         if (folder < 0)
             drive = st.st_dev;
@@ -288,8 +281,7 @@ bool SearchIndex::walk(const QString &root, bool showHidden, const std::function
             const char *text = entry->d_name;
             if (text[0] == '.' && (!showHidden || text[1] == 0 || (text[1] == '.' && text[2] == 0)))
                 continue;
-            // The type comes with the name; only a filesystem that doesn't
-            // say needs asking. Symlinked folders aren't walked into.
+            // The type comes with the name; only a filesystem that doesn't say needs asking. Symlinked folders aren't walked into.
             bool isDir = entry->d_type == DT_DIR;
             if (entry->d_type == DT_UNKNOWN) {
                 ++read.asked;
@@ -312,8 +304,7 @@ bool SearchIndex::walk(const QString &root, bool showHidden, const std::function
         if (afterFolder)
             afterFolder(folder + 2);
     }
-    // Names are only looked up while folders are read, and what's left
-    // over from growing goes back.
+    // Names are only looked up while folders are read, and what's left over from growing goes back.
     QMutexLocker hold(lock);
     m_lookup = {};
     m_names.squeeze();
@@ -336,7 +327,9 @@ qsizetype SearchIndex::bytes() const {
 quint32 SearchIndex::intern(QByteArrayView text) {
     // Kept under three quarters full, so a probe ends soon.
     if ((m_names.size() + 1) * 4 > m_lookup.size() * 3) {
-        QVector<quint32> bigger(qMax<qsizetype>(1024, m_lookup.size() * 2), None);
+        // A power of two, as every size after it, so a hash is cut to the table with a mask.
+        constexpr qsizetype firstLookup = 1024;
+        QVector<quint32> bigger(qMax(firstLookup, m_lookup.size() * 2), None);
         for (quint32 id = 0; id < quint32(m_names.size()); ++id) {
             size_t at = qHash(name(id)) & (bigger.size() - 1);
             while (bigger[at] != None)
@@ -431,15 +424,13 @@ qsizetype SearchIndex::pathLength(quint32 row) const {
     return (r.parent == None ? 0 : m_folders[r.parent].length + 1) + m_names[r.name].length;
 }
 
-// Whether a name, or a path, with `held` can hold every letter in `wanted`,
-// `edits` of them aside: one more it lacks rules it out unread. Digits and
-// marks are never edited.
+// Whether `held` can hold every letter in `wanted`, `edits` of them aside: one more it lacks rules it out unread. Digits and marks are never edited.
 static bool possible(quint64 wanted, quint64 held, int edits = 0) {
-    constexpr quint64 digitsAndMarks = ((1ull << 16) - 1) << 26;
+    constexpr quint64 letters = (1ull << SearchMatcher::DigitBit) - 1;
     if ((wanted | held) & SearchMatcher::Unknown)
         return true;
     const quint64 missing = wanted & ~held;
-    return !(missing & digitsAndMarks) && int(qPopulationCount(missing)) <= edits;
+    return !(missing & ~letters) && int(qPopulationCount(missing)) <= edits;
 }
 
 int SearchIndex::score(quint32 id, QByteArray &folded) const {
@@ -448,8 +439,7 @@ int SearchIndex::score(quint32 id, QByteArray &folded) const {
     return m_matcher.name(text(id, folded));
 }
 
-// How far into the query the folders down to `folder` take it: worked out
-// once a folder a query, so a row costs only its own name.
+// How far into the query the folders down to `folder` take it: worked out once a folder a query, so a row costs only its own name.
 qsizetype SearchIndex::reach(quint32 folder) {
     QVarLengthArray<quint32, 32> unknown;
     for (quint32 at = folder; at != None && m_folderStamps[at] != m_stamp; at = m_folders[at].parent)
@@ -470,8 +460,7 @@ qsizetype SearchIndex::reach(quint32 folder) {
     return m_reaches[folder];
 }
 
-// A match along the path's score: the folders' part worked out once a
-// folder, then the row's own name.
+// A match along the path's score: the folders' part worked out once a folder, then the row's own name.
 int SearchIndex::alongPath(quint32 row, int tier, QHash<quint32, SearchMatcher::Alignment> &above) {
     const QByteArray &needle = m_matcher.needle();
     QVarLengthArray<quint32, 32> unknown;
@@ -497,8 +486,7 @@ int SearchIndex::alongPath(quint32 row, int tier, QHash<quint32, SearchMatcher::
 
 qsizetype SearchIndex::answer(const QString &query) {
     ++counts.answers;
-    // A longer query's matches are among the last one's, as long as
-    // nothing's been read since.
+    // A longer query's matches are among the last one's, as long as nothing's been read since.
     QVector<quint32> within;
     const bool narrow = m_answered == m_rows.size() && SearchMatcher::canNarrow(m_query, query);
     if (narrow) {
@@ -521,8 +509,7 @@ qsizetype SearchIndex::answer(const QString &query) {
     const quint64 first = needle.isEmpty() ? 0 : SearchMatcher::bitsOf(needle.first(1));
     const quint64 folderBits = SearchMatcher::bitsOf(needle.first(m_matcher.folderPart()));
     QByteArray folded;
-    // Whether a name spells the query out, or its folders were named with a
-    // "/": anything else found is its letters scattered about.
+    // Whether a name spells the query out, or its folders were named with a "/": anything else found is its letters scattered about.
     bool whole = false;
     const qsizetype count = narrow ? within.size() : m_rows.size();
     for (qsizetype i = 0; i < count; ++i) {
@@ -534,9 +521,7 @@ qsizetype SearchIndex::answer(const QString &query) {
             ++counts.names;
         }
         int found = m_scores[r.name];
-        // Not in the name as typed: then perhaps along the path, the
-        // folders taking the query as far as they can and the name the
-        // rest. The bits rule most paths out before any folder is read.
+        // Not in the name as typed: then perhaps along the path, the folders taking the query as far as they can and the name the rest; the bits rule most paths out unread.
         if ((found == SearchMatcher::NoMatch || (found < SearchMatcher::Named + SearchMatcher::Span && found != SearchMatcher::Pending))
             && r.parent != None) {
             const quint64 held = m_folders[r.parent].bits | m_names[r.name].bits;
@@ -555,8 +540,7 @@ qsizetype SearchIndex::answer(const QString &query) {
         whole = whole || found >= SearchMatcher::Word || found == SearchMatcher::PendingAligned
             || (found == SearchMatcher::Pending && m_matcher.spells(text(r.name, folded)));
     }
-    // No name spells it out: then names a typo or two off, ahead of the
-    // scattered ones. The slowest way to match, so it's only tried now.
+    // No name spells it out: then names a typo or two off, ahead of the scattered ones. The slowest way to match, so it's only tried now.
     if (!whole && m_matcher.typos() > 0) {
         ++counts.typos;
         restamp();
@@ -595,10 +579,13 @@ void SearchIndex::restamp() {
 static int classOf(int score) {
     static constexpr int tiers[] = {SearchMatcher::Exact, SearchMatcher::Prefix, SearchMatcher::Word, SearchMatcher::Aligned,
                                     SearchMatcher::Named};
+    // Where a pending score's class is among them.
+    constexpr int aligned = 3, named = 4;
+    static_assert(tiers[aligned] == SearchMatcher::Aligned && tiers[named] == SearchMatcher::Named);
     if (score == SearchMatcher::PendingAligned)
-        return 3;
+        return aligned;
     if (score == SearchMatcher::Pending || score == SearchMatcher::PendingPath)
-        return 4;
+        return named;
     for (int i = 0; i < int(std::size(tiers)); ++i)
         if (score >= tiers[i] - SearchMatcher::Span)
             return i;

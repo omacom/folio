@@ -13,12 +13,10 @@
 class QMimeDatabase;
 class QMutex;
 
-// One query, matched against names a byte at a time: ASCII letters of either
-// case alike, other text compared once Qt has folded its case.
+// One query, matched against names a byte at a time: ASCII letters of either case alike, other text compared once Qt has folded its case.
 class SearchMatcher {
 public:
-    // The classes of a match, best first, far enough apart that the score
-    // inside a class never reaches the next one.
+    // The classes of a match, best first, far enough apart that the score inside a class never reaches the next one.
     enum Tier : int {
         Exact = 5000000, // the name is the query
         Prefix = 4000000, // the name starts with it
@@ -28,8 +26,7 @@ public:
         Named = 2000000, // its letters are in the name, or along the path, in order
     };
     static constexpr int Span = 100000;
-    // A match whose score inside its class is only worked out if it's
-    // shown: Aligned, Named in the name, or Named along the path.
+    // A match whose score inside its class is only worked out if it's shown: Aligned, Named in the name, or Named along the path.
     static constexpr int PendingAligned = -3, Pending = -2, PendingPath = -1;
     static constexpr int NoMatch = INT_MIN;
 
@@ -38,38 +35,30 @@ public:
     quint64 bits() const { return m_bits; }
     // The class `text` matches in, Pending when that's Named, or NoMatch.
     int name(QByteArrayView text) const;
-    // A Named match's score: runs, word starts and letters close together
-    // earn more.
+    // A Named match's score: runs, word starts and letters close together earn more.
     int align(QByteArrayView text) const;
-    // How many letters a name may be off from the query: none when the
-    // query doesn't start with a letter or a digit.
+    // How many letters a name may be off from the query: none when the query doesn't start with a letter or a digit.
     int typos() const { return m_typos; }
-    // The Typo score of a name that far off at most, from the start of a
-    // word, or NoMatch.
+    // The Typo score of a name that far off at most, from the start of a word, or NoMatch.
     int typo(QByteArrayView text) const;
-    // Whether `text` spells the query out: whole anywhere, or in runs that
-    // each start a word, as framen does in frame_new.
+    // Whether `text` spells the query out: whole anywhere, or in runs that each start a word, as framen does in frame_new.
     bool spells(QByteArrayView text) const;
-    // How far into the query `text` takes it, from `at`, its letters
-    // taken in order.
+    // How far into the query `text` takes it, from `at`, its letters taken in order.
     qsizetype reach(QByteArrayView text, qsizetype at) const;
-    // The query's length up to and with its last "/", which the folders
-    // have to take it past; 0 without one.
+    // The query's length up to and with its last "/", which the folders have to take it past; 0 without one.
     qsizetype folderPart() const { return m_folderPart; }
     // The bits of the query from `at` on.
     quint64 bitsFrom(qsizetype at) const { return m_bitsFrom[at]; }
     // Whether every match of `now` is among the matches of `before`.
     static bool canNarrow(const QString &before, const QString &now);
-    // One bit for each letter, digit and common mark in `text`: a name that
-    // lacks one of the query's can't match it.
+    // One bit for each letter, digit and common mark in `text`: a name that lacks one of the query's can't match it.
     static quint64 bitsOf(QByteArrayView text);
+    // Where the digits' bits start, after the letters', and the marks' after those.
+    static constexpr int DigitBit = 26, MarkBit = DigitBit + 10;
     static constexpr quint64 Unknown = 1ull << 63;
     static constexpr quint64 NotAscii = 1ull << 62;
 
-    // The score inside a class, read a piece of the path at a time: each of
-    // the query's letters placed, in order, earns more next to the last one,
-    // at the start of a word and in the row's own name, and a letter
-    // skipped costs one.
+    // The score inside a class, read a piece of the path at a time: a letter placed earns more next to the last, at a word's start and in the row's own name; one skipped costs one.
     struct Alignment {
         static constexpr int Dead = INT_MIN / 4;
         static constexpr int RunBonus = 8, WordBonus = 6, OwnNameBonus = 4;
@@ -92,9 +81,7 @@ private:
     mutable std::vector<int> m_older, m_previous, m_current;
 };
 
-// Everything below a folder by name, read once for a search. Names stay the
-// bytes the folder gave, each kept once however many folders hold it, and a
-// row's path is put together from its folders only when it's shown.
+// Everything below a folder by name, read once for a search: names stay the folder's bytes, each kept once, and a row's path is put together only when it's shown.
 class SearchIndex {
 public:
     // What reading and answering cost, for the tests.
@@ -108,13 +95,9 @@ public:
         qsizetype answers = 0;
     };
 
-    // Reads `root` and every folder below it, breadth first, staying on its
-    // drive and out of symlinked folders. False, and empty, once `stop`
-    // returns true. Holding `lock` while it adds each folder, it can be
-    // answered from as it reads.
+    // Reads `root` and the folders below, breadth first, on its drive and out of symlinked folders. False and empty once `stop` says; adding under `lock`, it's answered from as it reads.
     bool walk(const QString &root, bool showHidden, const std::function<bool()> &stop = {}, QMutex *lock = nullptr);
-    // Called with how many folders have been read, after each, so a test
-    // can hold a walk partway.
+    // Called with how many folders have been read, after each, so a test can hold a walk partway.
     inline static std::function<void(qsizetype folders)> afterFolder;
     qsizetype size() const { return m_rows.size(); }
     // The memory it holds.
@@ -130,14 +113,11 @@ public:
     static QVector<FolderModel::Entry> entriesAt(const QString &root, const QStringList &names, const std::function<bool()> &stop = {});
     // The rows as entries; empty once `stop` returns true.
     QVector<FolderModel::Entry> entries(const QVector<quint32> &rows, const std::function<bool()> &stop = {});
-    // Matches `query`, best first, and gives how many rows match. The rows
-    // themselves come from rows(), ordered only as far as they're asked for.
+    // Matches `query`, best first, and gives how many rows match. The rows themselves come from rows(), ordered only as far as they're asked for.
     qsizetype answer(const QString &query);
     // The query the last answer was for.
     const QString &query() const { return m_query; }
-    // The answer's rows from `from`, at most `count` of them, best first:
-    // a better class first, then a better score, a folder before a file,
-    // the shorter path, and the paths in natural order.
+    // The answer's rows from `from`, at most `count`, best first: by class, by score, a folder before a file, the shorter path, then the paths in natural order.
     QVector<quint32> rows(qsizetype from, qsizetype count);
     // The best `limit` rows that match `query`, sorted by `sort` in `locale`'s alphabet. Empty once `stop` returns true.
     QVector<FolderModel::Entry> find(const QString &query, const QString &sort, int limit,
@@ -150,8 +130,7 @@ private:
     // Names are kept in slabs this big, which go back to the system with the search.
     static constexpr qsizetype SlabBytes = 1 << 20;
     struct Name { quint32 offset, length; quint64 bits; };
-    // A folder is its name, the folder holding it, the length of its path
-    // and the bits of every name along it; a row is its name and its folder.
+    // A folder is its name, the folder holding it, the length of its path and the bits of every name along it; a row is its name and its folder.
     struct Folder { quint32 name, parent, length; quint64 bits; };
     struct Row { quint32 name, parent; };
     struct Hit { int score; quint32 row; };
@@ -179,8 +158,7 @@ private:
     // A bit for each row, set for a folder.
     QByteArray m_kinds;
 
-    // The last answer: its query and matcher, its matches, how many of them
-    // are in their final order, and how many rows there were to match.
+    // The last answer: its query and matcher, its matches, how many of them are in their final order, and how many rows there were to match.
     QString m_query;
     SearchMatcher m_matcher{QString()};
     QVector<Hit> m_hits;
