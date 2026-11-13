@@ -213,7 +213,7 @@ private:
     QString m_path;
     QVector<Entry> m_entries;
     QSet<QString> m_selected;
-    // What was selected when the query last changed, until the answer to it lands or the selection changes.
+    // What was selected when the query last changed, until the answer to it lands or a selection is asked for.
     QSet<QString> m_leaving;
     void setSelected(const QSet<QString> &paths);
     bool m_loading = false;

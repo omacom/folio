@@ -1123,10 +1123,10 @@ QVariantMap FolderModel::toMap(const Entry &listed) {
 void FolderModel::setSelected(const QSet<QString> &paths) {
     if (paths.isEmpty())
         m_unshown.clear();
+    // Asked for since the key, changed or not, it is no longer the key's to let go.
+    m_leaving.clear();
     if (paths == m_selected)
         return;
-    // Changed since the key, it is no longer the key's to let go.
-    m_leaving.clear();
     m_selected = paths;
     if (!m_entries.isEmpty())
         emit dataChanged(index(0), index(m_entries.size() - 1), {SelectedRole});

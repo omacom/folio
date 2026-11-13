@@ -2271,6 +2271,30 @@ private slots:
         model.toggleSelected(model.indexOfPath(dir.filePath("river.txt")));
         QTRY_COMPARE(model.matches(), 1);
         QCOMPARE(model.selectedPaths(), QStringList{dir.filePath("river.txt")});
+
+        // The same selection asked for again after the key, with nothing changed, is not the key's to let go either.
+        model.setQuery("r");
+        QTRY_COMPARE(model.matches(), 2);
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        model.selectAll();
+        QCOMPARE(model.selectedCount(), 2);
+        selectedAtLanding.clear();
+        model.setQuery("re");
+        model.selectAll();
+        QTRY_VERIFY(!selectedAtLanding.isEmpty());
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QCOMPARE(model.matches(), 2);
+        QCOMPARE(model.selectedCount(), 2);
+        QCOMPARE(*std::min_element(selectedAtLanding.cbegin(), selectedAtLanding.cend()), 2);
+
+        // Asked for again, it is still cut to what the answer matches.
+        selectedAtLanding.clear();
+        model.setQuery("ri");
+        model.selectAll();
+        QTRY_VERIFY(!selectedAtLanding.isEmpty());
+        QTRY_VERIFY(!model.reading() && !model.loading());
+        QCOMPARE(model.matches(), 1);
+        QCOMPARE(model.selectedPaths(), QStringList{dir.filePath("river.txt")});
     }
 
     void searchKeepsAFoldersCountFromOneAnswerToTheNext()
