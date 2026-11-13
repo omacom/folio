@@ -30,7 +30,38 @@ Item {
     // column, and the rest stay as they are instead of reloading (which
     // flashed).
     ListModel { id: trail }
+    property bool complete: false
+    property bool syncingTrail: false
+    property var recentColumns: []
+    // Two expanded viewports, including partial columns at their edges.
+    readonly property int columnLimit: 2 * (Math.ceil(flick.width / (columnWidth + 1)) + 3)
+    onColumnLimitChanged: updateColumns()
+
+    function updateColumns() {
+        if (!complete || syncingTrail) return
+        const paths = []
+        const near = []
+        for (let i = 0; i < trail.count; ++i) {
+            const path = trail.get(i).path
+            paths.push(path)
+            const x = row.x + (view.LayoutMirroring.enabled
+                ? (trail.count - i) * (columnWidth + 1) + (inside.visible ? inside.width : 0)
+                : i * (columnWidth + 1))
+            if (trail.count <= columnLimit || (x + columnWidth > flick.contentX - columnWidth
+                    && x < flick.contentX + flick.width + columnWidth))
+                near.push(path)
+        }
+        // Protect the whole current area before evicting old ones. Updating
+        // individual Loaders in binding order could evict a neighbour first.
+        const older = recentColumns.filter(path => paths.indexOf(path) >= 0 && near.indexOf(path) < 0)
+        const spare = Math.max(0, columnLimit - near.length)
+        const keep = older.slice(Math.max(0, older.length - spare)).concat(near)
+        if (keep.length !== recentColumns.length || keep.some((path, i) => path !== recentColumns[i]))
+            recentColumns = keep
+    }
+
     function syncTrail() {
+        syncingTrail = true
         const want = []
         for (let i = 0; i + 1 < crumbs.length; ++i)
             want.push({ path: crumbs[i].path, next: crumbs[i + 1].name })
@@ -43,16 +74,25 @@ Item {
                 trail.setProperty(i, "next", want[i].next)
         if (trail.count > same)
             trail.remove(same, trail.count - same)
-        for (let i = same; i < want.length; ++i)
-            trail.append(want[i])
+        if (same < want.length)
+            trail.append(want.slice(same))
+        syncingTrail = false
+        revealEnd()
     }
     onCrumbsChanged: syncTrail()
-    Component.onCompleted: syncTrail()
+    Component.onCompleted: {
+        syncTrail()
+        complete = true
+        revealEnd()
+    }
     readonly property var selected: here.currentIndex >= 0 ? (backend.folder.count, backend.folder.get(here.currentIndex)) : ({})
 
     // Keeps the newest columns in view as the trail grows: on the left,
     // when mirrored.
-    function revealEnd() { flick.contentX = view.LayoutMirroring.enabled ? 0 : Math.max(0, flick.contentWidth - flick.width) }
+    function revealEnd() {
+        flick.contentX = view.LayoutMirroring.enabled ? 0 : Math.max(0, flick.contentWidth - flick.width)
+        updateColumns()
+    }
     LayoutMirroring.onEnabledChanged: revealEnd()
     function enter() {
         if (view.selected.isDir && (insideFolder.loading || insideFolder.count > 0 || insideFolder.error.length > 0))
@@ -73,6 +113,7 @@ Item {
         contentWidth: Math.max(width, row.width)
         contentHeight: height
         boundsBehavior: Flickable.StopAtBounds
+        onContentXChanged: view.updateColumns()
         onContentWidthChanged: view.revealEnd()
         onWidthChanged: view.revealEnd()
         ScrollBar.horizontal: FolioScrollBar { }
@@ -82,7 +123,11 @@ Item {
             // A Row isn't placed by its Flickable, so it's moved to the right
             // edge by hand when mirrored.
             x: LayoutMirroring.enabled ? parent.width - width : 0
+            // Known before Row's first layout, so RTL and revealEnd select
+            // the right initial area without loading a transient first one.
+            width: (trail.count + 1) * (view.columnWidth + 1) + (inside.visible ? inside.width : 0)
             height: flick.height
+            onXChanged: view.updateColumns()
 
             // The folders on the way here, each showing which way the trail goes.
             Repeater {
@@ -91,47 +136,95 @@ Item {
                     id: ancestor
                     required property string path
                     required property string next
+                    width: view.columnWidth + 1
                     height: row.height
+                    property real scrollY: NaN
+                    onNextChanged: {
+                        scrollY = NaN
+                        if (columnLoader && columnLoader.item) columnLoader.item.revealNext()
+                    }
+                    Connections {
+                        target: backend.folder
+                        function onShowHiddenChanged() { ancestor.scrollY = NaN }
+                        function onSortModeChanged() { ancestor.scrollY = NaN }
+                    }
+                    Connections {
+                        target: translator
+                        function onChanged() { ancestor.scrollY = NaN }
+                    }
 
-                    ListView {
-                        id: column
+                    Loader {
+                        id: columnLoader
+                        property Item dragSource: null
                         width: view.columnWidth
                         height: parent.height
-                        clip: true
-                        acceptedButtons: Qt.NoButton
-                        boundsBehavior: Flickable.StopAtBounds
-                        ScrollBar.vertical: FolioScrollBar { }
-                        model: FolderModel {
-                            id: folder
-                            path: ancestor.path
-                            showHidden: backend.folder.showHidden
-                            sortMode: backend.folder.sortMode
-                            onLoaded: column.revealNext()
-                        }
-                        // Names sort by the language's alphabet.
-                        Connections {
-                            target: translator
-                            function onChanged() { folder.reload() }
-                        }
-                        function revealNext() { positionViewAtIndex(Math.max(0, folder.indexOf(ancestor.next)), ListView.Contain) }
-                        ColumnDrop { items: column; folder: ancestor.path }
-                        TapHandler {
-                            acceptedButtons: Qt.RightButton
-                            onTapped: (point) => {
-                                const index = column.indexAt(point.position.x + column.contentX, point.position.y + column.contentY)
-                                view.contextMenu(index >= 0 ? folder.get(index) : null, ancestor.path, point.scenePosition)
+                        // Recently shown columns stay alive within the shared
+                        // budget. A drag keeps its source until it finishes.
+                        active: dragSource !== null || view.recentColumns.indexOf(ancestor.path) >= 0
+                        sourceComponent: ListView {
+                            id: column
+                            width: view.columnWidth
+                            height: parent.height
+                            clip: true
+                            acceptedButtons: Qt.NoButton
+                            boundsBehavior: Flickable.StopAtBounds
+                            ScrollBar.vertical: FolioScrollBar { }
+                            model: FolderModel {
+                                id: folder
+                                path: ancestor.path
+                                showHidden: backend.folder.showHidden
+                                sortMode: backend.folder.sortMode
+                                onLoaded: if (column.complete) column.revealNext()
                             }
-                        }
-                        Connections {
-                            target: ancestor
-                            function onNextChanged() { column.revealNext() }
-                        }
-                        delegate: FileRow {
-                            width: column.width
-                            chevron: true
-                            trail: name === ancestor.next
-                            onClicked: isDir ? backend.navigate(path) : backend.showItem(path)
-                            onActivated: backend.open(path)
+                            // Names sort by the language's alphabet.
+                            Connections {
+                                target: translator
+                                function onChanged() { folder.reload() }
+                            }
+                            property bool complete: false
+                            property bool positioned: false
+                            property bool restoring: false
+                            Connections {
+                                target: folder
+                                function onModelAboutToBeReset() { column.positioned = false }
+                            }
+                            function revealNext() {
+                                const saved = ancestor.scrollY
+                                restoring = true
+                                forceLayout()
+                                if (Number.isFinite(saved))
+                                    contentY = originY + Math.max(0, Math.min(saved, contentHeight - height))
+                                else
+                                    positionViewAtIndex(Math.max(0, folder.indexOf(ancestor.next)), ListView.Contain)
+                                restoring = false
+                                positioned = true
+                                if (Number.isFinite(saved)) ancestor.scrollY = contentY - originY
+                            }
+                            Component.onCompleted: {
+                                complete = true
+                                if (folder.count > 0 || !folder.loading) revealNext()
+                            }
+                            onContentYChanged: if (complete && positioned && !restoring && columnLoader.active) ancestor.scrollY = contentY - originY
+                            ColumnDrop { items: column; folder: ancestor.path }
+                            TapHandler {
+                                acceptedButtons: Qt.RightButton
+                                onTapped: (point) => {
+                                    const index = column.indexAt(point.position.x + column.contentX, point.position.y + column.contentY)
+                                    view.contextMenu(index >= 0 ? folder.get(index) : null, ancestor.path, point.scenePosition)
+                                }
+                            }
+                            delegate: FileRow {
+                                id: entry
+                                width: column.width
+                                chevron: true
+                                trail: name === ancestor.next
+                                Drag.onActiveChanged: {
+                                    if (Drag.active) columnLoader.dragSource = entry
+                                    else if (columnLoader.dragSource === entry) columnLoader.dragSource = null
+                                }
+                                onClicked: isDir ? backend.navigate(path) : backend.showItem(path)
+                                onActivated: backend.open(path)
+                            }
                         }
                     }
                     Separator { }
