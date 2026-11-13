@@ -5,6 +5,8 @@
 #include <QString>
 
 typedef struct _GMountOperation GMountOperation;
+typedef struct _GError GError;
+typedef struct _GCancellable GCancellable;
 
 // Mounts other machines (sftp://, smb://, anything GVfs mounts) through GIO,
 // the way Nautilus does, so they land under GVfs where every app can see
@@ -13,7 +15,9 @@ typedef struct _GMountOperation GMountOperation;
 // already made sure who's on the other end). Everything else (a password,
 // when keys aren't set up; a server's unknown key or certificate) goes to
 // the window to put to the user, instead of dying silently as it does under
-// `gio mount` with no terminal to ask in.
+// `gio mount` with no terminal to ask in. Drives from the sidebar mount
+// here too, their passphrase (an encrypted drive) put to the user the same
+// way; anything udisks needs authorized goes to the session's polkit agent.
 class Mounter : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool asking READ asking NOTIFY askingChanged)
@@ -21,6 +25,8 @@ class Mounter : public QObject {
     Q_PROPERTY(QString user READ user NOTIFY askingChanged)
     // A question's answers, in GVfs's words; empty for a password request.
     Q_PROPERTY(QStringList choices READ choices NOTIFY askingChanged)
+    // The request is for a drive's passphrase, not a sign-in.
+    Q_PROPERTY(bool drive READ drive NOTIFY askingChanged)
 
 public:
     explicit Mounter(QObject *parent = nullptr);
@@ -31,11 +37,16 @@ public:
     QString prompt() const { return m_prompt; }
     QString user() const { return m_user; }
     QStringList choices() const { return m_choices; }
+    bool drive() const { return m_drive; }
 
     // Mounts the location; `mounted` carries its local GVfs path. A
     // verified location's questions are answered here, with their first
     // choice.
     void mount(const QString &uri, bool verified);
+    // Mounts the volume Drives knows by `id`; `mounted` carries its folder.
+    void mountVolume(const QString &id);
+    // How long a drive's mount may run once its passphrase is in.
+    static constexpr int stalledAfterMs = 60000;
 
     // Where GVfs keeps its mounts, and the mount `url` is in (its root,
     // where its row is lit): worked out for SFTP, whose mount is named by
@@ -65,9 +76,21 @@ private:
     friend struct MounterCallbacks;
     void setAsking(bool asking);
     void finish();
+    void begin(bool drive, bool verified);
+    void report(bool ok, bool already, const QString &local, const GError *error);
 
     GMountOperation *m_operation = nullptr;
     bool m_verified = false;
+    bool m_drive = false;
+    // A drive's mount, cancelled when it stalls after unlocking (see
+    // providePassword); each mount, passphrase request and reply counts as
+    // a new attempt, so only the latest reply's timer can cancel it.
+    QString m_volume;
+    GCancellable *m_cancellable = nullptr;
+    bool m_lost = false;
+    // Its passphrase was given.
+    bool m_answered = false;
+    int m_attempt = 0;
     QString m_url;
     bool m_asking = false;
     QString m_prompt;

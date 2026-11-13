@@ -124,6 +124,14 @@ Places::Places(const QString &home, QObject *parent)
     m_systemDevice = QString::fromUtf8(QStorageInfo::root().device());
     connect(&m_mounts, &QFutureWatcherBase::finished, this, &Places::mountsRead);
     m_poll.setInterval(15000);
+    // GIO's drives say at once when they come, go or mount; one unmounted
+    // from anywhere (here, another app, pulled out) is left by whatever
+    // shows a folder on it.
+    if (m_realHome) {
+        m_drives = new Drives(this);
+        connect(m_drives, &Drives::changed, this, &Places::refreshDevices);
+        connect(m_drives, &Drives::leaving, this, &Places::leave);
+    }
     connect(&m_poll, &QTimer::timeout, this, &Places::refresh);
     if (m_realHome)
         m_poll.start();
@@ -279,6 +287,31 @@ QVariantList Places::physicalDrives(const QList<Mount> &mounts, const QString &s
     return drives;
 }
 
+QVariantList Places::devicesFrom(const QList<Drives::Volume> &volumes, const QVariantList &drives) {
+    QVariantList devices;
+    QStringList listed;
+    for (const Drives::Volume &v : volumes) {
+        if (v.root.isEmpty()) {
+            devices << QVariantMap{{"name", v.name}, {"path", QString()}, {"icon", "drive"}, {"volume", v.id},
+                                   {"release", QString()}, {"free", -1}};
+            continue;
+        }
+        for (const QVariant &d : drives) {
+            QVariantMap drive = d.toMap();
+            if (drive.value("path").toString() != v.root)
+                continue;
+            drive.insert("volume", v.id);
+            devices << drive;
+            listed << v.root;
+            break;
+        }
+    }
+    for (const QVariant &drive : drives)
+        if (!listed.contains(drive.toMap().value("path").toString()))
+            devices << drive;
+    return devices;
+}
+
 QList<Places::Mount> Places::readMounts() {
     QList<Mount> mounts;
     auto volumes = QStorageInfo::mountedVolumes();
@@ -321,7 +354,8 @@ void Places::mountsRead() {
             mount.canUnmount = g_mount_can_unmount(gmount);
             g_object_unref(gmount);
         }
-    const QVariantList devices = physicalDrives(mounts, m_systemDevice);
+    const QVariantList physical = physicalDrives(mounts, m_systemDevice);
+    const QVariantList devices = m_drives ? devicesFrom(m_drives->volumes(), physical) : physical;
     if (devices != m_devices) {
         m_devices = devices;
         emit changed();

@@ -64,6 +64,13 @@ public:
     // it's done.
     Q_INVOKABLE void perform(const QString &plugin, const QString &action, const QStringList &paths,
                              const QString &target = {});
+    // Opens a drive from the sidebar's Devices, mounting it first when it
+    // isn't, which may ask for its passphrase or (through polkit) for
+    // permission.
+    Q_INVOKABLE void openVolume(const QString &volume, const QString &name);
+    // Mounts a drive just plugged in, staying where it is. False when this
+    // window is mounting something else already.
+    bool mountVolume(const QString &volume, const QString &name);
     Q_INVOKABLE void dismissMessage();
     Q_INVOKABLE void showMessage(const QString &message) { setMessage(message); }
     // Good news that needs no answer ("Link copied"): shown for a few
@@ -169,6 +176,9 @@ private:
     // The plugin actions running, each with its busy text, oldest first.
     QList<std::pair<int, QString>> m_runs;
     int m_lastRun = 0;
+    // What's being mounted is a drive, and whether to go there once it is.
+    bool m_mountDrive = false;
+    bool m_mountOpens = false;
     QProcess m_preview;
     // Set while Folio closes the preview itself, which isn't a crash.
     bool m_closingPreview = false;

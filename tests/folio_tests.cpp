@@ -5368,6 +5368,39 @@ private slots:
         QCOMPARE(notice.count(), 0);
     }
 
+    void placesListDrivesNotMountedYet()
+    {
+        // GIO's volumes come first, in its order: one not mounted, one
+        // mounted, and one mounted where the system lives.
+        const QList<Drives::Volume> volumes{
+            {"Windows", "/dev/nvme0n1p3", ""},
+            {"Photos", "/dev/sdb1", "/run/media/me/Photos"},
+            {"Home", "/dev/nvme0n1p2", "/home"},
+        };
+        // The physical drives: a mounted volume is its drive, with what's
+        // free and how it's let go of; one GIO doesn't list (an fstab
+        // mount) follows.
+        const QVariantList drives{
+            QVariantMap{{"name", "archive"}, {"path", "/mnt/archive"}, {"icon", "drive"}, {"release", ""}, {"free", 5}},
+            QVariantMap{{"name", "Photos"}, {"path", "/run/media/me/Photos"}, {"icon", "drive"}, {"release", "eject"}, {"free", 7}},
+        };
+        const auto devices = Places::devicesFrom(volumes, drives);
+        QCOMPARE(devices.size(), 3);
+        const QVariantMap windows = devices.at(0).toMap();
+        QCOMPARE(windows.value("name").toString(), QString("Windows"));
+        QVERIFY(windows.value("path").toString().isEmpty());
+        QCOMPARE(windows.value("volume").toString(), QString("/dev/nvme0n1p3"));
+        QVERIFY(windows.value("release").toString().isEmpty());
+        const QVariantMap photos = devices.at(1).toMap();
+        QCOMPARE(photos.value("path").toString(), QString("/run/media/me/Photos"));
+        QCOMPARE(photos.value("volume").toString(), QString("/dev/sdb1"));
+        QCOMPARE(photos.value("release").toString(), QString("eject"));
+        QCOMPARE(photos.value("free").toLongLong(), 7);
+        // The system's own stays out, as physicalDrives left it.
+        QCOMPARE(devices.at(2).toMap().value("path").toString(), QString("/mnt/archive"));
+        QVERIFY(!devices.at(2).toMap().contains("volume"));
+    }
+
     void drivesSayWhatsFreeInTheLanguagesDigits()
     {
         QQmlEngine engine;

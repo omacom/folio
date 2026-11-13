@@ -26,6 +26,14 @@ Backend::Backend(const QString &home, QObject *parent)
     });
     connect(&m_mounter, &Mounter::mounted, this, [this](const QString &folder) {
         setBusy({});
+        // A drive opens at its top, or (plugged in) only says it's there.
+        if (std::exchange(m_mountDrive, false)) {
+            if (m_mountOpens)
+                navigate(folder);
+            else
+                showNotice(tr("%1 is mounted").arg(m_mountName));
+            return;
+        }
         // The mount's folder is known now, so the plugin's row can light up.
         if (m_plugins)
             m_plugins->mountsChanged();
@@ -35,7 +43,9 @@ Backend::Backend(const QString &home, QObject *parent)
         setBusy({});
         // An empty error is the user cancelling the sign-in: nothing to report.
         if (!error.isEmpty())
-            setMessage(tr("Couldn't connect to %1: %2").arg(m_mountName, error));
+            setMessage(m_mountDrive ? tr("Couldn't open %1: %2").arg(m_mountName, error)
+                                    : tr("Couldn't connect to %1: %2").arg(m_mountName, error));
+        m_mountDrive = false;
     });
     // The preview reports each file it steps to, and the grid follows.
     connect(&m_preview, &QProcess::readyReadStandardOutput, this, [this] {
@@ -277,6 +287,9 @@ void Backend::openItem(const QString &path) {
 }
 
 void Backend::mount(const QString &url, const QString &name, bool verified) {
+    if (m_mounter.busy())
+        return;
+    m_mountDrive = false;
     m_mountBare = QUrl(url).path().isEmpty() || QUrl(url).path() == "/";
     m_mountName = name;
     // Mounted already (by Folio or another app): straight there.
@@ -340,6 +353,26 @@ void Backend::finish(int run, const Plugins::Result &result) {
         showNotice(result.notice);
     if (!result.path.isEmpty())
         navigate(Plugins::expand(result.path));
+}
+
+void Backend::openVolume(const QString &volume, const QString &name) {
+    if (m_mounter.busy())
+        return;
+    m_mountName = name.isEmpty() ? tr("the drive") : name;
+    m_mountDrive = true;
+    m_mountOpens = true;
+    setBusy(tr("Opening %1…").arg(m_mountName));
+    m_mounter.mountVolume(volume);
+}
+
+bool Backend::mountVolume(const QString &volume, const QString &name) {
+    if (m_mounter.busy())
+        return false;
+    m_mountName = name.isEmpty() ? tr("the drive") : name;
+    m_mountDrive = true;
+    m_mountOpens = false;
+    m_mounter.mountVolume(volume);
+    return true;
 }
 
 void Backend::showNotice(const QString &notice) {
