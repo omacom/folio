@@ -3272,6 +3272,17 @@ private slots:
         QCOMPARE(backend.takeSelection(), QString("report.pdf"));
     }
 
+    void fileManager1CanStartFolioOnTheFirstRequest()
+    {
+        // "Show in folder" must work before Folio is already running too:
+        // D-Bus starts it and holds ShowItems until it owns the service name.
+        const QString path = sourceFolder() + "/../share/org.freedesktop.FileManager1.service";
+        QVERIFY2(QFileInfo::exists(path), qPrintable(path + " is missing"));
+        const QSettings service(path, QSettings::IniFormat);
+        QCOMPARE(service.value("D-BUS Service/Name").toString(), QString("org.freedesktop.FileManager1"));
+        QCOMPARE(service.value("D-BUS Service/Exec").toString(), QString("/usr/bin/folio"));
+    }
+
     void backendReadsDetailsOffTheUiThread()
     {
         // A picture's size and a text's opening lines are read in the
