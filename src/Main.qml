@@ -137,7 +137,7 @@ ApplicationWindow {
         Behavior on opacity { NumberAnimation { duration: 100 } }
 
         // The bar across the top; the panes' path bars draw over it.
-        readonly property int barHeight: 60
+        readonly property int barHeight: Math.max(60, theme.scaled(18) + 18 + 24)
         Rectangle {
             width: parent.width
             height: parent.barHeight

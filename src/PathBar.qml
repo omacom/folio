@@ -60,7 +60,7 @@ Rectangle {
     // Transparent: the window draws one bar across the whole top, so the
     // path bars of one or two panes read as part of it.
     color: "transparent"
-    implicitHeight: 60
+    implicitHeight: Math.max(60, theme.scaled(18) + 18 + 24)
 
     RowLayout {
         anchors.fill: parent
@@ -73,7 +73,7 @@ Rectangle {
             id: pathField
             Layout.fillWidth: true
             visible: bar.editing
-            font.pixelSize: 14
+            font.pixelSize: theme.scaled(14)
             placeholderText: qsTr("A folder, or a server's address like sftp://host/")
             onAccepted: {
                 if (backend.goTyped(text))
@@ -91,7 +91,7 @@ Rectangle {
             id: searchField
             Layout.fillWidth: true
             visible: bar.searching && !bar.editing
-            font.pixelSize: 14
+            font.pixelSize: theme.scaled(14)
             // Room at the end for where it searches; padding isn't mirrored.
             leftPadding: LayoutMirroring.enabled ? scope.implicitWidth + 24 : 12
             rightPadding: LayoutMirroring.enabled ? 12 : scope.implicitWidth + 24
@@ -111,7 +111,7 @@ Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 text: backend.path.startsWith("plugin:") ? qsTr("Search %1").arg(here) : qsTr("Search %1 and below").arg(here)
                 color: theme.secondaryForeground
-                font.pixelSize: 12
+                font.pixelSize: theme.scaled(12)
             }
             onTextEdited: searchDelay.restart()
             // Enter or ↓ goes to the results, leaving the search up.
@@ -165,12 +165,12 @@ Rectangle {
                             visible: crumb.index > 0 && !(crumb.index === 1 && backend.crumbs[0].name === "/")
                             text: "/"
                             color: Qt.alpha(theme.foreground, 0.35)
-                            font.pixelSize: 14
+                            font.pixelSize: theme.scaled(14)
                         }
                         Text {
                             text: crumb.modelData.name
                             color: crumb.last ? theme.brightForeground : crumbMouse.containsMouse ? theme.foreground : theme.secondaryForeground
-                            font.pixelSize: 14
+                            font.pixelSize: theme.scaled(14)
                             font.weight: crumb.last ? Font.DemiBold : Font.Normal
                             MouseArea {
                                 id: crumbMouse

@@ -62,7 +62,7 @@ FocusScope {
                 text: dialog.title
                 wrapMode: Text.Wrap
                 color: theme.brightForeground
-                font.pixelSize: 16
+                font.pixelSize: theme.scaled(16)
                 font.weight: Font.DemiBold
             }
         }

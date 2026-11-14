@@ -74,7 +74,7 @@ ApplicationWindow {
             // What it is, where it sits in the folder, and the way out.
             Rectangle {
                 Layout.fillWidth: true
-                implicitHeight: 60
+                implicitHeight: Math.max(60, heading.implicitHeight + 24)
                 color: theme.background
 
                 RowLayout {
@@ -84,6 +84,7 @@ ApplicationWindow {
                     spacing: 12
 
                     ColumnLayout {
+                        id: heading
                         Layout.fillWidth: true
                         spacing: 2
                         // Aligned explicitly, so that they're mirrored: left
@@ -93,7 +94,7 @@ ApplicationWindow {
                             horizontalAlignment: Text.AlignLeft
                             text: win.item.name || ""
                             color: theme.brightForeground
-                            font.pixelSize: 15
+                            font.pixelSize: theme.scaled(15)
                             font.weight: Font.DemiBold
                             elide: Text.ElideMiddle
                         }
@@ -102,7 +103,7 @@ ApplicationWindow {
                             horizontalAlignment: Text.AlignLeft
                             text: Format.summary(win.item, previewer.type)
                             color: theme.secondaryForeground
-                            font.pixelSize: 12
+                            font.pixelSize: theme.scaled(12)
                             elide: Text.ElideRight
                         }
                     }
@@ -112,7 +113,7 @@ ApplicationWindow {
                         text: qsTr("%1 of %2").arg((previewer.index + 1).toLocaleString(Qt.locale(), "f", 0))
                                               .arg(previewer.count.toLocaleString(Qt.locale(), "f", 0))
                         color: theme.secondaryForeground
-                        font.pixelSize: 12
+                        font.pixelSize: theme.scaled(12)
                     }
                     // Mirrored, Next sits left of Previous; each points away
                     // from the other, at the key that does the same.
@@ -303,7 +304,7 @@ ApplicationWindow {
                 color: theme.foreground
                 selectionColor: theme.accent
                 selectedTextColor: theme.accentForeground
-                font.pixelSize: 13
+                font.pixelSize: theme.scaled(13)
             }
 
             ScrollBar.vertical: FolioScrollBar { }

@@ -86,7 +86,7 @@ GridView {
     onTileZoomChanged: Qt.callLater(() => { if (currentIndex >= 0) { forceLayout(); positionViewAtIndex(currentIndex, GridView.Contain) } })
     readonly property int columns: Math.max(1, Math.floor(width / (40 + 128 * tileZoom)))
     cellWidth: Math.floor(width / columns)
-    cellHeight: 100 + Math.round(92 * tileZoom)
+    cellHeight: 100 + Math.round(92 * tileZoom) - 44 + theme.scaled(44)
     highlightFollowsCurrentItem: false
     ScrollBar.vertical: FolioScrollBar { }
 

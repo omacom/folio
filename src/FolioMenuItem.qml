@@ -26,7 +26,7 @@ MenuItem {
     visible: shown
     height: shown ? implicitHeight : 0
     activeFocusOnTab: shown
-    implicitHeight: 32
+    implicitHeight: Math.max(32, theme.scaled(32))
     leftPadding: 14
     rightPadding: 14
 
@@ -55,7 +55,7 @@ MenuItem {
             visible: !entry.subMenu
             text: Format.keys(entry.keys)
             color: theme.secondaryForeground
-            font.pixelSize: 11
+            font.pixelSize: theme.scaled(11)
         }
     }
 
@@ -66,7 +66,7 @@ MenuItem {
         anchors.verticalCenter: parent.verticalCenter
         visible: !!entry.subMenu
         name: entry.mirrored ? "back" : "forward"
-        size: 12
+        size: Math.max(12, theme.scaled(12))
         color: entry.enabled ? theme.foreground : theme.secondaryForeground
     }
     indicator: Glyph {
@@ -74,7 +74,7 @@ MenuItem {
         anchors.verticalCenter: parent.verticalCenter
         visible: entry.checked
         name: "check"
-        size: 14
+        size: Math.max(14, theme.scaled(14))
         color: theme.accent
     }
 }
