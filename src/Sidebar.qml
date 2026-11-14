@@ -146,7 +146,7 @@ Rectangle {
         Layout.leftMargin: 14
         Layout.bottomMargin: 6
         color: theme.secondaryForeground
-        font.pixelSize: 11
+        font.pixelSize: theme.scaled(11)
         font.letterSpacing: 1.3
         font.capitalization: Font.AllUppercase
     }
@@ -174,7 +174,7 @@ Rectangle {
         readonly property var mark: dropPath.length > 0 ? plugins.marks[dropPath] : undefined
 
         Layout.fillWidth: true
-        implicitHeight: detail.length > 0 ? 44 : 34
+        implicitHeight: detail.length > 0 ? Math.max(44, theme.scaled(44)) : Math.max(34, theme.scaled(34))
         leftPadding: mirrored ? endPadding : 14
         rightPadding: mirrored ? 14 : endPadding
         hoverEnabled: true
@@ -232,7 +232,7 @@ Rectangle {
                     text: row.detail
                     elide: Text.ElideRight
                     color: theme.secondaryForeground
-                    font.pixelSize: 11
+                    font.pixelSize: theme.scaled(11)
                 }
             }
             Text {
@@ -241,7 +241,7 @@ Rectangle {
                 text: said
                 color: !row.mark ? row.statusColor : row.mark.tone === "error" ? theme.red
                      : row.mark.tone === "warning" ? theme.yellow : theme.secondaryForeground
-                font.pixelSize: 11
+                font.pixelSize: theme.scaled(11)
             }
         }
     }
@@ -326,8 +326,8 @@ Rectangle {
                         id: unpin
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
-                        implicitWidth: 28
-                        implicitHeight: 28
+                        implicitWidth: Math.max(28, theme.scaled(18) + 10)
+                        implicitHeight: implicitWidth
                         visible: pinRow.hovered || hovered || pinRow.keyed
                         glyph: "close"
                         text: qsTr("Unpin")
@@ -337,7 +337,7 @@ Rectangle {
             }
             Rectangle {
                 Layout.fillWidth: true
-                implicitHeight: 34
+                implicitHeight: Math.max(34, theme.scaled(34))
                 visible: sidebar.dragging
                 color: Qt.alpha(theme.accent, pinDrop.containsDrag ? 0.22 : 0.08)
                 border.width: pinDrop.containsDrag ? 2 : 1
@@ -347,7 +347,7 @@ Rectangle {
                     anchors.centerIn: parent
                     text: qsTr("Drop to pin")
                     color: theme.accent
-                    font.pixelSize: 12
+                    font.pixelSize: theme.scaled(12)
                 }
                 DropArea {
                     id: pinDrop
@@ -416,8 +416,8 @@ Rectangle {
                         anchors.left: parent.left
                         anchors.leftMargin: driveRow.leftPadding + 8 - width / 2
                         anchors.verticalCenter: parent.verticalCenter
-                        implicitWidth: 28
-                        implicitHeight: 28
+                        implicitWidth: Math.max(28, theme.scaled(18) + 10)
+                        implicitHeight: implicitWidth
                         visible: driveRow.modelData.release !== "" && (driveRow.hovered || hovered || driveRow.keyed)
                         glyph: "eject"
                         text: driveRow.modelData.release === "eject" ? qsTr("Eject") : qsTr("Unmount")
@@ -457,8 +457,8 @@ Rectangle {
                                 id: forgetItem
                                 anchors.right: parent.right
                                 anchors.verticalCenter: parent.verticalCenter
-                                implicitWidth: 28
-                                implicitHeight: 28
+                                implicitWidth: Math.max(28, theme.scaled(18) + 10)
+                                implicitHeight: implicitWidth
                                 visible: itemRow.modelData.forgettable && (itemRow.hovered || hovered || itemRow.keyed)
                                 glyph: "close"
                                 text: qsTr("Remove from the sidebar")
@@ -494,8 +494,8 @@ Rectangle {
         anchors.bottom: parent.bottom
         anchors.leftMargin: 18
         anchors.bottomMargin: 12
-        implicitWidth: 24
-        implicitHeight: 24
+        implicitWidth: Math.max(24, theme.scaled(13) + 11)
+        implicitHeight: implicitWidth
         focusPolicy: Qt.NoFocus
         hoverEnabled: true
         text: qsTr("Keyboard shortcuts")
@@ -512,7 +512,7 @@ Rectangle {
             text: "?"
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
-            font.pixelSize: 13
+            font.pixelSize: theme.scaled(13)
             color: help.hovered ? theme.foreground : Qt.alpha(theme.secondaryForeground, 0.6)
         }
         background: Rectangle {

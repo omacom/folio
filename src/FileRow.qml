@@ -30,13 +30,13 @@ Item {
     signal clicked(int modifiers)
     signal activated()
 
-    implicitHeight: 32
+    implicitHeight: Math.max(32, theme.scaled(32))
 
     // The name always gets room: in a narrow window the date goes first,
     // then the size. (The icon says what kind a file is; there's no column
     // for it.)
-    readonly property bool showDate: detailed && width >= 480
-    readonly property bool showSize: detailed && width >= 380
+    readonly property bool showDate: detailed && width >= theme.scaled(480)
+    readonly property bool showSize: detailed && width >= theme.scaled(380)
 
     readonly property string glyph: row.isDir ? "folder"
                                   : row.kind === "item" ? row.icon
@@ -76,8 +76,8 @@ Item {
         spacing: 12
 
         Item {
-            implicitWidth: 20
-            implicitHeight: 20
+            implicitWidth: Math.max(20, theme.scaled(16) + 4)
+            implicitHeight: implicitWidth
             Image {
                 id: thumb
                 anchors.fill: parent
@@ -95,8 +95,8 @@ Item {
             }
             Rectangle {
                 id: rowMask
-                width: 20
-                height: 20
+                width: Math.max(20, theme.scaled(16) + 4)
+                height: width
                 radius: Math.min(4, theme.radius)
                 visible: false
                 layer.enabled: true
@@ -105,7 +105,7 @@ Item {
                 anchors.centerIn: parent
                 visible: !thumb.visible
                 name: row.glyph
-                size: 16
+                size: Math.max(16, theme.scaled(16))
                 color: row.isDir ? theme.accent : theme.secondaryForeground
             }
         }
@@ -122,15 +122,15 @@ Item {
         }
         Text {
             visible: row.showSize
-            Layout.preferredWidth: 96
+            Layout.preferredWidth: theme.scaled(96)
             horizontalAlignment: Text.AlignRight
             text: row.kind === "item" ? row.extension : row.isDir ? Format.count(row.itemCount) : Format.size(row.size)
             color: theme.secondaryForeground
-            font.pixelSize: 12
+            font.pixelSize: theme.scaled(12)
         }
         Text {
             visible: row.showDate
-            Layout.preferredWidth: 96
+            Layout.preferredWidth: theme.scaled(96)
             Layout.leftMargin: 12
             horizontalAlignment: Text.AlignLeft
             text: {
@@ -138,14 +138,14 @@ Item {
                 return Format.when(row.modified)
             }
             color: theme.secondaryForeground
-            font.pixelSize: 12
+            font.pixelSize: theme.scaled(12)
             elide: Text.ElideRight
         }
         // Points to where the next column opens.
         Glyph {
             visible: row.chevron && row.isDir
             name: row.LayoutMirroring.enabled ? "back" : "forward"
-            size: 12
+            size: Math.max(12, theme.scaled(12))
             color: theme.secondaryForeground
         }
     }

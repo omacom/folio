@@ -97,7 +97,7 @@ Rectangle {
                 width: parent.width
                 spacing: 14
 
-                Text { text: qsTr("Keyboard shortcuts"); color: theme.brightForeground; font.pixelSize: 16; font.weight: Font.DemiBold }
+                Text { text: qsTr("Keyboard shortcuts"); color: theme.brightForeground; font.pixelSize: theme.scaled(16); font.weight: Font.DemiBold }
 
                 GridLayout {
                     // Pairs of key and description, two pairs a row when the
@@ -112,7 +112,7 @@ Rectangle {
                         delegate: Text {
                             required property var modelData
                             required property int index
-                            Layout.maximumWidth: index % 2 ? 340 : -1
+                            Layout.maximumWidth: index % 2 ? theme.scaled(340) : -1
                             // Set, so that it's mirrored: left as it is, an
                             // English description would follow its own script.
                             horizontalAlignment: Text.AlignLeft

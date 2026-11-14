@@ -79,7 +79,7 @@ Item {
                     Layout.alignment: Qt.AlignHCenter
                     text: player.metaData.stringValue(MediaMetaData.Title) || previewer.item.name || ""
                     color: theme.brightForeground
-                    font.pixelSize: 16
+                    font.pixelSize: theme.scaled(16)
                     font.weight: Font.DemiBold
                 }
                 Text {
@@ -125,7 +125,7 @@ Item {
                 Text {
                     text: { translator.language; return media.clock(player.position) }
                     color: theme.foreground
-                    font.pixelSize: 12
+                    font.pixelSize: theme.scaled(12)
                 }
                 Slider {
                     Layout.fillWidth: true
@@ -139,7 +139,7 @@ Item {
                 Text {
                     text: { translator.language; return media.clock(player.duration) }
                     color: theme.secondaryForeground
-                    font.pixelSize: 12
+                    font.pixelSize: theme.scaled(12)
                 }
             }
         }

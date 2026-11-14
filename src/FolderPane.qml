@@ -370,7 +370,7 @@ FocusScope {
         // The trash offers one thing: emptying it.
         Rectangle {
             Layout.fillWidth: true
-            implicitHeight: 48
+            implicitHeight: Math.max(48, theme.scaled(36) + 12)
             visible: pane.inTrash && backend.folder.count > 0
             color: Qt.alpha(theme.foreground, 0.04)
             PlainButton {
