@@ -5739,6 +5739,134 @@ private slots:
         QVERIFY(!FolderModel::toMap(FolderModel::Entry()).contains("peek"));
     }
 
+    void folderKeyboardScrolls_data()
+    {
+        QTest::addColumn<QString>("viewType");
+        QTest::newRow("grid") << QString("FolderGrid");
+        QTest::newRow("list") << QString("FolderList");
+        QTest::newRow("columns") << QString("FolderColumns");
+    }
+
+    void folderKeyboardScrolls()
+    {
+        QFETCH(QString, viewType);
+        QTemporaryDir home;
+        QVERIFY(QDir(home.path()).mkdir("files"));
+        for (int i = 0; i < 80; ++i)
+            write(home.filePath(QString("files/file-%1.txt").arg(i, 2, 10, QLatin1Char('0'))), "x");
+        Backend backend(home.path());
+        backend.navigate(home.filePath("files"));
+        QTRY_COMPARE(backend.folder()->rowCount(), 80);
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        Translator translator(home.filePath("language"), home.path());
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("plugins", QVariantMap{{"views", QVariantMap{}}});
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine);
+        component.setData(QString(R"(
+            import QtQuick
+            Window {
+                width: 600; height: 480; visible: true
+                readonly property var cursorView: folderView.menuAnchor() ? folderView.menuAnchor().parent.parent : null
+                %1 { id: folderView; anchors.fill: parent }
+                function start() { folderView.select(0, false); folderView.focusView() }
+                function restore(row) { folderView.select(row, true) }
+                function clearCursor() { backend.folder.clearSelection(); folderView.letGo() }
+            }
+        )").arg(viewType).toUtf8(), QUrl::fromLocalFile(sourceFolder() + "/KeyboardScrollTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowActive(window));
+        QVERIFY(QMetaObject::invokeMethod(root.get(), "start"));
+        auto *view = qvariant_cast<QQuickItem *>(root->property("cursorView"));
+        QVERIFY(view);
+        QTRY_COMPARE(view->property("count").toInt(), 80);
+        const int step = viewType == "FolderGrid" ? view->property("columns").toInt() : 1;
+        const auto currentItem = [&] { return qvariant_cast<QQuickItem *>(view->property("currentItem")); };
+        const auto visible = [&] {
+            auto *item = currentItem();
+            if (!item)
+                return false;
+            const qreal y = item->mapToItem(view, QPointF()).y();
+            return y >= -0.5 && y + item->height() <= view->height() + 0.5;
+        };
+        const auto offset = [&] { return view->property("contentY").toReal(); };
+        QTRY_VERIFY(visible());
+        const qreal start = offset();
+        for (int i = 1; i <= 20; ++i) {
+            QTest::keyClick(window, Qt::Key_Down);
+            QCOMPARE(view->property("currentIndex").toInt(), i * step);
+            QCOMPARE(backend.folder()->selectedCount(), 1);
+            QVERIFY(backend.folder()->isSelected(i * step));
+            QTRY_VERIFY_WITH_TIMEOUT(visible(), 1000);
+        }
+        QVERIFY(offset() > start);
+        for (int i = 19; i >= 0; --i) {
+            QTest::keyClick(window, Qt::Key_Up);
+            QCOMPARE(view->property("currentIndex").toInt(), i * step);
+            QCOMPARE(backend.folder()->selectedCount(), 1);
+            QTRY_VERIFY_WITH_TIMEOUT(visible(), 1000);
+        }
+        QCOMPARE(offset(), start);
+        for (int i = 1; i <= 20; ++i) {
+            QTest::keyClick(window, Qt::Key_Down, Qt::ShiftModifier);
+            QCOMPARE(view->property("currentIndex").toInt(), i * step);
+            QCOMPARE(backend.folder()->selectedCount(), i * step + 1);
+            QTRY_VERIFY_WITH_TIMEOUT(visible(), 1000);
+        }
+        const qreal beforeClick = offset();
+        const QPoint click = view->mapToScene(QPointF(view->width() / 2, 10)).toPoint();
+        QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, click);
+        QCOMPARE(backend.folder()->selectedCount(), 1);
+        QCOMPARE(offset(), beforeClick);
+        const int selected = view->property("currentIndex").toInt();
+        const QPointF wheelAt = view->mapToScene(QPointF(view->width() / 2, view->height() / 2));
+        QWheelEvent wheel(wheelAt, window->mapToGlobal(wheelAt), {}, QPoint(0, -720),
+                          Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+        QGuiApplication::sendEvent(window, &wheel);
+        QTRY_VERIFY(offset() > beforeClick);
+        QCOMPARE(view->property("currentIndex").toInt(), selected);
+        QCOMPARE(backend.folder()->selectedCount(), 1);
+        QTRY_VERIFY(currentItem()->mapToItem(view, QPointF()).y() + currentItem()->height() <= 0);
+        QTest::keyClick(window, Qt::Key_Down);
+        QCOMPARE(view->property("currentIndex").toInt(), selected + step);
+        QCOMPARE(backend.folder()->selectedCount(), 1);
+        QVERIFY(backend.folder()->isSelected(selected + step));
+        QTRY_VERIFY(visible());
+
+        QVERIFY(QMetaObject::invokeMethod(view, "positionViewAtEnd"));
+        QTRY_VERIFY(offset() > start);
+        const qreal beforeClear = offset();
+        QVERIFY(QMetaObject::invokeMethod(root.get(), "clearCursor"));
+        QCOMPARE(view->property("currentIndex").toInt(), -1);
+        QCOMPARE(backend.folder()->selectedCount(), 0);
+        QCOMPARE(offset(), beforeClear);
+        QTest::keyClick(window, Qt::Key_Down);
+        QCOMPARE(view->property("currentIndex").toInt(), 0);
+        QCOMPARE(backend.folder()->selectedCount(), 1);
+        QVERIFY(backend.folder()->isSelected(0));
+        QTRY_VERIFY(visible());
+
+        backend.folder()->selectRange(5, 10, false);
+        QVERIFY(QMetaObject::invokeMethod(root.get(), "restore", Q_ARG(QVariant, 60)));
+        QCOMPARE(view->property("currentIndex").toInt(), 60);
+        QTRY_VERIFY(visible());
+        QVERIFY(offset() > start);
+        QCOMPARE(backend.folder()->selectedCount(), 6);
+        for (int i = 5; i <= 10; ++i)
+            QVERIFY(backend.folder()->isSelected(i));
+    }
+
     void gridBandHitsTheTilesBothWays()
     {
         // The rubber band's hit areas sit where the grid put the tiles, also
