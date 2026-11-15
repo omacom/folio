@@ -266,8 +266,14 @@ static bool copyFile(const QString &from, const QString &to, FileOps::Job *job) 
         } else {
             // A read of a silent pipe comes back at once with nothing, so the wait is here; a file always has its next piece, and a pipe its end once its writers have gone.
             pollfd waiting{in.handle(), POLLIN, 0};
-            if (::poll(&waiting, 1, stopCheckMs) == 0)
+            const int ready = ::poll(&waiting, 1, stopCheckMs);
+            // A wait a signal cut short is waited again: a read now would take a pipe that has no writer yet for its end.
+            if (ready == 0 || (ready < 0 && errno == EINTR))
                 continue;
+            if (ready < 0) {
+                ok = false;
+                break;
+            }
             buffer.resize(1 << 20);
             n = ::read(in.handle(), buffer.data(), buffer.size());
             if (n > 0 && !writeAll(out.handle(), buffer.constData(), n))

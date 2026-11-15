@@ -30,6 +30,7 @@
 #include <QtConcurrent>
 #include <QtTest>
 #include <fcntl.h>
+#include <pthread.h>
 #include <signal.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
@@ -1908,6 +1909,43 @@ private slots:
         QVERIFY(copied.result());
         QVERIFY2(error.isEmpty(), qPrintable(error));
         QCOMPARE(contents(to.filePath("pipe")), QByteArray("first second"));
+    }
+
+    void fileOpsCopyOfAPipeWaitsThroughASignal()
+    {
+        // A signal that cuts short the wait for a writer isn't the pipe's end: the copy goes on waiting, rather than ending as an empty file.
+        QTemporaryDir from, to;
+        const QByteArray pipe = QFile::encodeName(from.filePath("pipe"));
+        QVERIFY(mkfifo(pipe.constData(), 0600) == 0);
+        struct sigaction caught {}, before {};
+        caught.sa_handler = [](int) {};
+        QVERIFY(sigaction(SIGUSR1, &caught, &before) == 0);
+        const auto restored = qScopeGuard([&] { sigaction(SIGUSR1, &before, nullptr); });
+        FileOps::Job job;
+        QString error;
+        std::atomic<bool> started = false;
+        pthread_t copier{};
+        QFuture<bool> copied = QtConcurrent::run([&] {
+            copier = pthread_self();
+            started = true;
+            return FileOps::copyRecursively(from.filePath("pipe"), to.filePath("pipe"), &error, false, &job);
+        });
+        const auto finish = qScopeGuard([&] {
+            job.cancelled = true;
+            copied.waitForFinished();
+        });
+        QTRY_VERIFY(started);
+        QTest::qWait(severalStopChecksMs);
+        for (int i = 0; i < 20 && !copied.isFinished(); ++i) {
+            pthread_kill(copier, SIGUSR1);
+            QTest::qWait(10);
+        }
+        QVERIFY(!copied.isFinished());
+        job.cancelled = true;
+        QTRY_VERIFY(copied.isFinished());
+        QVERIFY(!copied.result());
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QVERIFY(!QFileInfo::exists(to.filePath("pipe")));
     }
 
     void fileOpsCopyWaitsForAFileUnderALease()
