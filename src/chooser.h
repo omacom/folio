@@ -104,6 +104,8 @@ public:
     }
     // Those of the paths that something is already at.
     Q_INVOKABLE static QStringList existing(const QStringList &paths);
+    // Those of the paths that are folders, which no file can replace.
+    Q_INVOKABLE static QStringList folders(const QStringList &paths);
     Q_INVOKABLE void accept(const QStringList &paths);
     Q_INVOKABLE void cancel();
     // Only the first answer is sent; later ones do nothing.

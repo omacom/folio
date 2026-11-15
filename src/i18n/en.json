@@ -40,6 +40,7 @@
     "one": "%Ln item will be deleted permanently. This can't be undone.",
     "other": "%Ln items will be deleted permanently. This can't be undone."
   },
+  "A folder here is already called %1.": "A folder here is already called %1.",
   "A folder, or a server's address like sftp://host/": "A folder, or a server's address like sftp://host/",
   "A name can't contain \"/\".": "A name can't contain \"/\".",
   "Add or remove one from the selection": "Add or remove one from the selection",

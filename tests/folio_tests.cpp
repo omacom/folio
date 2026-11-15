@@ -6270,6 +6270,7 @@ private slots:
         QCOMPARE(request.answer("plugin:hosts", {}, {}), QStringList());
 
         QCOMPARE(ChooserDialog::existing({a, sub + "/z.txt", sub}), QStringList({a, sub}));
+        QCOMPARE(ChooserDialog::folders({a, sub + "/z.txt", sub}), QStringList({sub}));
         QVERIFY(QFile::link(dir.filePath("gone"), dir.filePath("link")));
         QCOMPARE(ChooserDialog::existing({dir.filePath("link")}), QStringList({dir.filePath("link")}));
     }
@@ -6493,6 +6494,23 @@ private slots:
         QTRY_COMPARE(window->activeFocusItem()->property("text").toString(), QString("Replace"));
         QTest::keyClick(window, Qt::Key_Return);
         QCOMPARE(replies, (QList<std::pair<uint, QStringList>>{{0, {uri("a.txt")}}}));
+
+        // Saving files whose name a folder here has: no file can replace a
+        // folder, so it neither answers nor offers to.
+        replies.clear();
+        ChooserRequest files;
+        files.mode = ChooserRequest::SaveFiles;
+        files.title = "Save the files";
+        files.folder = home.path();
+        files.files = {"new.txt", "sub"};
+        window = open(files);
+        QVERIFY(window);
+        QTest::keyClick(window, Qt::Key_Return, Qt::ControlModifier);
+        QTest::qWait(300);
+        QVERIFY(replies.isEmpty());
+        QVERIFY(window->activeFocusItem()->property("text").toString() != "Replace");
+        window->close();
+        QTRY_COMPARE(replies, (QList<std::pair<uint, QStringList>>{{1, {}}}));
 
         // Closed without an answer, it cancels; the window going takes the
         // dialog with it, and nothing answers twice.

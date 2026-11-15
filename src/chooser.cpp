@@ -257,6 +257,14 @@ QStringList ChooserDialog::existing(const QStringList &paths) {
     return there;
 }
 
+QStringList ChooserDialog::folders(const QStringList &paths) {
+    QStringList folders;
+    for (const QString &path : paths)
+        if (QFileInfo(path).isDir())
+            folders << path;
+    return folders;
+}
+
 void ChooserDialog::accept(const QStringList &paths) {
     if (paths.isEmpty())
         return;

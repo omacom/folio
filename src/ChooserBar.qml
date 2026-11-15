@@ -32,6 +32,13 @@ Item {
             }
             return
         }
+        // The app names the files it saves, so a folder taking one of those
+        // names here can't be asked about: the files go somewhere else.
+        const folders = chooser.mode === "saveFiles" ? chooser.folders(paths) : []
+        if (folders.length > 0) {
+            backend.showNotice(qsTr("A folder here is already called %1.").arg(folders[0].slice(folders[0].lastIndexOf("/") + 1)))
+            return
+        }
         const there = chooser.mode.startsWith("save") ? chooser.existing(paths) : []
         if (there.length === 0) {
             chooser.accept(paths)
