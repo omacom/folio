@@ -6235,11 +6235,14 @@ private slots:
         QCOMPARE(request.answer(here, {sub}, {}), QStringList());
         QCOMPARE(request.answer(here, {}, {}), QStringList());
 
-        // Folders: those picked, or else the one shown.
+        // Folders: the one shown, since the cursor always rests on one inside
+        // it; only several picked at once are a choice of their own.
         request.directory = true;
         QCOMPARE(request.answer(here, {a, sub, dir.filePath("sub/deeper")}, {}), QStringList({sub, dir.filePath("sub/deeper")}));
+        QCOMPARE(request.answer(here, {sub}, {}), QStringList({here}));
         request.multiple = false;
-        QCOMPARE(request.answer(here, {a, sub, dir.filePath("sub/deeper")}, {}), QStringList({sub}));
+        QCOMPARE(request.answer(here, {a, sub, dir.filePath("sub/deeper")}, {}), QStringList({here}));
+        QCOMPARE(request.answer(here, {sub}, {}), QStringList({here}));
         QCOMPARE(request.answer(here, {a}, {}), QStringList({here}));
         QCOMPARE(request.answer("recent:", {}, {}), QStringList());
 
@@ -6459,17 +6462,18 @@ private slots:
         QTest::keyClick(window, Qt::Key_Escape);
         QCOMPARE(replies, (QList<std::pair<uint, QStringList>>{{1, {}}}));
 
-        // Choosing a folder lists folders, and answers with the one shown
-        // when nothing in it is picked.
+        // Choosing a folder lists folders, and answers with the one shown,
+        // not the folder the cursor lands on when it arrives.
         replies.clear();
         request.title = "Pick a folder";
         request.directory = true;
-        request.folder = home.filePath("sub");
+        QDir(home.path()).mkpath("pick/inner");
+        request.folder = home.filePath("pick");
         window = open(request);
         QVERIFY(window);
-        QTRY_COMPARE(listed(window), QStringList());
+        QTRY_COMPARE(listed(window), QStringList({"inner"}));
         QTest::keyClick(window, Qt::Key_Return, Qt::ControlModifier);
-        QCOMPARE(replies, (QList<std::pair<uint, QStringList>>{{0, {uri("sub")}}}));
+        QCOMPARE(replies, (QList<std::pair<uint, QStringList>>{{0, {uri("pick")}}}));
 
         // Saving starts in the name; a name that's taken asks first, and
         // Escape there only stops the asking.

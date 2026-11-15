@@ -192,8 +192,10 @@ QStringList ChooserRequest::answer(const QString &folder, const QStringList &pic
             if (directory ? info.isDir() : info.isFile())
                 paths << path;
         }
-        if (paths.isEmpty() && directory && QFileInfo(folder).isDir())
-            paths << folder;
+        // The cursor always rests on some folder, so one under it isn't a
+        // choice: the answer is the folder shown, unless several are picked.
+        if (directory && !(multiple && paths.size() > 1))
+            return QFileInfo(folder).isDir() ? QStringList{folder} : QStringList{};
         return multiple ? paths : paths.mid(0, 1);
     }
     // Saving goes into the folder shown, which Recents and plugins' views
