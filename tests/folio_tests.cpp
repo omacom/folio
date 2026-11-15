@@ -6577,6 +6577,50 @@ private slots:
         window->close();
         QTRY_COMPARE(replies, (QList<std::pair<uint, QStringList>>{{1, {}}}));
 
+        // Tab goes round to the bar as to the window's other parts: out of
+        // the name and back into it when saving, and to the answer when
+        // opening.
+        replies.clear();
+        into.title = "Tab to the name";
+        window = open(into);
+        QVERIFY(window);
+        const auto focusedName = [&] {
+            return window->activeFocusItem() && window->activeFocusItem()->property("placeholderText").toString() == "Name";
+        };
+        QTRY_VERIFY(focusedName());
+        QTest::keyClick(window, Qt::Key_Tab);
+        QTRY_VERIFY(!focusedName());
+        QTest::keyClick(window, Qt::Key_Backtab, Qt::ShiftModifier);
+        QTRY_VERIFY(focusedName());
+        window->close();
+        QTRY_COMPARE(replies, (QList<std::pair<uint, QStringList>>{{1, {}}}));
+
+        replies.clear();
+        QDir(home.path()).mkdir("ren");
+        write(home.filePath("ren/x.txt"), "x");
+        request = {};
+        request.title = "Tab to the answer";
+        request.folder = home.filePath("ren");
+        window = open(request);
+        QVERIFY(window);
+        QTRY_COMPARE(listed(window), QStringList({"x.txt"}));
+        QTest::keyClick(window, Qt::Key_Tab);
+        QTRY_COMPARE(window->activeFocusItem()->property("text").toString(), QString("Open"));
+        QTest::keyClick(window, Qt::Key_Tab);
+        QTRY_VERIFY(window->activeFocusItem()->property("text").toString() != "Open");
+
+        // A pane's own dialog keeps the answer waiting: Ctrl+Return in a
+        // rename doesn't answer the app from under it. (Tab goes on from
+        // the sidebar to the files.)
+        QTest::keyClick(window, Qt::Key_Tab);
+        QTest::keyClick(window, Qt::Key_F2);
+        QTRY_COMPARE(window->activeFocusItem()->property("text").toString(), QString("x.txt"));
+        QTest::keyClick(window, Qt::Key_Return, Qt::ControlModifier);
+        QTest::qWait(300);
+        QVERIFY(replies.isEmpty());
+        window->close();
+        QTRY_COMPARE(replies, (QList<std::pair<uint, QStringList>>{{1, {}}}));
+
         // Closed without an answer, it cancels; the window going takes the
         // dialog with it, and nothing answers twice.
         replies.clear();

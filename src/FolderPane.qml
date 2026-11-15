@@ -50,7 +50,9 @@ FocusScope {
     property bool cursorLetGo: false
     // While a text field has the keyboard (renaming, a password), single-key
     // and clipboard shortcuts stand aside so typing works.
-    readonly property bool typing: rename.visible || confirm.visible || clash.visible || formatDialog.visible || backend.mounter.asking || pathBar.editing || pathBar.searchFocused || (!!host && host.helpVisible)
+    readonly property bool typing: asking || pathBar.editing || pathBar.searchFocused || (!!host && host.helpVisible)
+    // Whether one of the pane's dialogs is up, waiting on an answer.
+    readonly property bool asking: rename.visible || confirm.visible || clash.visible || formatDialog.visible || backend.mounter.asking
     // Keys for the pane as a whole (undo, a new window, typing a path) work
     // wherever the keyboard is; keys for its files only while the files
     // have it, not while Tab has put it in the sidebar or the details, where

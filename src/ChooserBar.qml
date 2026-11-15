@@ -18,6 +18,11 @@ Item {
     readonly property bool naming: chooser.mode === "save"
     // Keys go to the name or the Replace prompt, not the window's shortcuts.
     readonly property bool typing: nameField.activeFocus || confirm.visible
+    // Whether the window's Tab has stopped here.
+    readonly property bool hasKeyboard: nameField.activeFocus || cancelButton.activeFocus || answerButton.activeFocus
+    // Something else in the window is asking a question: the bar waits
+    // for it, rather than answering the app from under it.
+    readonly property bool waiting: confirm.visible || (!!pane && pane.asking) || (!!host && host.helpVisible)
     // The selection, or the item under the cursor, as it changes.
     readonly property var picked: pane ? (pane.paneBackend.folder.selectedCount, pane.selectedPaths()) : []
 
@@ -64,6 +69,14 @@ Item {
                     qsTr("Replace"), () => chooser.accept(paths))
     }
 
+    // Tab arrives at the name when saving, and at the answer otherwise.
+    function focusKeyboard() {
+        if (naming)
+            focusName()
+        else
+            answerButton.forceActiveFocus(Qt.TabFocusReason)
+    }
+
     function focusName() {
         nameField.forceActiveFocus()
         const dot = fileOps.extensionStart(nameField.text, false)
@@ -93,7 +106,7 @@ Item {
             }
         }
     }
-    Shortcut { sequences: ["Ctrl+Return", "Ctrl+Enter"]; enabled: !confirm.visible; onActivated: root.answer(root.picked) }
+    Shortcut { sequences: ["Ctrl+Return", "Ctrl+Enter"]; enabled: !root.waiting; onActivated: root.answer(root.picked) }
 
     Rectangle {
         id: bar
@@ -104,6 +117,7 @@ Item {
         // from the edges above and beside its own.
         height: 60
         color: theme.background
+        enabled: !root.waiting
         Rectangle { width: parent.width; height: 1; color: Qt.alpha(theme.foreground, 0.12) }
 
         RowLayout {
@@ -118,13 +132,19 @@ Item {
                 text: chooser.name
                 placeholderText: qsTr("Name")
                 onAccepted: root.answer(root.picked)
+                // The field keeps the window's Tab from moving on while it
+                // types, so it moves on itself.
+                Keys.onTabPressed: root.host.moveKeyboard(1)
+                Keys.onBacktabPressed: root.host.moveKeyboard(-1)
             }
             Item { visible: !root.naming; Layout.fillWidth: true }
             PlainButton {
+                id: cancelButton
                 text: qsTr("Cancel")
                 onClicked: chooser.cancel()
             }
             PlainButton {
+                id: answerButton
                 primary: true
                 text: chooser.acceptLabel || (chooser.mode.startsWith("save") ? qsTr("Save")
                                             : chooser.mode === "directory" ? qsTr("Choose") : qsTr("Open"))

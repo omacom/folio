@@ -122,13 +122,17 @@ ApplicationWindow {
     Shortcut { sequence: "Tab"; enabled: !win.typing; onActivated: win.moveKeyboard(1) }
     Shortcut { sequence: "Shift+Backtab"; enabled: !win.typing; onActivated: win.moveKeyboard(-1) }
     function moveKeyboard(step) {
-        const stops = [sidebar, leftPane].concat(split ? [rightPane] : [], details.takesKeyboard ? [details] : [])
-        const here = sidebar.activeFocus ? sidebar : details.hasKeyboard ? details : activePane
+        // A file chooser's bar is the last stop: its name, or its answer.
+        const bar = chooserBar.item
+        const stops = [sidebar, leftPane].concat(split ? [rightPane] : [], details.takesKeyboard ? [details] : [], bar ? [bar] : [])
+        const here = sidebar.activeFocus ? sidebar : details.hasKeyboard ? details : bar && bar.hasKeyboard ? bar : activePane
         const next = stops[(stops.indexOf(here) + step + stops.length) % stops.length]
         if (next === sidebar)
             sidebar.focusSidebar()
         else if (next === details)
             details.focusKeyboard()
+        else if (next === bar)
+            bar.focusKeyboard()
         else
             next.focusView()
     }
