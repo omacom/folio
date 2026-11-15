@@ -6461,6 +6461,20 @@ private slots:
         QQuickWindow *window = open(request);
         QVERIFY(window);
         QTRY_COMPARE(listed(window), QStringList({"sub", "b.png", "c.png"}));
+        // The details offer no way to open the file in its app instead.
+        {
+            QQuickItem *open = nullptr;
+            const std::function<void(QQuickItem *)> find = [&](QQuickItem *item) {
+                // The details' own labels: no other button says these.
+                const QString text = item->property("text").toString();
+                if (!open && (text == "Open folder" || text.startsWith("Open with ")))
+                    open = item;
+                for (QQuickItem *child : item->childItems())
+                    find(child);
+            };
+            QTRY_VERIFY((find(window->contentItem()), open));
+            QVERIFY(!open->isVisible());
+        }
         QPointer<QQuickWindow> closing(window);
         QTest::keyClick(window, Qt::Key_Down);
         QTest::keyClick(window, Qt::Key_Return);
