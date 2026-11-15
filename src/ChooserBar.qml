@@ -3,9 +3,10 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 // What a file chooser's window adds to a Folio window, along the bottom:
-// the name to save under, the app's filters, Cancel, and the button that
-// answers. The answer comes from the pane used last, with what's selected
-// there; Return on a file or a double click answers with it, and so does
+// the name to save under, Cancel, and the button that answers. (The app's
+// filters are in the path bar, with the other ways of showing the files.)
+// The answer comes from the pane used last, with what's selected there;
+// Return on a file or a double click answers with it, and so does
 // Ctrl+Return from anywhere. It lies over the whole window, so that asking
 // before replacing a file covers it.
 Item {
@@ -98,14 +99,16 @@ Item {
         id: bar
         anchors.bottom: parent.bottom
         width: parent.width
-        height: 64
+        // As tall as the bar across the top, with the buttons as far from
+        // the window's edges below and beside them as the path bar's are
+        // from the edges above and beside its own.
+        height: 60
         color: theme.background
         Rectangle { width: parent.width; height: 1; color: Qt.alpha(theme.foreground, 0.12) }
 
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: 24
-            anchors.rightMargin: 20
+            anchors.margins: 12
             spacing: 10
 
             PlainField {
@@ -116,36 +119,7 @@ Item {
                 placeholderText: qsTr("Name")
                 onAccepted: root.answer(root.picked)
             }
-            // Otherwise, what the button would answer with.
-            Text {
-                visible: !root.naming
-                Layout.fillWidth: true
-                horizontalAlignment: Text.AlignLeft
-                text: !root.pane ? "" : chooser.answer(root.pane.paneBackend.path, root.picked, "")
-                                             .map(path => path.slice(path.lastIndexOf("/") + 1) || path).join(", ")
-                color: theme.secondaryForeground
-                elide: Text.ElideRight
-            }
-            PlainButton {
-                id: filterButton
-                visible: chooser.filters.length > 0
-                text: chooser.filters[chooser.filter] || ""
-                onClicked: filterMenu.open()
-                FolioMenu {
-                    id: filterMenu
-                    y: -height - 4
-                    Repeater {
-                        model: chooser.filters
-                        FolioMenuItem {
-                            required property int index
-                            required property string modelData
-                            text: modelData
-                            checked: index === chooser.filter
-                            onTriggered: chooser.filter = index
-                        }
-                    }
-                }
-            }
+            Item { visible: !root.naming; Layout.fillWidth: true }
             PlainButton {
                 text: qsTr("Cancel")
                 onClicked: chooser.cancel()

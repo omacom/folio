@@ -10,9 +10,9 @@ import QtCore
 // the sidebar and the details follow the pane used last.
 ApplicationWindow {
     id: win
-    // A file chooser's window is a dialog, and smaller.
-    width: chooser ? 1040 : 1280
-    height: chooser ? 680 : 800
+    // A file chooser's window is a dialog, the size of GTK's.
+    width: chooser ? 875 : 1280
+    height: chooser ? 600 : 800
     minimumWidth: 720
     minimumHeight: 460
     visible: true

@@ -6461,7 +6461,9 @@ private slots:
         QQuickWindow *window = open(request);
         QVERIFY(window);
         QTRY_COMPARE(listed(window), QStringList({"sub", "b.png", "c.png"}));
-        // The details offer no way to open the file in its app instead.
+        // The details offer no way to open the file in its app instead. A
+        // chooser opens too narrow for them, so the window is widened.
+        window->setWidth(1100);
         {
             QQuickItem *open = nullptr;
             const std::function<void(QQuickItem *)> find = [&](QQuickItem *item) {
