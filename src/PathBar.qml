@@ -244,7 +244,14 @@ Rectangle {
         Shortcut {
             sequence: "Ctrl+F"
             enabled: filterButton.visible && !filterMenu.visible
-            onActivated: filterButton.clicked()
+            // A path being typed is put away first: left to lose its focus
+            // to the menu, it would hand the keyboard back to the files
+            // from under the open menu.
+            onActivated: {
+                if (bar.editing)
+                    bar.stopEditing()
+                filterButton.clicked()
+            }
         }
         SortMenu {
             id: sortMenu

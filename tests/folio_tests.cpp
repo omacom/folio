@@ -6498,6 +6498,15 @@ private slots:
         // Return went to the menu, not to the bar's answer.
         QVERIFY(replies.isEmpty());
         QTRY_COMPARE(listed(window), QStringList({"sub", "a.txt"}));
+        // From a path being typed too: the menu, not the files, takes the
+        // arrows and Return.
+        QTest::keyClick(window, Qt::Key_L, Qt::ControlModifier);
+        QTRY_VERIFY(window->activeFocusItem() && window->activeFocusItem()->property("placeholderText").toString().startsWith("A folder"));
+        QTest::keyClick(window, Qt::Key_F, Qt::ControlModifier);
+        QTest::keyClick(window, Qt::Key_Down);
+        QTest::keyClick(window, Qt::Key_Return);
+        QVERIFY(replies.isEmpty());
+        QTRY_COMPARE(listed(window), QStringList({"sub", "b.png", "c.png"}));
         window->close();
         QTRY_COMPARE(replies, (QList<std::pair<uint, QStringList>>{{1, {}}}));
 
