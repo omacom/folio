@@ -30,6 +30,18 @@ Rectangle {
         editing = false
         editDone()
     }
+    // Opens one of the bar's menus with the keyboard in it. A path being
+    // typed, here or in the pane keys go to, is put away first: left to
+    // lose its focus to the menu, it would hand the keyboard back to the
+    // files from under the open menu.
+    function openMenu(menu, button) {
+        const pane = ApplicationWindow.window ? ApplicationWindow.window.activePane : null
+        if (pane && pane.editingPath)
+            pane.focusView()
+        if (editing)
+            stopEditing()
+        menu.popup(button, LayoutMirroring.enabled ? button.width - menu.width : 0, button.height + 4)
+    }
 
     // /: search this folder and every folder below it, as you type. The
     // results replace the folder until Escape, or until going elsewhere.
@@ -201,8 +213,7 @@ Rectangle {
             text: chooser ? chooser.filters[chooser.filter] || "" : ""
             active: filterMenu.visible
             // A second click closes it, as the sort button's does.
-            onClicked: filterMenu.visible ? filterMenu.close()
-                     : filterMenu.popup(filterButton, LayoutMirroring.enabled ? filterButton.width - filterMenu.width : 0, filterButton.height + 4)
+            onClicked: filterMenu.visible ? filterMenu.close() : bar.openMenu(filterMenu, filterButton)
             FolioMenu {
                 id: filterMenu
                 // A press on the button is left to its click, which closes it.
@@ -236,22 +247,14 @@ Rectangle {
             active: sortMenu.visible
             // Under the button, reaching toward the files.
             // A second click closes it.
-            onClicked: sortMenu.visible ? sortMenu.close()
-                     : sortMenu.popup(sortButton, LayoutMirroring.enabled ? sortButton.width - sortMenu.width : 0, sortButton.height + 4)
+            onClicked: sortMenu.visible ? sortMenu.close() : bar.openMenu(sortMenu, sortButton)
         }
         // Ctrl+F opens the filters from the keyboard, the name field
         // included: the funnel, like the buttons beside it, takes no Tab.
         Shortcut {
             sequence: "Ctrl+F"
             enabled: filterButton.visible && !filterMenu.visible
-            // A path being typed is put away first: left to lose its focus
-            // to the menu, it would hand the keyboard back to the files
-            // from under the open menu.
-            onActivated: {
-                if (bar.editing)
-                    bar.stopEditing()
-                filterButton.clicked()
-            }
+            onActivated: bar.openMenu(filterMenu, filterButton)
         }
         SortMenu {
             id: sortMenu

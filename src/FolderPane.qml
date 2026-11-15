@@ -50,6 +50,8 @@ FocusScope {
     property bool cursorLetGo: false
     // While a text field has the keyboard (renaming, a password), single-key
     // and clipboard shortcuts stand aside so typing works.
+    // Whether a path is being typed in the pane's bar.
+    readonly property bool editingPath: pathBar.editing
     readonly property bool typing: asking || pathBar.editing || pathBar.searchFocused || (!!host && host.helpVisible)
     // Whether one of the pane's dialogs is up, waiting on an answer.
     readonly property bool asking: rename.visible || confirm.visible || clash.visible || formatDialog.visible || backend.mounter.asking

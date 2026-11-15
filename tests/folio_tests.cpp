@@ -6507,6 +6507,18 @@ private slots:
         QTest::keyClick(window, Qt::Key_Return);
         QVERIFY(replies.isEmpty());
         QTRY_COMPARE(listed(window), QStringList({"sub", "b.png", "c.png"}));
+        // And from a path typed in the right pane of a split, whose bar
+        // leaves the filters to the left one's.
+        QTest::keyClick(window, Qt::Key_N, Qt::ControlModifier | Qt::AltModifier);
+        QTRY_VERIFY(window->property("split").toBool());
+        QTest::keyClick(window, Qt::Key_L, Qt::ControlModifier);
+        QTRY_VERIFY(window->activeFocusItem() && window->activeFocusItem()->property("placeholderText").toString().startsWith("A folder"));
+        QTest::keyClick(window, Qt::Key_F, Qt::ControlModifier);
+        QTest::keyClick(window, Qt::Key_Down);
+        QTest::keyClick(window, Qt::Key_Down);
+        QTest::keyClick(window, Qt::Key_Return);
+        QVERIFY(replies.isEmpty());
+        QTRY_COMPARE(listed(window), QStringList({"sub", "a.txt"}));
         window->close();
         QTRY_COMPARE(replies, (QList<std::pair<uint, QStringList>>{{1, {}}}));
 
