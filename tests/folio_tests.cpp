@@ -6483,6 +6483,24 @@ private slots:
         QCOMPARE(replies, (QList<std::pair<uint, QStringList>>{{0, {uri("b.png")}}}));
         QTRY_VERIFY(!closing);
 
+        // Ctrl+F opens the app's filters, and the keyboard picks one.
+        replies.clear();
+        request.title = "Filter from the keys";
+        request.filters = {{"Pictures", {{1, "image/*"}}}, {"Text", {{0, "*.txt"}}}};
+        request.filter = 0;
+        window = open(request);
+        QVERIFY(window);
+        QTRY_COMPARE(listed(window), QStringList({"sub", "b.png", "c.png"}));
+        QTest::keyClick(window, Qt::Key_F, Qt::ControlModifier);
+        QTest::keyClick(window, Qt::Key_Down);
+        QTest::keyClick(window, Qt::Key_Down);
+        QTest::keyClick(window, Qt::Key_Return);
+        // Return went to the menu, not to the bar's answer.
+        QVERIFY(replies.isEmpty());
+        QTRY_COMPARE(listed(window), QStringList({"sub", "a.txt"}));
+        window->close();
+        QTRY_COMPARE(replies, (QList<std::pair<uint, QStringList>>{{1, {}}}));
+
         // Escape cancels.
         replies.clear();
         request.title = "Open anything";

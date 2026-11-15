@@ -42,7 +42,7 @@ default=hyprland;gtk
 org.freedesktop.impl.portal.FileChooser=folio
 ```
 
-Then `systemctl --user restart xdg-desktop-portal`. A dialog is then a Files window, with a bar along the bottom for the name to save under, Cancel and the button that answers. When the app offers a choice of filters (Images, All files), they're under the funnel beside the view buttons. ⏎ on a file or a double click picks it, Ctrl+⏎ answers from anywhere, and Escape or closing the window cancels.
+Then `systemctl --user restart xdg-desktop-portal`. A dialog is then a Files window, with a bar along the bottom for the name to save under, Cancel and the button that answers. When the app offers a choice of filters (Images, All files), they're under the funnel beside the view buttons, or Ctrl+F. ⏎ on a file or a double click picks it, Ctrl+⏎ answers from anywhere, and Escape or closing the window cancels.
 
 Its windows have their own app id, `folio-chooser`, and open at 875×600, the size Omarchy gives its floating windows. To float and center them the way Omarchy does GTK's dialogs, add this to `~/.config/hypr/hyprland.lua`:
 

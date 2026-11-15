@@ -239,6 +239,13 @@ Rectangle {
             onClicked: sortMenu.visible ? sortMenu.close()
                      : sortMenu.popup(sortButton, LayoutMirroring.enabled ? sortButton.width - sortMenu.width : 0, sortButton.height + 4)
         }
+        // Ctrl+F opens the filters from the keyboard, the name field
+        // included: the funnel, like the buttons beside it, takes no Tab.
+        Shortcut {
+            sequence: "Ctrl+F"
+            enabled: filterButton.visible && !filterMenu.visible
+            onActivated: filterButton.clicked()
+        }
         SortMenu {
             id: sortMenu
             // A press on the button it opens under is left to the button's
