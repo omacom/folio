@@ -201,6 +201,10 @@ void Backend::open(const QString &path) {
         navigate(path);
         return;
     }
+    if (m_choosing) {
+        emit chosen(path);
+        return;
+    }
     // The desktop's default app for the type, or for the nearest type it
     // belongs to.
     if (const QString problem = FileOps::openInDefaultApp(path); !problem.isEmpty())
@@ -552,6 +556,8 @@ QString Backend::completePath(const QString &text) const {
 }
 
 void Backend::newWindow() {
+    if (m_choosing)
+        return;
     emit newWindowRequested(FolderModel::isView(path()) ? m_home : path());
 }
 

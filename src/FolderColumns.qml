@@ -54,7 +54,10 @@ Item {
     // when mirrored.
     function revealEnd() { flick.contentX = view.LayoutMirroring.enabled ? 0 : Math.max(0, flick.contentWidth - flick.width) }
     LayoutMirroring.onEnabledChanged: revealEnd()
-    function enter() { if (view.selected.isDir) backend.navigate(view.selected.path) }
+    function enter() {
+        if (view.selected.isDir && (insideFolder.loading || insideFolder.count > 0 || insideFolder.error.length > 0))
+            backend.navigate(view.selected.path)
+    }
 
     component Separator: Rectangle { width: 1; height: parent ? parent.height : 0; color: Qt.alpha(theme.foreground, 0.1) }
     // Files dropped in a column land in the folder it shows. It lies over
@@ -103,6 +106,7 @@ Item {
                             path: ancestor.path
                             showHidden: backend.folder.showHidden
                             sortMode: backend.folder.sortMode
+                            filter: backend.folder.filter
                             onLoaded: column.revealNext()
                         }
                         // Names sort by the language's alphabet.
@@ -207,6 +211,7 @@ Item {
                     path: view.selected.isDir === true ? view.selected.path : ""
                     showHidden: backend.folder.showHidden
                     sortMode: backend.folder.sortMode
+                    filter: backend.folder.filter
                 }
                 Connections {
                     target: translator

@@ -10,8 +10,10 @@ import "Format.js" as Format
 // app, Space or Escape closes.
 ApplicationWindow {
     id: win
-    width: 1100
-    height: 760
+    // Never bigger than the screen it opens on: smaller screens keep a margin
+    // all around, the bar included.
+    width: Math.min(1100, Math.round(Screen.width * 0.85))
+    height: Math.min(760, Math.round(Screen.height * 0.85))
     minimumWidth: 480
     minimumHeight: 360
     visible: true
