@@ -12,6 +12,7 @@
 #include <QUrl>
 #include <cstdio>
 
+#include "chooser.h"
 #include "filemanager1.h"
 #include "foldermodel.h"
 #include "places.h"
@@ -114,14 +115,21 @@ static int preview(QGuiApplication &app) {
 }
 
 int main(int argc, char *argv[]) {
+    // `folio chooser`: other apps' Open and Save dialogs. xdg-desktop-portal
+    // waits for it as the portal starts, so it mustn't wait on the portal,
+    // as Omarchy's platform theme does; Folio sets its own look anyway.
+    const bool chooser = argc > 1 && qstrcmp(argv[1], "chooser") == 0;
+    if (chooser)
+        qputenv("QT_QPA_PLATFORMTHEME", "generic");
     QGuiApplication app(argc, argv);
     setUp(app);
     if (app.arguments().value(1) == "preview")
         return preview(app);
 
     // Matches the window to folio.desktop, so the compositor (Wayland app_id)
-    // and the launcher pick up the installed icon.
-    app.setDesktopFileName("folio");
+    // and the launcher pick up the installed icon. A chooser's windows have
+    // their own, so a window rule can float them.
+    app.setDesktopFileName(chooser ? "folio-chooser" : "folio");
 
     // Installed before anything is translated, and every qsTr() binding is
     // re-evaluated when the Omarchy language changes.
@@ -135,9 +143,6 @@ int main(int argc, char *argv[]) {
     Plugins plugins(translator.language());
     QObject::connect(&translator, &Translator::changed, &plugins, [&] { plugins.setLanguage(translator.language()); });
 
-    QString select;
-    const QString start = startPath(app.arguments(), &select);
-
     QQmlEngine engine;
     QObject::connect(&translator, &Translator::changed, &engine, &QQmlEngine::retranslate);
     engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
@@ -150,9 +155,19 @@ int main(int argc, char *argv[]) {
     engine.rootContext()->setContextProperty("plugins", &plugins);
 
     Windows windows(&engine, &plugins);
-    if (!windows.open(start, select))
-        return 1;
-    FileManager1::registerOn(&windows);
+    if (chooser) {
+        // Its windows come and go with its dialogs; it quits a minute after
+        // the last one instead (see Chooser).
+        app.setQuitOnLastWindowClosed(false);
+        if (!Chooser::registerOn(&windows))
+            return 1;
+    } else {
+        QString select;
+        const QString start = startPath(app.arguments(), &select);
+        if (!windows.open(start, select))
+            return 1;
+        FileManager1::registerOn(&windows);
+    }
 
     return app.exec();
 }

@@ -10,8 +10,9 @@ import QtCore
 // the sidebar and the details follow the pane used last.
 ApplicationWindow {
     id: win
-    width: 1280
-    height: 800
+    // A file chooser's window is a dialog, and smaller.
+    width: chooser ? 1040 : 1280
+    height: chooser ? 680 : 800
     minimumWidth: 720
     minimumHeight: 460
     visible: true
@@ -19,6 +20,8 @@ ApplicationWindow {
     // retranslating QML doesn't redo, so the language is read here too.
     title: {
         translator.language
+        if (chooser && chooser.title.length > 0)
+            return chooser.title
         return activePane && activePane.paneBackend.title.length > 0 ? activePane.paneBackend.title : qsTr("Files")
     }
     color: theme.background
@@ -135,6 +138,9 @@ ApplicationWindow {
         enabled: win.settled
         opacity: win.settled ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: 100 } }
+        // A file chooser cancels on Escape that nothing inside wanted.
+        Keys.enabled: !!chooser
+        Keys.onEscapePressed: chooser.cancel()
 
         // The bar across the top; the panes' path bars draw over it.
         readonly property int barHeight: 60
@@ -147,6 +153,7 @@ ApplicationWindow {
 
         RowLayout {
             anchors.fill: parent
+            anchors.bottomMargin: chooserBar.item ? chooserBar.item.barHeight : 0
             spacing: 0
 
             Sidebar {
@@ -190,6 +197,13 @@ ApplicationWindow {
                 folderPane: win.activePane
                 onFinished: win.activePane.focusView()
             }
+        }
+
+        Loader {
+            id: chooserBar
+            anchors.fill: parent
+            active: !!chooser
+            sourceComponent: ChooserBar { pane: win.activePane }
         }
 
         HelpOverlay {

@@ -84,6 +84,8 @@ FocusScope {
     readonly property bool inView: backend.path.startsWith("plugin:")
     readonly property bool fileKeys: keys && !inView
     Binding { target: backend.folder; property: "items"; value: (plugins.views[backend.path] || {}).items || [] }
+    // In a file chooser, only the files that fit the app's filter.
+    Binding { target: backend.folder; property: "filter"; value: chooser ? chooser.patterns : [] }
     function deleteSelected() {
         const paths = pane.selectedPaths()
         if (pane.inTrash)

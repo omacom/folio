@@ -1,7 +1,12 @@
 #include <QClipboard>
+#include <QDBusConnection>
+#include <QDBusMetaType>
+#include <QDBusServer>
+#include <QDBusVariant>
 #include <QDir>
 #include <QEventLoopLocker>
 #include <QMimeData>
+#include <QMimeDatabase>
 #include <QPageSize>
 #include <QPainter>
 #include <QPdfWriter>
@@ -36,6 +41,7 @@
 #include <unistd.h>
 
 #include "backend.h"
+#include "chooser.h"
 #include "disks.h"
 #include "fileops.h"
 #include "foldermodel.h"
@@ -46,6 +52,7 @@
 #include "theme.h"
 #include "thumbnails.h"
 #include "translator.h"
+#include "windows.h"
 
 // Puts XDG_DATA_HOME, where the trash and recent files live, in `path` for
 // as long as the returned guard does.
@@ -484,6 +491,47 @@ static Plugins::Run runBundled(const Plugins::Manifest &plugin, const QStringLis
     for (auto it = more.begin(); it != more.end(); ++it)
         env.insert(it.key(), it.value());
     return Plugins::execute(plugin, command, env, 5000);
+}
+
+// Takes the options of a call, as the chooser does.
+class OptionsSink : public QObject {
+    Q_OBJECT
+
+public:
+    QList<QVariantMap> received;
+
+public slots:
+    void Take(const QVariantMap &options) { received << options; }
+};
+
+// Options as an app's call brings them to the chooser: sent over a D-Bus
+// connection of their own, so compound values arrive still marshalled.
+static QVariantMap overDBus(const QVariantMap &options)
+{
+    ChooserFilter::registerTypes();
+    qDBusRegisterMetaType<QByteArrayList>();
+    QDBusServer server;
+    OptionsSink sink;
+    QString peer;
+    QObject::connect(&server, &QDBusServer::newConnection, &sink, [&](const QDBusConnection &connection) {
+        QDBusConnection(connection).registerObject("/", &sink, QDBusConnection::ExportAllSlots);
+        peer = connection.name();
+    });
+    QDBusConnection app = QDBusConnection::connectToPeer(server.address(), "chooser-test-app");
+    if (!QTest::qWaitFor([&] { return !peer.isEmpty(); }))
+        return {};
+    QDBusMessage call = QDBusMessage::createMethodCall({}, "/", {}, "Take");
+    call << options;
+    app.send(call);
+    const bool arrived = QTest::qWaitFor([&] { return !sink.received.isEmpty(); });
+    QDBusConnection::disconnectFromPeer("chooser-test-app");
+    QDBusConnection::disconnectFromPeer(peer);
+    return arrived ? sink.received.value(0) : QVariantMap();
+}
+
+static ChooserRequest chooserRequest(ChooserRequest::Mode mode, const QVariantMap &options, QString *error)
+{
+    return ChooserRequest::read(mode, "Pick", overDBus(options), error);
 }
 
 class FolioTests : public QObject {
@@ -6048,6 +6096,410 @@ private slots:
             if (!listed.contains("<file>i18n/" + name + "</file>"))
                 left << name;
         QVERIFY2(left.isEmpty(), qPrintable("not in resources.qrc: " + left.join(", ")));
+    }
+
+    void chooserReadsWhatTheAppAsks()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkdir("photos");
+        const QList<ChooserFilter> filters{{"Images", {{0, "*.png"}, {1, "image/jpeg"}}}, {"Text", {{0, "*.txt"}}}};
+        QString error;
+
+        ChooserRequest open = chooserRequest(ChooserRequest::Open,
+                                             {{"accept_label", "_Open __here"}, {"multiple", true},
+                                              {"current_folder", QFile::encodeName(dir.filePath("photos")) + '\0'},
+                                              {"filters", QVariant::fromValue(filters)},
+                                              {"current_filter", QVariant::fromValue(filters.at(1))},
+                                              {"choices", "ignored"}, {"modal", "ignored"}},
+                                             &error);
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QCOMPARE(open.mode, ChooserRequest::Open);
+        QCOMPARE(open.title, QString("Pick"));
+        QCOMPARE(open.acceptLabel, QString("Open _here"));
+        QVERIFY(open.multiple);
+        QVERIFY(!open.directory);
+        QCOMPARE(open.folder, dir.filePath("photos"));
+        QCOMPARE(open.filters.size(), 2);
+        QCOMPARE(open.filters.at(0).rules.at(1).pattern, QString("image/jpeg"));
+        QCOMPARE(open.filter, 1);
+        QCOMPARE(open.patterns(), QStringList({"*.txt"}));
+
+        // Nothing asked for: one file from home, every file listed.
+        ChooserRequest plain = chooserRequest(ChooserRequest::Open, {{"current_folder", QByteArray("/nowhere/at/all")}}, &error);
+        QVERIFY(error.isEmpty());
+        QVERIFY(!plain.multiple);
+        QCOMPARE(plain.folder, QDir::homePath());
+        QCOMPARE(plain.filter, -1);
+        QCOMPARE(plain.patterns(), QStringList());
+
+        // The first filter when the app names none of them, and one it names
+        // with no list is the only one.
+        QCOMPARE(chooserRequest(ChooserRequest::Open, {{"filters", QVariant::fromValue(filters)}}, &error).filter, 0);
+        QCOMPARE(chooserRequest(ChooserRequest::Open, {{"filters", QVariant::fromValue(filters)},
+                                                       {"current_filter", QVariant::fromValue(ChooserFilter{"Other", {}})}},
+                                &error).filter, 0);
+        ChooserRequest only = chooserRequest(ChooserRequest::Save, {{"current_filter", QVariant::fromValue(filters.at(0))}}, &error);
+        QCOMPARE(only.filters, QList<ChooserFilter>{filters.at(0)});
+        QCOMPARE(only.filter, 0);
+        // Slashes tell a MIME type from a glob, so rules that would be read
+        // as the other kind, or are of no kind, are left out.
+        QCOMPARE(only.patterns(), QStringList({"*.png", "image/jpeg"}));
+        only.filters[0].rules = {{0, "*/x"}, {1, "png"}, {7, "*.png"}, {1, "text/*"}};
+        QCOMPARE(only.patterns(), QStringList({"text/*"}));
+
+        // Choosing a folder lists folders only, whatever the filters.
+        ChooserRequest folders = chooserRequest(ChooserRequest::Open, {{"directory", true}, {"filters", QVariant::fromValue(filters)}}, &error);
+        QVERIFY(folders.directory);
+        QVERIFY(folders.filters.isEmpty());
+        QCOMPARE(folders.patterns(), QStringList({"inode/directory"}));
+
+        // Saving: the suggested name, or an existing file's folder and name.
+        ChooserRequest save = chooserRequest(ChooserRequest::Save, {{"current_name", "notes.txt"},
+                                                                   {"current_folder", QFile::encodeName(dir.path())}}, &error);
+        QCOMPARE(save.folder, dir.path());
+        QCOMPARE(save.name, QString("notes.txt"));
+        save = chooserRequest(ChooserRequest::Save, {{"current_name", "other.txt"},
+                                                    {"current_file", QFile::encodeName(dir.filePath("photos/cat.png")) + '\0'}}, &error);
+        QCOMPARE(save.folder, dir.filePath("photos"));
+        QCOMPARE(save.name, QString("cat.png"));
+
+        ChooserRequest many = chooserRequest(ChooserRequest::SaveFiles, {{"files", QVariant::fromValue(QByteArrayList{
+                                                                            QByteArray("b.txt\0", 6), "a.txt", "é.txt"})}}, &error);
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QCOMPARE(many.files, QStringList({"b.txt", "a.txt", "é.txt"}));
+    }
+
+    void chooserRefusesMalformedOptionsAndHostileNames()
+    {
+        // Any process on the session bus can call the chooser: an option of
+        // the wrong type is an error, never a crash or a guess.
+        const QList<std::pair<QString, QVariant>> wrong{
+            {"accept_label", 5},
+            {"multiple", "yes"},
+            {"directory", QVariant::fromValue(QDBusVariant(true))},
+            {"current_folder", "/tmp"},
+            {"filters", QStringList{"*.png"}},
+            {"filters", QVariant::fromValue(ChooserFilter{"Images", {}})},
+            {"current_filter", QVariant::fromValue(QList<ChooserFilter>{})},
+        };
+        for (const auto &[key, value] : wrong) {
+            QString error;
+            ChooserRequest::read(ChooserRequest::Open, "", overDBus({{key, value}}), &error);
+            QVERIFY2(error.startsWith(key + " must be of type"), qPrintable(key + ": " + error));
+        }
+        QString error;
+        ChooserRequest::read(ChooserRequest::Save, "", overDBus({{"current_name", QByteArray("x")}}), &error);
+        QVERIFY(error.startsWith("current_name"));
+        ChooserRequest::read(ChooserRequest::SaveFiles, "", overDBus({{"files", QStringList{"a.txt"}}}), &error);
+        QVERIFY(error.startsWith("files must be of type aay"));
+
+        // The names an app gives are names, never paths out of the folder
+        // the user picks: a suggested one is cut to its last part, and a
+        // SaveFiles list holding anything else is refused.
+        const QList<std::pair<QString, QString>> suggested{
+            {"../../.bashrc", ".bashrc"}, {"/etc/passwd", "passwd"}, {"..", ""}, {".", ""}, {"a/..", ""}, {"dir/", ""}};
+        for (const auto &[name, kept] : suggested) {
+            const ChooserRequest save = chooserRequest(ChooserRequest::Save, {{"current_name", name}}, &error);
+            QVERIFY(error.isEmpty());
+            QCOMPARE(save.name, kept);
+        }
+        // An existing file has to be a real one, by its full path.
+        QCOMPARE(chooserRequest(ChooserRequest::Save, {{"current_file", QByteArray("relative.txt")}}, &error).name, QString());
+        QCOMPARE(chooserRequest(ChooserRequest::Save, {{"current_file", QByteArray("/tmp/..")}}, &error).name, QString());
+        for (const QByteArray &name : {QByteArray("../x"), QByteArray("a/b"), QByteArray("."), QByteArray(".."),
+                                       QByteArray(""), QByteArray("/etc/passwd")}) {
+            chooserRequest(ChooserRequest::SaveFiles, {{"files", QVariant::fromValue(QByteArrayList{"fine.txt", name})}}, &error);
+            QVERIFY2(error.startsWith("files must be bare file names"), name.constData());
+        }
+        chooserRequest(ChooserRequest::SaveFiles, {{"files", QVariant::fromValue(QByteArrayList{})}}, &error);
+        QVERIFY(!error.isEmpty());
+        chooserRequest(ChooserRequest::SaveFiles, {}, &error);
+        QVERIFY(!error.isEmpty());
+    }
+
+    void chooserAnswersForEachMode()
+    {
+        QTemporaryDir dir;
+        const QString here = dir.path();
+        QDir(here).mkpath("sub/deeper");
+        write(dir.filePath("a.txt"), "x");
+        write(dir.filePath("b.txt"), "x");
+        const QString a = dir.filePath("a.txt"), b = dir.filePath("b.txt"), sub = dir.filePath("sub");
+        ChooserRequest request;
+
+        // Files: what's picked, folders and plugins' items left out, one
+        // unless several are asked for.
+        QCOMPARE(request.answer(here, {sub, a, b, "plugin:hosts/nas"}, "ignored"), QStringList({a}));
+        request.multiple = true;
+        QCOMPARE(request.answer(here, {sub, a, b}, {}), QStringList({a, b}));
+        QCOMPARE(request.answer(here, {sub}, {}), QStringList());
+        QCOMPARE(request.answer(here, {}, {}), QStringList());
+
+        // Folders: those picked, or else the one shown.
+        request.directory = true;
+        QCOMPARE(request.answer(here, {a, sub, dir.filePath("sub/deeper")}, {}), QStringList({sub, dir.filePath("sub/deeper")}));
+        request.multiple = false;
+        QCOMPARE(request.answer(here, {a, sub, dir.filePath("sub/deeper")}, {}), QStringList({sub}));
+        QCOMPARE(request.answer(here, {a}, {}), QStringList({here}));
+        QCOMPARE(request.answer("recent:", {}, {}), QStringList());
+
+        // Saving: the folder shown and the name typed, which the user (only)
+        // may make a path; a folder or a missing one is no file to save.
+        request = {};
+        request.mode = ChooserRequest::Save;
+        request.name = "suggested.txt";
+        QCOMPARE(request.answer(here, {a}, "new.txt"), QStringList({dir.filePath("new.txt")}));
+        QCOMPARE(request.answer(here, {}, " a.txt "), QStringList({a}));
+        QCOMPARE(request.answer(here, {}, "sub/deeper/x.txt"), QStringList({dir.filePath("sub/deeper/x.txt")}));
+        QCOMPARE(request.answer(here, {}, "../elsewhere.txt"), QStringList({QFileInfo(here).absolutePath() + "/elsewhere.txt"}));
+        QCOMPARE(request.answer(here, {}, "~/x.txt"), QStringList({QDir::homePath() + "/x.txt"}));
+        QCOMPARE(request.answer(here, {}, sub), QStringList());
+        QCOMPARE(request.answer(here, {}, "sub"), QStringList());
+        QCOMPARE(request.answer(here, {}, "new/"), QStringList());
+        QCOMPARE(request.answer(here, {}, "missing/x.txt"), QStringList());
+        QCOMPARE(request.answer(here, {}, "  "), QStringList());
+        QCOMPARE(request.answer("recent:", {}, "x.txt"), QStringList());
+
+        // SaveFiles: each name, in order, in the folder shown.
+        request.mode = ChooserRequest::SaveFiles;
+        request.files = {"z.txt", "a.txt"};
+        QCOMPARE(request.answer(sub, {a}, "typed"), QStringList({sub + "/z.txt", sub + "/a.txt"}));
+        QCOMPARE(request.answer("plugin:hosts", {}, {}), QStringList());
+
+        QCOMPARE(ChooserDialog::existing({a, sub + "/z.txt", sub}), QStringList({a, sub}));
+        QVERIFY(QFile::link(dir.filePath("gone"), dir.filePath("link")));
+        QCOMPARE(ChooserDialog::existing({dir.filePath("link")}), QStringList({dir.filePath("link")}));
+    }
+
+    void chooserFiltersByNameAndType()
+    {
+        const auto entry = [](const QString &name, bool isDir = false) {
+            FolderModel::Entry e;
+            e.name = name;
+            e.path = "/x/" + name;
+            e.isDir = isDir;
+            e.mime = isDir ? "inode/directory" : QMimeDatabase().mimeTypeForFile(name, QMimeDatabase::MatchExtension).name();
+            return e;
+        };
+        const auto fits = [&](const QStringList &filter, const QString &name) { return FolderModel::fits(filter, entry(name)); };
+        QVERIFY(fits({}, "anything"));
+        QVERIFY(FolderModel::fits({"*.png"}, entry("photos", true)));
+        // Globs ignore case, and match the name, not a search result's path.
+        QVERIFY(fits({"*.png"}, "Cat.PNG"));
+        QVERIFY(fits({"*.jp*g", "*.png"}, "cat.jpeg"));
+        QVERIFY(!fits({"*.png"}, "cat.png.txt"));
+        FolderModel::Entry found = entry("cat.png");
+        found.name = "sub/cat.png";
+        QVERIFY(FolderModel::fits({"cat*"}, found));
+        // Types, by name, by group, and by what they inherit.
+        QVERIFY(fits({"image/png"}, "cat.png"));
+        QVERIFY(!fits({"image/png"}, "cat.jpg"));
+        QVERIFY(fits({"image/*"}, "cat.jpg"));
+        QVERIFY(!fits({"image/*"}, "notes.txt"));
+        QVERIFY(fits({"text/plain"}, "main.c"));
+        QVERIFY(fits({"text/*"}, "data.json"));
+        QVERIFY(!fits({"text/plain"}, "cat.png"));
+        QVERIFY(fits({"*/*"}, "cat.png"));
+        // Only folders fit a folder's type.
+        QVERIFY(!fits({"inode/directory"}, "notes.txt"));
+
+        // A folder lists what fits, folders always, and lists again when the
+        // filter changes.
+        QTemporaryDir dir;
+        QDir(dir.path()).mkdir("sub");
+        for (const char *name : {"a.png", "b.PNG", "c.txt", "d.jpg"})
+            write(dir.filePath(name), "x");
+        FolderModel model;
+        const auto listed = [&] {
+            QStringList names;
+            for (int row = 0; row < model.rowCount(); ++row)
+                names << model.get(row).value("name").toString();
+            return names;
+        };
+        model.setFilter({"*.png"});
+        model.setPath(dir.path());
+        QTRY_COMPARE(listed(), QStringList({"sub", "a.png", "b.PNG"}));
+        model.setFilter({"image/jpeg", "text/plain"});
+        QTRY_COMPARE(listed(), QStringList({"sub", "c.txt", "d.jpg"}));
+        model.setFilter({});
+        QTRY_COMPARE(listed().size(), 5);
+    }
+
+    void chooserAnswersExactlyOnce()
+    {
+        QTemporaryDir dir;
+        const QList<ChooserFilter> filters{{"Images", {{0, "*.png"}}}, {"All", {{0, "*"}}}};
+        ChooserRequest request;
+        request.filters = filters;
+        request.filter = 0;
+        QList<std::pair<uint, QVariantMap>> replies;
+        const auto record = [&](uint response, const QVariantMap &results) { replies.append({response, results}); };
+
+        // Answered, it says so once; nothing after (cancelling, closing, the
+        // window going) answers again.
+        auto dialog = std::make_unique<ChooserDialog>(request, ":1.7", record);
+        QSignalSpy done(dialog.get(), &ChooserDialog::done);
+        dialog->accept({});
+        QCOMPARE(replies.size(), 0);
+        dialog->setFilter(1);
+        dialog->setFilter(5);
+        QCOMPARE(dialog->filter(), 1);
+        dialog->accept({dir.filePath("a b#.png"), "/tmp/é"});
+        dialog->accept({"/tmp/again"});
+        dialog->cancel();
+        QVERIFY(dialog->closeFor(":1.7"));
+        dialog.reset();
+        QCOMPARE(replies.size(), 1);
+        QCOMPARE(replies.at(0).first, 0u);
+        QCOMPARE(replies.at(0).second.value("uris").toStringList(),
+                 QStringList({QUrl::fromLocalFile(dir.filePath("a b#.png")).toString(QUrl::FullyEncoded), "file:///tmp/%C3%A9"}));
+        QVERIFY(replies.at(0).second.value("uris").toStringList().at(0).endsWith("/a%20b%23.png"));
+        QCOMPARE(replies.at(0).second.value("current_filter").value<ChooserFilter>(), filters.at(1));
+        QVERIFY(done.size() >= 1);
+
+        // A window closed without an answer cancels, once.
+        replies.clear();
+        dialog = std::make_unique<ChooserDialog>(ChooserRequest{}, ":1.7", record);
+        dialog.reset();
+        QCOMPARE(replies.size(), 1);
+        QCOMPARE(replies.at(0).first, 1u);
+        QVERIFY(!replies.at(0).second.contains("current_filter"));
+
+        // Request.Close: only from the app's own caller, and then cancelled.
+        replies.clear();
+        dialog = std::make_unique<ChooserDialog>(ChooserRequest{}, ":1.7", record);
+        QSignalSpy closed(dialog.get(), &ChooserDialog::done);
+        QVERIFY(!dialog->closeFor(":1.8"));
+        QCOMPARE(replies.size(), 0);
+        QCOMPARE(closed.size(), 0);
+        QVERIFY(dialog->closeFor(":1.7"));
+        QCOMPARE(closed.size(), 1);
+        dialog.reset();
+        QCOMPARE(replies.size(), 1);
+        QCOMPARE(replies.at(0).first, 1u);
+    }
+
+    void chooserWindowAnswersFromTheKeyboard()
+    {
+        // The whole window, as `folio chooser` opens it for each call.
+        QTemporaryDir home, plugins;
+        QDir(home.path()).mkdir("sub");
+        for (const char *name : {"a.txt", "b.png", "c.png"})
+            write(home.filePath(name), "x");
+        Theme theme(home.filePath("theme"));
+        Places places(home.path());
+        Plugins plugged("en", {plugins.path()}, home.filePath("folio.conf"));
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        QQmlEngine engine;
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        engine.addImageProvider("plugin-icon", new PluginIconProvider);
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        write(home.filePath("language"), "en\n");
+        Translator translator(home.filePath("language"));
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("places", &places);
+        engine.rootContext()->setContextProperty("plugins", &plugged);
+        Windows windows(&engine, &plugged);
+
+        QList<std::pair<uint, QStringList>> replies;
+        const auto open = [&](const ChooserRequest &request) -> QQuickWindow * {
+            auto *dialog = new ChooserDialog(request, ":1.1", [&](uint response, const QVariantMap &results) {
+                replies.append({response, results.value("uris").toStringList()});
+            });
+            Backend *backend = windows.open(request.folder, {}, dialog);
+            if (!backend)
+                return nullptr;
+            dialog->setParent(backend);
+            QQuickWindow *window = nullptr;
+            for (QWindow *each : QGuiApplication::topLevelWindows())
+                if (each->isVisible() && each->title() == request.title)
+                    window = qobject_cast<QQuickWindow *>(each);
+            if (window) {
+                window->requestActivate();
+                if (!QTest::qWaitForWindowFocused(window) || !QTest::qWaitFor([&] { return window->property("settled").toBool(); }))
+                    return nullptr;
+            }
+            return window;
+        };
+        const auto uri = [&](const QString &name) { return QUrl::fromLocalFile(home.filePath(name)).toString(); };
+        // What the pane lists, by name.
+        const auto listed = [](QQuickWindow *window) {
+            QStringList names;
+            QObject *pane = window->property("activePane").value<QObject *>();
+            auto *model = pane->property("paneBackend").value<QObject *>()->property("folder").value<FolderModel *>();
+            for (int row = 0; row < model->rowCount(); ++row)
+                names << model->get(row).value("name").toString();
+            return names;
+        };
+
+        // Opening: the app's filter lists what fits, and Return on a file
+        // answers with it and closes the window.
+        ChooserRequest request;
+        request.title = "Open a picture";
+        request.folder = home.path();
+        request.filters = {{"Pictures", {{1, "image/*"}}}};
+        request.filter = 0;
+        QQuickWindow *window = open(request);
+        QVERIFY(window);
+        QTRY_COMPARE(listed(window), QStringList({"sub", "b.png", "c.png"}));
+        QPointer<QQuickWindow> closing(window);
+        QTest::keyClick(window, Qt::Key_Down);
+        QTest::keyClick(window, Qt::Key_Return);
+        QCOMPARE(replies, (QList<std::pair<uint, QStringList>>{{0, {uri("b.png")}}}));
+        QTRY_VERIFY(!closing);
+
+        // Escape cancels.
+        replies.clear();
+        request.title = "Open anything";
+        request.filters.clear();
+        request.filter = -1;
+        window = open(request);
+        QVERIFY(window);
+        QTest::keyClick(window, Qt::Key_Escape);
+        QCOMPARE(replies, (QList<std::pair<uint, QStringList>>{{1, {}}}));
+
+        // Choosing a folder lists folders, and answers with the one shown
+        // when nothing in it is picked.
+        replies.clear();
+        request.title = "Pick a folder";
+        request.directory = true;
+        request.folder = home.filePath("sub");
+        window = open(request);
+        QVERIFY(window);
+        QTRY_COMPARE(listed(window), QStringList());
+        QTest::keyClick(window, Qt::Key_Return, Qt::ControlModifier);
+        QCOMPARE(replies, (QList<std::pair<uint, QStringList>>{{0, {uri("sub")}}}));
+
+        // Saving starts in the name; a name that's taken asks first, and
+        // Escape there only stops the asking.
+        replies.clear();
+        request = {};
+        request.mode = ChooserRequest::Save;
+        request.title = "Save the notes";
+        request.folder = home.path();
+        request.name = "a.txt";
+        window = open(request);
+        QVERIFY(window);
+        QTRY_VERIFY(window->activeFocusItem() && window->activeFocusItem()->property("text").toString() == "a.txt");
+        QTest::keyClick(window, Qt::Key_Return);
+        QTest::keyClick(window, Qt::Key_Escape);
+        QVERIFY(replies.isEmpty());
+        QTest::keyClick(window, Qt::Key_Return, Qt::ControlModifier);
+        QTRY_COMPARE(window->activeFocusItem()->property("text").toString(), QString("Replace"));
+        QTest::keyClick(window, Qt::Key_Return);
+        QCOMPARE(replies, (QList<std::pair<uint, QStringList>>{{0, {uri("a.txt")}}}));
+
+        // Closed without an answer, it cancels; the window going takes the
+        // dialog with it, and nothing answers twice.
+        replies.clear();
+        request.title = "Save elsewhere";
+        window = open(request);
+        QVERIFY(window);
+        closing = window;
+        window->close();
+        QTRY_VERIFY(!closing);
+        QCOMPARE(replies, (QList<std::pair<uint, QStringList>>{{1, {}}}));
     }
 
     void translatorLeavesNumbersUngrouped()

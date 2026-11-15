@@ -91,6 +91,10 @@ public:
     Q_INVOKABLE void togglePreview(const QString &path);
     // Ctrl+N: another window, on the folder this one shows.
     Q_INVOKABLE void newWindow();
+    // In a file chooser, opening a file picks it (chosen) rather than opening
+    // it in its app, and there are no other windows to open.
+    void setChoosing(bool choosing) { m_choosing = choosing; }
+    bool choosing() const { return m_choosing; }
     // Keeps an open preview on the item selected in the grid.
     Q_INVOKABLE void followSelection(const QString &path);
     // Omarchy's Super+Return opens a terminal in the focused window's working
@@ -120,6 +124,7 @@ signals:
     void previewingChanged();
     void detailsChanged();
     void newWindowRequested(const QString &path);
+    void chosen(const QString &path);
     void selectRequested(const QString &name);
     void activateRequested();
 
@@ -160,6 +165,7 @@ private:
     QTimer m_noticeTimer;
     QString m_busy;
     QString m_pendingSelection;
+    bool m_choosing = false;
     Plugins *m_plugins = nullptr;
     Mounter m_mounter;
     // What's being connected to, as the window names it, and whether it's

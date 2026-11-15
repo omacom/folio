@@ -29,9 +29,9 @@ add_executable(folio src/main.cpp src/resources.qrc)
 target_link_libraries(folio PRIVATE folio_core)
 
 # The tests compile the same sources, run offscreen, and read the QML they
-# check straight from src/.
+# check straight from src/, or whole windows from the resources.
 enable_testing()
-add_executable(folio_tests tests/folio_tests.cpp)
+add_executable(folio_tests tests/folio_tests.cpp src/resources.qrc)
 target_link_libraries(folio_tests PRIVATE folio_core Qt6::Test)
 add_test(NAME folio_tests COMMAND folio_tests)
 set_tests_properties(folio_tests PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)
