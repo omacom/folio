@@ -150,7 +150,7 @@ public:
     // filesystems and at symlinks, and as soon as `stop` returns true.
     static QVector<Entry> search(const QString &root, const QString &query, bool showHidden, const QString &sort,
                                  const std::function<bool()> &stop = {}, int limit = 1000,
-                                 const QLocale &locale = QLocale());
+                                 const QLocale &locale = QLocale(), const QStringList &filter = {});
 
 signals:
     void pathChanged();

@@ -211,7 +211,11 @@ QStringList ChooserRequest::answer(const QString &folder, const QStringList &pic
     // is somewhere to go, not a file to save.
     if (typed.trimmed().isEmpty() || typed.trimmed().endsWith('/'))
         return {};
-    const QString path = QDir::cleanPath(Backend::expandTyped(typed, QDir::homePath(), folder));
+    // A name is kept as typed, spaces and all; only a path is read the way
+    // the path bar reads one.
+    const QString path = typed.contains('/') || typed.startsWith('~')
+                             ? QDir::cleanPath(Backend::expandTyped(typed, QDir::homePath(), folder))
+                             : QDir(folder).filePath(typed);
     const QFileInfo info(path);
     if (info.isDir() || !QFileInfo(info.absolutePath()).isDir())
         return {};

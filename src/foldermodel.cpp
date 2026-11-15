@@ -318,7 +318,7 @@ FolderModel::Entry FolderModel::entryFor(const QFileInfo &info, const QMimeDatab
 
 QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QString &query, bool showHidden,
                                                 const QString &sort, const std::function<bool()> &stop,
-                                                int limit, const QLocale &locale) {
+                                                int limit, const QLocale &locale, const QStringList &filter) {
     QVector<Entry> entries;
     struct stat top;
     if (::stat(QFile::encodeName(root).constData(), &top) != 0)
@@ -341,7 +341,9 @@ QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QStri
             if (info.fileName().contains(query, Qt::CaseInsensitive) && entries.size() < limit) {
                 Entry e = entryFor(info, mimes);
                 e.name = base.relativeFilePath(e.path);
-                entries.push_back(e);
+                // Only what fits a file chooser's filter uses up the limit.
+                if (fits(filter, e))
+                    entries.push_back(e);
             }
             // Other filesystems (a mounted drive, another machine, /proc
             // from /) and symlinked folders aren't walked into.
@@ -523,7 +525,7 @@ void FolderModel::reload() {
         const auto overtaken = [&] { return *latest != generation; };
         auto entries = isPluginView(path) ? listItems(items, query)
                      : query.isEmpty() || path == recentPath() ? list(path, showHidden, sort, &error, overtaken, locale)
-                     : search(path, query, showHidden, sort, overtaken, 1000, locale);
+                     : search(path, query, showHidden, sort, overtaken, 1000, locale, filter);
         if (!isPluginView(path))
             entries.removeIf([&](const Entry &entry) { return !fits(filter, entry); });
         return qMakePair(entries, error);

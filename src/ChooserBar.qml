@@ -15,6 +15,8 @@ Item {
     readonly property int barHeight: bar.height
     readonly property var host: ApplicationWindow.window
     readonly property bool naming: chooser.mode === "save"
+    // Keys go to the name or the Replace prompt, not the window's shortcuts.
+    readonly property bool typing: nameField.activeFocus || confirm.visible
     // The selection, or the item under the cursor, as it changes.
     readonly property var picked: pane ? (pane.paneBackend.folder.selectedCount, pane.selectedPaths()) : []
 

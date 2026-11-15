@@ -6252,7 +6252,7 @@ private slots:
         request.mode = ChooserRequest::Save;
         request.name = "suggested.txt";
         QCOMPARE(request.answer(here, {a}, "new.txt"), QStringList({dir.filePath("new.txt")}));
-        QCOMPARE(request.answer(here, {}, " a.txt "), QStringList({a}));
+        QCOMPARE(request.answer(here, {}, " a.txt "), QStringList({dir.filePath(" a.txt ")}));
         QCOMPARE(request.answer(here, {}, "sub/deeper/x.txt"), QStringList({dir.filePath("sub/deeper/x.txt")}));
         QCOMPARE(request.answer(here, {}, "../elsewhere.txt"), QStringList({QFileInfo(here).absolutePath() + "/elsewhere.txt"}));
         QCOMPARE(request.answer(here, {}, "~/x.txt"), QStringList({QDir::homePath() + "/x.txt"}));
@@ -6277,6 +6277,18 @@ private slots:
 
     void chooserFiltersByNameAndType()
     {
+        // A search's limit counts only what fits, so the files a filter
+        // leaves out can't use it up before the ones it lists.
+        {
+            QTemporaryDir tree;
+            QDir(tree.path()).mkdir("deep");
+            for (const char *name : {"x1.txt", "x2.txt", "deep/x3.png"})
+                write(tree.filePath(name), "x");
+            const auto found = FolderModel::search(tree.path(), "x", false, "name", {}, 1, QLocale(), {"*.png"});
+            QCOMPARE(found.size(), 1);
+            QCOMPARE(found.first().name, QString("deep/x3.png"));
+        }
+
         const auto entry = [](const QString &name, bool isDir = false) {
             FolderModel::Entry e;
             e.name = name;
@@ -6492,6 +6504,11 @@ private slots:
         QVERIFY(replies.isEmpty());
         QTest::keyClick(window, Qt::Key_Return, Qt::ControlModifier);
         QTRY_COMPARE(window->activeFocusItem()->property("text").toString(), QString("Replace"));
+        // Tab goes round the prompt's buttons, not the window behind it.
+        QTest::keyClick(window, Qt::Key_Tab);
+        QTRY_COMPARE(window->activeFocusItem()->property("text").toString(), QString("Cancel"));
+        QTest::keyClick(window, Qt::Key_Backtab, Qt::ShiftModifier);
+        QTRY_COMPARE(window->activeFocusItem()->property("text").toString(), QString("Replace"));
         QTest::keyClick(window, Qt::Key_Return);
         QCOMPARE(replies, (QList<std::pair<uint, QStringList>>{{0, {uri("a.txt")}}}));
 
@@ -6509,8 +6526,18 @@ private slots:
         QTest::qWait(300);
         QVERIFY(replies.isEmpty());
         QVERIFY(window->activeFocusItem()->property("text").toString() != "Replace");
+        QVERIFY(windows.latest() && windows.latest()->notice().contains("sub"));
         window->close();
         QTRY_COMPARE(replies, (QList<std::pair<uint, QStringList>>{{1, {}}}));
+
+        // With nothing in the way, the files go into the folder shown.
+        replies.clear();
+        files.title = "Save more files";
+        files.files = {"new.txt", "other.txt"};
+        window = open(files);
+        QVERIFY(window);
+        QTest::keyClick(window, Qt::Key_Return, Qt::ControlModifier);
+        QCOMPARE(replies, (QList<std::pair<uint, QStringList>>{{0, {uri("new.txt"), uri("other.txt")}}}));
 
         // Closed without an answer, it cancels; the window going takes the
         // dialog with it, and nothing answers twice.

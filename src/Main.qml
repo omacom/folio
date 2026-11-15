@@ -68,7 +68,7 @@ ApplicationWindow {
     readonly property bool split: rightPane !== null
     // Whether keys are going into a text field. The right pane can go before
     // the window does when it closes, leaving activePane null.
-    readonly property bool typing: !!activePane && activePane.typing
+    readonly property bool typing: (!!activePane && activePane.typing) || (!!chooserBar.item && chooserBar.item.typing)
     // The rightmost pane's path bar reaches over the details column.
     readonly property int detailsWidth: details.visible ? details.width : 0
     // Whether the window is wide enough for the details column at all.
