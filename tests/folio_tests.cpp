@@ -6439,6 +6439,8 @@ private slots:
             return window;
         };
         const auto uri = [&](const QString &name) { return QUrl::fromLocalFile(home.filePath(name)).toString(); };
+        // The window's own pane, as its QML sees it.
+        const auto paneOf = [](QQuickWindow *window) { return qmlContext(window)->contextProperty("backend").value<Backend *>(); };
         // What the pane lists, by name.
         const auto listed = [](QQuickWindow *window) {
             QStringList names;
@@ -6526,7 +6528,7 @@ private slots:
         QTest::qWait(300);
         QVERIFY(replies.isEmpty());
         QVERIFY(window->activeFocusItem()->property("text").toString() != "Replace");
-        QVERIFY(windows.latest() && windows.latest()->notice().contains("sub"));
+        QVERIFY(paneOf(window)->notice().contains("sub"));
         window->close();
         QTRY_COMPARE(replies, (QList<std::pair<uint, QStringList>>{{1, {}}}));
 
@@ -6538,6 +6540,26 @@ private slots:
         QVERIFY(window);
         QTest::keyClick(window, Qt::Key_Return, Qt::ControlModifier);
         QCOMPARE(replies, (QList<std::pair<uint, QStringList>>{{0, {uri("new.txt"), uri("other.txt")}}}));
+
+        // A folder's name typed to save under goes into that folder, spaces
+        // and all, as a file's name is kept.
+        replies.clear();
+        QDir(home.path()).mkdir(" sp ");
+        QDir(home.path()).mkdir("sp");
+        ChooserRequest into;
+        into.mode = ChooserRequest::Save;
+        into.title = "Save into a folder";
+        into.folder = home.path();
+        window = open(into);
+        QVERIFY(window);
+        QTRY_VERIFY(window->activeFocusItem() && window->activeFocusItem()->property("placeholderText").toString() == "Name");
+        for (const char key : QByteArray(" sp "))
+            QTest::keyClick(window, key);
+        QTest::keyClick(window, Qt::Key_Return);
+        QTRY_COMPARE(paneOf(window)->path(), home.filePath(" sp "));
+        QVERIFY(replies.isEmpty());
+        window->close();
+        QTRY_COMPARE(replies, (QList<std::pair<uint, QStringList>>{{1, {}}}));
 
         // Closed without an answer, it cancels; the window going takes the
         // dialog with it, and nothing answers twice.

@@ -27,8 +27,18 @@ Item {
             // Nothing to answer with yet: a folder typed as the name is gone
             // into, and a folder picked to open is opened.
             if (naming && nameField.text.trim().length > 0) {
-                if (backend.goTyped(nameField.text))
+                // Read the way answer() reads it: a bare name exactly as
+                // typed, and only a path the way the path bar does.
+                const name = nameField.text
+                const here = backend.path + "/" + name
+                if (!name.includes("/") && !name.startsWith("~")) {
+                    if (chooser.folders([here]).length > 0) {
+                        backend.navigate(here)
+                        nameField.text = ""
+                    }
+                } else if (backend.goTyped(name)) {
                     nameField.text = ""
+                }
             } else if (pane.current.isDir) {
                 backend.open(pane.current.path)
             }
