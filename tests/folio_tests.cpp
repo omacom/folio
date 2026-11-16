@@ -2153,6 +2153,7 @@ private slots:
         QVERIFY(!copied.isFinished());
         QCOMPARE(::write(writer, "second", 6), 6);
         close(std::exchange(writer, -1));
+        QTRY_VERIFY(copied.isFinished());
         QVERIFY(copied.result());
         QCOMPARE(contents(to.filePath("pipe")), QByteArray("first second"));
     }
@@ -2172,16 +2173,19 @@ private slots:
         });
         if (fcntl(holder, F_SETLEASE, F_WRLCK) != 0)
             QSKIP("This filesystem gives no leases.");
+        FileOps::Job job;
         QString error;
         QFuture<bool> copied = QtConcurrent::run(
-            [&] { return FileOps::copyRecursively(from.filePath("leased"), to.filePath("leased"), &error); });
+            [&] { return FileOps::copyRecursively(from.filePath("leased"), to.filePath("leased"), &error, false, &job); });
         const auto finish = qScopeGuard([&] {
+            job.cancelled = true;
             fcntl(holder, F_SETLEASE, F_UNLCK);
             copied.waitForFinished();
         });
         // The copy's open has asked for the lease to be given up.
         QTRY_COMPARE(fcntl(holder, F_GETLEASE), F_RDLCK);
         QCOMPARE(fcntl(holder, F_SETLEASE, F_UNLCK), 0);
+        QTRY_VERIFY(copied.isFinished());
         QVERIFY(copied.result());
         QCOMPARE(contents(to.filePath("leased")), QByteArray("kept"));
     }
