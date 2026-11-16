@@ -60,6 +60,7 @@ GridView {
     // still scroll, which turning the view's interactive off would stop too.
     acceptedButtons: Qt.NoButton
     boundsBehavior: Flickable.StopAtBounds
+    // No cache buffer, as in FileListView.
     cacheBuffer: 0
     model: backend.folder
     // Tiles grow with the zoom; the name and details under them don't. A

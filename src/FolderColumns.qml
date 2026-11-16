@@ -93,15 +93,10 @@ Item {
                     required property string next
                     height: row.height
 
-                    ListView {
+                    FileListView {
                         id: column
                         width: view.columnWidth
                         height: parent.height
-                        clip: true
-                        acceptedButtons: Qt.NoButton
-                        boundsBehavior: Flickable.StopAtBounds
-                        cacheBuffer: 0
-                        ScrollBar.vertical: FolioScrollBar { }
                         model: FolderModel {
                             id: folder
                             path: ancestor.path
@@ -140,23 +135,18 @@ Item {
             }
 
             // The folder being shown: its selection is the window's.
-            ListView {
+            FileListView {
                 id: here
                 width: view.columnWidth
                 height: row.height
-                clip: true
                 focus: true
                 keyNavigationEnabled: true
                 // No cursor of its own to start with: the pane puts it back
                 // where the last view had it, and one on the first item would
                 // select that instead.
                 currentIndex: -1
-                acceptedButtons: Qt.NoButton
-                boundsBehavior: Flickable.StopAtBounds
-                cacheBuffer: 0
                 highlightFollowsCurrentItem: false
                 model: backend.folder
-                ScrollBar.vertical: FolioScrollBar { }
 
                 TapHandler {
                     acceptedButtons: Qt.RightButton
@@ -191,16 +181,11 @@ Item {
             Separator { }
 
             // A look inside the selected folder; clicking in it goes there.
-            ListView {
+            FileListView {
                 id: inside
                 width: view.columnWidth
                 height: row.height
                 visible: view.selected.isDir === true
-                clip: true
-                acceptedButtons: Qt.NoButton
-                boundsBehavior: Flickable.StopAtBounds
-                cacheBuffer: 0
-                ScrollBar.vertical: FolioScrollBar { }
                 TapHandler {
                     acceptedButtons: Qt.RightButton
                     onTapped: (point) => {
