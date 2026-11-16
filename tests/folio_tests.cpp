@@ -2129,6 +2129,63 @@ private slots:
         }
     }
 
+    void fileOpsCopyWaitsOutAPipesPause()
+    {
+        // A writer that goes quiet for longer than the copy's 100 ms looks for Stop is waited for, and what it sends after still arrives.
+        QTemporaryDir from, to;
+        const QByteArray pipe = QFile::encodeName(from.filePath("pipe"));
+        QVERIFY(mkfifo(pipe.constData(), 0600) == 0);
+        FileOps::Job job;
+        QString error;
+        QFuture<bool> copied = QtConcurrent::run(
+            [&] { return FileOps::copyRecursively(from.filePath("pipe"), to.filePath("pipe"), &error, false, &job); });
+        int writer = -1;
+        const auto finish = qScopeGuard([&] {
+            job.cancelled = true;
+            if (writer >= 0)
+                close(writer);
+            copied.waitForFinished();
+        });
+        QVERIFY(QTest::qWaitFor([&] { return (writer = open(pipe.constData(), O_WRONLY | O_NONBLOCK)) >= 0; }));
+        QCOMPARE(::write(writer, "first ", 6), 6);
+        QTRY_COMPARE(job.bytes.load(), 6);
+        QTest::qWait(300);
+        QVERIFY(!copied.isFinished());
+        QCOMPARE(::write(writer, "second", 6), 6);
+        close(std::exchange(writer, -1));
+        QVERIFY(copied.result());
+        QCOMPARE(contents(to.filePath("pipe")), QByteArray("first second"));
+    }
+
+    void fileOpsCopyWaitsOutALease()
+    {
+        // A file another program holds a lease on is copied whole once the lease is given up.
+        QTemporaryDir from, to;
+        write(from.filePath("leased"), "kept");
+        const int holder = open(QFile::encodeName(from.filePath("leased")).constData(), O_RDWR);
+        QVERIFY(holder >= 0);
+        // Breaking a lease tells its holder with SIGIO, which would end the test.
+        const auto io = signal(SIGIO, SIG_IGN);
+        const auto restored = qScopeGuard([&] {
+            close(holder);
+            signal(SIGIO, io);
+        });
+        if (fcntl(holder, F_SETLEASE, F_WRLCK) != 0)
+            QSKIP("This filesystem gives no leases.");
+        QString error;
+        QFuture<bool> copied = QtConcurrent::run(
+            [&] { return FileOps::copyRecursively(from.filePath("leased"), to.filePath("leased"), &error); });
+        const auto finish = qScopeGuard([&] {
+            fcntl(holder, F_SETLEASE, F_UNLCK);
+            copied.waitForFinished();
+        });
+        // The copy's open has asked for the lease to be given up.
+        QTRY_COMPARE(fcntl(holder, F_GETLEASE), F_RDLCK);
+        QCOMPARE(fcntl(holder, F_SETLEASE, F_UNLCK), 0);
+        QVERIFY(copied.result());
+        QCOMPARE(contents(to.filePath("leased")), QByteArray("kept"));
+    }
+
     void fileOpsCancelledMoveAcrossDrivesKeepsOriginals()
     {
         // Across drives each original goes once it's copied, so a move
