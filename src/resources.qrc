@@ -10,6 +10,7 @@
         <file>FolderList.qml</file>
         <file>FolderColumns.qml</file>
         <file>FolderDrop.qml</file>
+        <file>PaneDivider.qml</file>
         <file>Sidebar.qml</file>
         <file>PathBar.qml</file>
         <file>PreviewPane.qml</file>

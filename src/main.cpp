@@ -15,6 +15,7 @@
 #include "chooser.h"
 #include "filemanager1.h"
 #include "foldermodel.h"
+#include "panewidths.h"
 #include "places.h"
 #include "plugins.h"
 #include "previewer.h"
@@ -149,6 +150,8 @@ int main(int argc, char *argv[]) {
     engine.addImageProvider("plugin-icon", new PluginIconProvider);
     // Creatable too: the column view lists each folder on the way here.
     qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+    // Each window works out its panes' widths with its own.
+    qmlRegisterType<PaneWidths>("Folio", 1, 0, "PaneWidths");
     engine.rootContext()->setContextProperty("translator", &translator);
     engine.rootContext()->setContextProperty("theme", &theme);
     engine.rootContext()->setContextProperty("places", &places);

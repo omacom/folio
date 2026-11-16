@@ -5,6 +5,7 @@
 Files (`folio`) is Omarchy's file manager. It's one quiet window that follows your Omarchy theme and language, works from the keyboard, and never crawls your home folder in the background: folders are read when you open them, and thumbnails are made when a tile needs one, shared with every other app through `~/.cache/thumbnails`.
 
 - **Three views**: a grid with real previews, a list, and Finder-style columns. Ctrl+1/2/3 switches.
+  The lines between the panes can be dragged, and W picks how wide the panes are otherwise: fixed, fitted to what they show, or proportional to the window.
 - **Space previews** pictures, video, audio, PDFs, text and Markdown at full size, in their own window.
 - **The sidebar** holds everything in your home folder, pinned folders (shared with GTK file dialogs), Recents, Trash with restore, your drives, and the machines on your tailnet, which open over SFTP.
 - **Right-click** (or Alt+Enter) to open with another app, rename, duplicate, compress, share by Dropbox link, Taildrop or LocalSend, and delete. Copy and paste work with other apps, and nothing is ever overwritten.
@@ -28,6 +29,7 @@ Files (`folio`) is Omarchy's file manager. It's one quiet window that follows yo
 | F2, Delete | Rename, move to the trash |
 | Ctrl+Shift+N | New folder |
 | Ctrl+P | Pin the folder |
+| W, Shift+W | Pane widths: fixed, automatic, proportional |
 | Ctrl+N, Ctrl+Alt+N | New window, split |
 | Tab, Shift+Tab | Sidebar, panes and details |
 | ? | Every other shortcut |
