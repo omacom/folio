@@ -10,6 +10,7 @@
 #include <QGuiApplication>
 #include <QImageReader>
 #include <QMimeDatabase>
+#include <QLockFile>
 #include <QPointer>
 #include <QSettings>
 #include <QStorageInfo>
@@ -19,10 +20,6 @@
 
 Backend::Backend(const QString &home, QObject *parent)
     : QObject(parent), m_home(home.isEmpty() ? QDir::homePath() : home) {
-    connect(&m_folder, &FolderModel::sortModeChanged, this, [this] {
-        if (!m_restoringSort && !path().isEmpty())
-            rememberSort(path(), m_folder.sortMode());
-    });
     m_noticeTimer.setSingleShot(true);
     m_noticeTimer.setInterval(4000);
     connect(&m_noticeTimer, &QTimer::timeout, this, [this] {
@@ -190,6 +187,12 @@ QString Backend::sortFor(const QString &path) {
 
 void Backend::rememberSort(const QString &path, const QString &sort) {
     QSettings settings = sortSettings(s_settingsFile);
+    // The list is read and rewritten whole: another Folio (a file chooser,
+    // say) doing the same at once would otherwise undo this one's choice.
+    QLockFile lock(settings.fileName() + ".sorts.lock");
+    if (!lock.lock())
+        return;
+    settings.sync();
     auto sorts = readSorts(settings);
     // An order the folder would take anyway is left to its parent, so
     // changing the parent's later changes it too.
@@ -208,6 +211,17 @@ void Backend::rememberSort(const QString &path, const QString &sort) {
         settings.setValue("sort", sorts.value(paths[i]));
     }
     settings.endArray();
+    settings.sync();
+}
+
+void Backend::chooseSort(const QString &sort) {
+    if (!FolderModel::sortModes().contains(sort))
+        return;
+    m_folder.setSortMode(sort);
+    if (!path().isEmpty())
+        rememberSort(path(), sort);
+    ++m_sortsRevision;
+    emit sortsChanged();
 }
 
 void Backend::navigate(const QString &path) {
@@ -238,9 +252,7 @@ bool Backend::go(const QString &path, bool record) {
         m_history << clean;
         m_index = m_history.size() - 1;
     }
-    m_restoringSort = true;
     m_folder.setPath(clean, sortFor(clean));
-    m_restoringSort = false;
     if (s_working == this)
         moveWorkingDirectory();
     emit pathChanged();

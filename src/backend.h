@@ -32,6 +32,9 @@ class Backend : public QObject {
     // picture's dimensions, a text's opening lines, or a trashed item's
     // origin and deletion time; and under `plugins`, plugins' rows about a
     // file or folder, [[label, value]...].
+    // Changes whenever an order is chosen, for what shows other folders
+    // than the one shown (the columns) to look their orders up again.
+    Q_PROPERTY(int sortsRevision READ sortsRevision NOTIFY sortsChanged)
     Q_PROPERTY(QVariantMap details READ details NOTIFY detailsChanged)
 
 public:
@@ -49,10 +52,17 @@ public:
     static QString sortFor(const QString &path);
     static void rememberSort(const QString &path, const QString &sort);
     static void setSettingsFile(const QString &file) { s_settingsFile = file; }
+    // The order chosen for the folder shown, from the sort menu or S:
+    // remembered even when it's the one already in use, which can free
+    // the folder to follow its parent again.
+    Q_INVOKABLE void chooseSort(const QString &sort);
+    // Each column of the columns view in its own folder's order.
+    Q_INVOKABLE QString sortOf(const QString &path) const { return sortFor(path); }
     Mounter *mounter() { return &m_mounter; }
     QString path() const { return m_folder.path(); }
     QString title() const;
     QVariantList crumbs() const;
+    int sortsRevision() const { return m_sortsRevision; }
     bool canBack() const { return m_index > 0; }
     bool canForward() const { return m_index + 1 < m_history.size(); }
     QString message() const { return m_message; }
@@ -129,6 +139,7 @@ public:
     static QString serverAddress(const QString &text);
 
 signals:
+    void sortsChanged();
     void pathChanged();
     void placeChanged();
     void messageChanged();
@@ -179,10 +190,8 @@ private:
     QString m_busy;
     QString m_pendingSelection;
     bool m_leftBehind = false;
-    // Set while a folder is put in its remembered order, which is no
-    // choice to remember.
-    bool m_restoringSort = false;
     static QString s_settingsFile;
+    int m_sortsRevision = 0;
     bool m_choosing = false;
     Plugins *m_plugins = nullptr;
     Mounter m_mounter;
