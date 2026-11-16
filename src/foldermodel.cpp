@@ -139,6 +139,19 @@ void FolderModel::setSortMode(const QString &sort) {
     reload();
 }
 
+void FolderModel::setPath(const QString &path, const QString &sort) {
+    const bool resort = sort != m_sort && sortModes().contains(sort);
+    if (resort) {
+        m_sort = sort;
+        emit sortModeChanged();
+    }
+    const QString clean = path.isEmpty() || isView(path) ? path : QDir::cleanPath(path);
+    if (clean != m_path)
+        setPath(clean);
+    else if (resort)
+        reload();
+}
+
 void FolderModel::setQuery(const QString &query) {
     if (query == m_query)
         return;

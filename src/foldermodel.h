@@ -83,6 +83,8 @@ public:
     void setShowHidden(bool show);
     QString sortMode() const { return m_sort; }
     void setSortMode(const QString &sort);
+    // Goes to `path` already in `sort`, listing it once.
+    void setPath(const QString &path, const QString &sort);
     QString query() const { return m_query; }
     void setQuery(const QString &query);
     QVariantList items() const { return m_items; }

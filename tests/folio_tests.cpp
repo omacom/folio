@@ -536,12 +536,63 @@ static ChooserRequest chooserRequest(ChooserRequest::Mode mode, const QVariantMa
 
 class FolioTests : public QObject {
     Q_OBJECT
+    // Where the tests' folders keep their orders, away from the real ones.
+    QTemporaryDir settings;
 
 private slots:
     void initTestCase()
     {
         // No test ever reaches the real udisks, which would change real disks.
         fakeDisks({});
+        Backend::setSettingsFile(settings.filePath("folio.conf"));
+    }
+
+    void foldersRememberTheirOrderAndPassItDown()
+    {
+        QTemporaryDir home;
+        for (const char *dir : {"Downloads/monkey/deep", "Downloads/zebra", "Music"})
+            QDir(home.path()).mkpath(dir);
+        const QString downloads = home.filePath("Downloads"), monkey = home.filePath("Downloads/monkey");
+        Backend backend(home.path());
+        backend.navigate(downloads);
+        QCOMPARE(backend.folder()->sortMode(), QString("name"));
+        backend.folder()->setSortMode("modified");
+
+        // The folders inside take it, however deep; the ones beside don't.
+        backend.navigate(monkey);
+        QCOMPARE(backend.folder()->sortMode(), QString("modified"));
+        backend.navigate(monkey + "/deep");
+        QCOMPARE(backend.folder()->sortMode(), QString("modified"));
+        backend.navigate(home.filePath("Music"));
+        QCOMPARE(backend.folder()->sortMode(), QString("name"));
+        backend.navigate(home.path());
+        QCOMPARE(backend.folder()->sortMode(), QString("name"));
+
+        // A folder inside can have its own, which its parent's doesn't undo.
+        backend.navigate(monkey);
+        backend.folder()->setSortMode("size");
+        backend.navigate(downloads);
+        QCOMPARE(backend.folder()->sortMode(), QString("modified"));
+        backend.folder()->setSortMode("kind");
+        backend.navigate(home.filePath("Downloads/zebra"));
+        QCOMPARE(backend.folder()->sortMode(), QString("kind"));
+        backend.back();
+        backend.back();
+        QCOMPARE(backend.path(), monkey);
+        QCOMPARE(backend.folder()->sortMode(), QString("size"));
+        QCOMPARE(Backend::sortFor(monkey + "/deep"), QString("size"));
+
+        // Kept for the next launch, and for every window: another pane
+        // arrives in the same orders.
+        Backend other(home.path());
+        other.navigate(monkey + "/deep");
+        QCOMPARE(other.folder()->sortMode(), QString("size"));
+
+        // Put back in its parent's order, a folder follows the parent again.
+        backend.folder()->setSortMode("kind");
+        backend.navigate(downloads);
+        backend.folder()->setSortMode("oldest");
+        QCOMPARE(Backend::sortFor(monkey), QString("oldest"));
     }
 
     void folderListsDirectoriesFirstWithoutHidden()

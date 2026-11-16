@@ -42,6 +42,13 @@ public:
     void setPlugins(Plugins *plugins);
 
     FolderModel *folder() { return &m_folder; }
+    // The order each folder was last put in, kept in Folio's settings: a
+    // folder without one of its own takes its nearest parent's, so sorting
+    // ~/Downloads by date sorts the folders inside it the same way.
+    // Tests keep theirs in a file of their own.
+    static QString sortFor(const QString &path);
+    static void rememberSort(const QString &path, const QString &sort);
+    static void setSettingsFile(const QString &file) { s_settingsFile = file; }
     Mounter *mounter() { return &m_mounter; }
     QString path() const { return m_folder.path(); }
     QString title() const;
@@ -172,6 +179,10 @@ private:
     QString m_busy;
     QString m_pendingSelection;
     bool m_leftBehind = false;
+    // Set while a folder is put in its remembered order, which is no
+    // choice to remember.
+    bool m_restoringSort = false;
+    static QString s_settingsFile;
     bool m_choosing = false;
     Plugins *m_plugins = nullptr;
     Mounter m_mounter;
