@@ -227,6 +227,7 @@ Unknown keys are ignored, so a manifest written for a later Folio still loads.
 | `view` | A view of all the plugin's items in the main pane (see [The view](#the-view)). |
 | `actions` | Entries in the right-click menu, in the menu itself or under Share (see [Actions](#actions)). |
 | `details` | Rows in the details pane about a file or folder (see [Details](#details)). |
+| `watch` | `{"command": [...]}`: a command that stays running and says when something changed, so Folio asks again at once (see [Watching](#watching)). |
 
 ## Running commands
 
@@ -265,6 +266,7 @@ How long a command may take depends on what it's for:
   waits until the first is done. Closing Folio ends it.
 - An action with `"detach": true` is started and forgotten, for programs
   that open a window of their own.
+- A **watch** runs for as long as Folio does (see [Watching](#watching)).
 
 ### Text
 
@@ -340,6 +342,43 @@ row, the one whose id sorts first is shown.
 **`actions`** names the actions that are available right now, by `id`.
 Leave it out and every action is available. A plugin with a poll offers no
 actions while its poll is failing.
+
+## Watching
+
+```json
+"watch": { "command": ["./watch"] }
+```
+
+A poll asks on a timer, and a file's details are asked for once and kept, so
+a plugin whose state changes on its own (a sync finishing, a machine coming
+online) shows it late, or not until F5. A watch says when: Folio starts the
+command when the plugins are read and leaves it running, and every line it
+prints means something changed. Folio then runs the plugin's poll at once,
+whatever its `every`, and asks its details command again about the file the
+details pane shows.
+
+```sh
+#!/bin/sh
+# Says so whenever something in the notes folder changes.
+exec inotifywait -m -q -r -e close_write,move,create,delete --format changed "$HOME/Notes"
+```
+
+What a line says isn't read, only that it came, so print whatever helps when
+you run the command yourself. The first line is acted on at once; lines that
+follow within half a second are acted on together when it's over, so a
+command may print one for every little change without Folio polling for
+each. A change that comes while a poll is running has the poll run once more
+after it.
+
+The command is started like any other (in the plugin's folder, with
+`FOLIO_PLUGIN_DIR` and `FOLIO_LANGUAGE`, and its standard error going to
+Folio's), but with no time limit. It ends, with everything it started, when
+Folio closes or the plugin goes away; F5 and a change of language leave a
+running one be, unless its manifest's `watch` changed. When it ends by
+itself (what it watches isn't running), Folio starts it again 5 seconds
+later, and again every 5 seconds until it stays, saying so on its standard
+error once. A plugin works without its watch, only later: keep the poll, and
+let the watch make it timely.
 
 ## The sidebar section
 
@@ -474,9 +513,9 @@ is fine when there's nothing to say.
 The rows show below Folio's own, plugins in id order. Folio keeps them for
 the file as it was last modified, so going through a folder and back runs
 nothing again. It asks again about a file changed since, about everything
-after F5, and about every file once the plugin's poll prints something new,
-since a plugin's state can change how a file stands without changing the
-file (Dropbox finishing a sync).
+after F5, and about every file once the plugin's poll prints something new
+or its [watch](#watching) prints a line, since a plugin's state can change
+how a file stands without changing the file (Dropbox finishing a sync).
 
 The command runs in the background, never holding up the window, and has 2
 seconds. One that fails, takes longer or prints something other than a list

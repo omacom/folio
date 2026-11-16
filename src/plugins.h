@@ -17,13 +17,16 @@
 #include <memory>
 #include <optional>
 
+class QProcess;
 class QTimer;
 
 // Plugins: folders holding a manifest.json and commands that print JSON
 // (docs/plugins.md is the interface). Folio never loads a plugin's code; it
 // runs its commands in a thread pool of its own, each with a time limit
 // where it has one, and keeps what they print. A plugin that hangs or
-// prints nonsense only goes missing, and the others carry on.
+// prints nonsense only goes missing, and the others carry on. The one
+// command that stays running is a plugin's watch, which says when something
+// changed, so Folio asks again then and not only on a timer.
 //
 // What the sidebar, the views and the right-click menu show comes from the
 // latest output kept here, translated with the plugin's own catalog, so
@@ -64,6 +67,9 @@ public:
         // The command giving rows for the details pane, and the files and
         // folders it's run for.
         QStringList details, detailsUnder, detailsTypes;
+        // The command that stays running and prints a line whenever what
+        // the plugin says may have changed.
+        QStringList watch;
         // The plugin's catalog for the language Folio shows.
         QHash<QString, QPair<QString, QJsonValue>> strings;
     };
@@ -183,6 +189,11 @@ public:
     static constexpr int maxOutput = 1 << 20;
     // Longest line of standard error kept.
     static constexpr int maxErrorLine = 1000;
+    // After a watch's line is acted on, how long the lines that follow are
+    // held to be acted on once; and how long after a watch ends it's
+    // started again.
+    static constexpr int watchSettle = 500;
+    static constexpr int watchRestart = 5000;
 
 public:
     // A mount finished, so items that mount can find their folder.
@@ -191,14 +202,21 @@ public:
 signals:
     void changed();
     // What plugins say about files may have changed (F5, another language,
-    // or a plugin's poll saying something new), so the details pane asks
-    // again.
+    // a plugin's poll saying something new, or its watch saying so), so the
+    // details pane asks again.
     void detailsChanged();
 
 private:
     void reload(bool pollAll);
     void apply(const QList<Manifest> &manifests);
     void poll(const QString &plugin);
+    // Starts a plugin's watch, and ends it with everything it started.
+    void startWatch(const QString &plugin);
+    void endWatch(const QString &plugin);
+    // A watch printed a line: its plugin is polled and asked about files
+    // again, once for lines that come close together.
+    void noticed(const QString &plugin);
+    void askAgain(const QString &plugin);
     void rebuild();
     const Manifest *manifest(const QString &plugin) const;
     bool available(const Manifest &plugin, const QString &action) const;
@@ -226,18 +244,39 @@ private:
     // The latest output of each plugin whose poll works.
     QHash<QString, Output> m_outputs;
     QSet<QString> m_polling;
+    // Plugins whose watch said something changed while their poll ran, so
+    // they're polled once more when it's done.
+    QSet<QString> m_pollAgain;
+    // Each plugin's watch: the command and folder it was started with, its
+    // process while it runs, with the group to end and the line of standard
+    // error it's in the middle of, the timer holding lines that come close
+    // together (and whether any came), and the one starting it again.
+    struct Watch {
+        QStringList command;
+        QString dir;
+        QProcess *process = nullptr;
+        qint64 group = 0;
+        QByteArray error;
+        QTimer *settle = nullptr, *restart = nullptr;
+        bool pending = false;
+    };
+    QHash<QString, Watch> m_watches;
+    // Plugins whose watch ended since it last printed a line.
+    QSet<QString> m_failingWatch;
     QSet<QString> m_failing, m_failingDetails;
     // What details commands printed, by plugin, path and modification time;
     // who waits for those still running, the first deciding whether its
-    // command runs; and how often each plugin's have been forgotten, so
-    // forgetting one plugin's leaves the others' answers on their way.
+    // command runs; those whose plugin's state changed while they ran, so
+    // they're run once more when done; and how often everything has been
+    // forgotten, so answers on their way then are dropped.
     struct Asker {
         std::function<bool()> wanted;
         std::function<void()> done;
     };
     QHash<QString, QJsonArray> m_details;
     QHash<QString, QList<Asker>> m_asking;
-    QHash<QString, quint64> m_detailsGeneration;
+    QSet<QString> m_askAgain;
+    quint64 m_detailsGeneration = 0;
     QHash<QString, QTimer *> m_timers;
     QHash<QString, QList<std::function<void()>>> m_queue;
     QVariantList m_sections;
