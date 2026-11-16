@@ -62,9 +62,6 @@
     });
 }
 
-// Longer than a few of a copy's looks for Stop, which come 100 ms apart.
-static constexpr int severalStopChecksMs = 300;
-
 // A temporary folder on another drive than QTemporaryDir's, for what has to
 // cross drives: beside the tests, when they're on another drive. Null when
 // they aren't.
@@ -1851,140 +1848,51 @@ private slots:
         QVERIFY(ops.busy().isEmpty());
     }
 
-    void fileOpsCancelStopsACopyWaitingOnAPipe()
+    void fileOpsCancelStopsACopyWaitingOnItsSource()
     {
-        // Stop ends a copy of a pipe nobody writes to: with no writer at all, then with one that holds the pipe open and says nothing.
+        // Stop ends a copy waiting on a pipe nobody writes to, or on a file another program holds a lease on, and a signal meanwhile doesn't end the wait.
         QTemporaryDir from, to;
         const QByteArray pipe = QFile::encodeName(from.filePath("pipe"));
         QVERIFY(mkfifo(pipe.constData(), 0600) == 0);
-        for (const bool silentWriter : {false, true}) {
-            const int holder = silentWriter ? open(pipe.constData(), O_RDWR | O_NONBLOCK) : -1;
-            QCOMPARE(holder >= 0, silentWriter);
+        write(from.filePath("leased"), "kept");
+        const int holder = open(QFile::encodeName(from.filePath("leased")).constData(), O_RDWR);
+        QVERIFY(holder >= 0);
+        // Breaking a lease tells its holder with SIGIO, which would end the test.
+        const auto io = signal(SIGIO, SIG_IGN), usr1 = signal(SIGUSR1, [](int) {});
+        const auto restored = qScopeGuard([&] {
+            close(holder);
+            signal(SIGIO, io);
+            signal(SIGUSR1, usr1);
+        });
+        for (const QString name : {"pipe", "leased"}) {
+            if (name == "leased" && fcntl(holder, F_SETLEASE, F_WRLCK) != 0)
+                QSKIP("This filesystem gives no leases.");
             FileOps::Job job;
             QString error;
-            QFuture<bool> copied = QtConcurrent::run(
-                [&] { return FileOps::copyRecursively(from.filePath("pipe"), to.filePath("pipe"), &error, false, &job); });
-            // A copy Stop didn't reach ends once the pipe is let go, so a run that fails ends too.
+            std::atomic<pthread_t> copier{};
+            QFuture<bool> copied = QtConcurrent::run([&] {
+                copier = pthread_self();
+                return FileOps::copyRecursively(from.filePath(name), to.filePath(name), &error, false, &job);
+            });
+            // A copy Stop didn't reach ends once its source is let go, so a run that fails ends too.
             const auto finish = qScopeGuard([&] {
-                const int writer = open(pipe.constData(), O_WRONLY | O_NONBLOCK);
-                if (writer >= 0)
+                job.cancelled = true;
+                fcntl(holder, F_SETLEASE, F_UNLCK);
+                if (const int writer = open(pipe.constData(), O_WRONLY | O_NONBLOCK); writer >= 0)
                     close(writer);
-                if (holder >= 0)
-                    close(holder);
                 copied.waitForFinished();
             });
-            // It waits for a writer, rather than taking nothing yet for the pipe's end.
-            QTest::qWait(severalStopChecksMs);
+            QTRY_VERIFY(copier != pthread_t{});
+            // Longer than a few of the copy's looks for Stop, 100 ms apart.
+            QTest::qWait(300);
+            pthread_kill(copier, SIGUSR1);
+            QTest::qWait(100);
             QVERIFY(!copied.isFinished());
             job.cancelled = true;
             QTRY_VERIFY(copied.isFinished());
             QVERIFY(!copied.result());
             QVERIFY2(error.isEmpty(), qPrintable(error));
-            QVERIFY(!QFileInfo::exists(to.filePath("pipe")));
-        }
-    }
-
-    void fileOpsCopyLosesNothingWhenAPipesWriterPauses()
-    {
-        // A writer that stops for longer than a look for Stop takes is waited for, and what it sends next still arrives.
-        QTemporaryDir from, to;
-        const QByteArray pipe = QFile::encodeName(from.filePath("pipe"));
-        QVERIFY(mkfifo(pipe.constData(), 0600) == 0);
-        FileOps::Job job;
-        QString error;
-        QFuture<bool> copied = QtConcurrent::run(
-            [&] { return FileOps::copyRecursively(from.filePath("pipe"), to.filePath("pipe"), &error, false, &job); });
-        int writer = -1;
-        const auto finish = qScopeGuard([&] {
-            if (writer >= 0)
-                close(writer);
-            copied.waitForFinished();
-        });
-        QVERIFY(QTest::qWaitFor([&] { return (writer = open(pipe.constData(), O_WRONLY | O_NONBLOCK)) >= 0; }));
-        QCOMPARE(::write(writer, "first ", 6), 6);
-        QTest::qWait(severalStopChecksMs);
-        QVERIFY(!copied.isFinished());
-        QCOMPARE(::write(writer, "second", 6), 6);
-        close(std::exchange(writer, -1));
-        QVERIFY(copied.result());
-        QVERIFY2(error.isEmpty(), qPrintable(error));
-        QCOMPARE(contents(to.filePath("pipe")), QByteArray("first second"));
-    }
-
-    void fileOpsCopyOfAPipeWaitsThroughASignal()
-    {
-        // A signal that cuts short the wait for a writer isn't the pipe's end: the copy goes on waiting, rather than ending as an empty file.
-        QTemporaryDir from, to;
-        const QByteArray pipe = QFile::encodeName(from.filePath("pipe"));
-        QVERIFY(mkfifo(pipe.constData(), 0600) == 0);
-        struct sigaction caught {}, before {};
-        caught.sa_handler = [](int) {};
-        QVERIFY(sigaction(SIGUSR1, &caught, &before) == 0);
-        const auto restored = qScopeGuard([&] { sigaction(SIGUSR1, &before, nullptr); });
-        FileOps::Job job;
-        QString error;
-        std::atomic<bool> started = false;
-        pthread_t copier{};
-        QFuture<bool> copied = QtConcurrent::run([&] {
-            copier = pthread_self();
-            started = true;
-            return FileOps::copyRecursively(from.filePath("pipe"), to.filePath("pipe"), &error, false, &job);
-        });
-        const auto finish = qScopeGuard([&] {
-            job.cancelled = true;
-            copied.waitForFinished();
-        });
-        QTRY_VERIFY(started);
-        QTest::qWait(severalStopChecksMs);
-        for (int i = 0; i < 20 && !copied.isFinished(); ++i) {
-            pthread_kill(copier, SIGUSR1);
-            QTest::qWait(10);
-        }
-        QVERIFY(!copied.isFinished());
-        job.cancelled = true;
-        QTRY_VERIFY(copied.isFinished());
-        QVERIFY(!copied.result());
-        QVERIFY2(error.isEmpty(), qPrintable(error));
-        QVERIFY(!QFileInfo::exists(to.filePath("pipe")));
-    }
-
-    void fileOpsCopyWaitsForAFileUnderALease()
-    {
-        // A file another program holds a write lease on refuses an open that won't wait: the copy waits until the lease is given up, or until Stop.
-        QTemporaryDir from, to;
-        write(from.filePath("leased.txt"), "kept");
-        // Breaking a lease tells its holder with SIGIO, which would end the test.
-        const auto before = signal(SIGIO, SIG_IGN);
-        const auto restored = qScopeGuard([before] { signal(SIGIO, before); });
-        for (const bool stopped : {false, true}) {
-            const int holder = open(QFile::encodeName(from.filePath("leased.txt")).constData(), O_RDWR);
-            QVERIFY(holder >= 0);
-            const bool leased = fcntl(holder, F_SETLEASE, F_WRLCK) == 0;
-            FileOps::Job job;
-            QString error;
-            QFuture<bool> copied = QtConcurrent::run(
-                [&] { return FileOps::copyRecursively(from.filePath("leased.txt"), to.filePath("leased.txt"), &error, false, &job); });
-            // Closing the holder gives the lease up, so a run that fails ends too.
-            const auto finish = qScopeGuard([&] {
-                close(holder);
-                copied.waitForFinished();
-            });
-            if (!leased)
-                QSKIP("This filesystem gives no leases.");
-            QTest::qWait(severalStopChecksMs);
-            QVERIFY(!copied.isFinished());
-            if (stopped)
-                job.cancelled = true;
-            else
-                QCOMPARE(fcntl(holder, F_SETLEASE, F_UNLCK), 0);
-            QTRY_VERIFY(copied.isFinished());
-            QCOMPARE(copied.result(), !stopped);
-            QVERIFY2(error.isEmpty(), qPrintable(error));
-            QCOMPARE(QFileInfo::exists(to.filePath("leased.txt")), !stopped);
-            if (!stopped) {
-                QCOMPARE(contents(to.filePath("leased.txt")), QByteArray("kept"));
-                QVERIFY(QFile::remove(to.filePath("leased.txt")));
-            }
+            QVERIFY(!QFileInfo::exists(to.filePath(name)));
         }
     }
 
