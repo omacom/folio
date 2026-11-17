@@ -6667,6 +6667,19 @@ private slots:
         // From the top, ← goes up a folder, as before.
         QTest::keyClick(window, Qt::Key_Left);
         QTRY_COMPARE(backend.path(), home.path());
+
+        // Rows a folder opening lists above the cursor move its row, not
+        // the cursor: what's selected stays selected.
+        backend.navigate(home.filePath("files"));
+        QTRY_COMPARE(folder->rowCount(), 2);
+        root->setProperty("cursor", 1);
+        folder->selectRange(0, 1, false);
+        QCOMPARE(folder->selectedCount(), 2);
+        folder->setExpanded(0, true);
+        QTRY_COMPARE(folder->rowCount(), 3);
+        QCOMPARE(root->property("cursor").toInt(), 2);
+        QCOMPARE(folder->get(2).value("name").toString(), QString("beside.txt"));
+        QCOMPARE(folder->selectedCount(), 2);
     }
 
     // Renamed inside a folder opened in the list's tree, an item stays

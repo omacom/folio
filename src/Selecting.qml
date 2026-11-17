@@ -16,15 +16,35 @@ QtObject {
         quiet = true
         view.currentIndex = index
         quiet = false
+        placed()
+    }
+
+    // The item the cursor is on, and its row. Rows coming or going above it
+    // (a folder opening in the list's tree) move the cursor's row without
+    // moving the cursor: that isn't a move, and leaves the selection alone.
+    property string cursorPath: ""
+    property int cursorRow: -1
+    function placed() {
+        cursorPath = view.currentIndex >= 0 ? (backend.folder.get(view.currentIndex).path || "") : ""
+        cursorRow = view.currentIndex
     }
 
     // The cursor moved by the keyboard (or the view itself).
     function cursorMoved() {
         if (quiet)
             return
+        const path = view.currentIndex >= 0 ? (backend.folder.get(view.currentIndex).path || "") : ""
+        if (path.length > 0 && path === cursorPath) {
+            // Still on its item: the anchor shifts with the rows.
+            if (anchor >= 0)
+                anchor += view.currentIndex - cursorRow
+            cursorRow = view.currentIndex
+            return
+        }
         backend.folder.selectOnly(view.currentIndex)
         anchor = view.currentIndex
         view.positionViewAtIndex(view.currentIndex, ListView.Contain)
+        placed()
     }
 
     function click(index, modifiers) {
