@@ -110,22 +110,34 @@ ApplicationWindow {
     Shortcut { sequence: "Q"; enabled: !win.typing; onActivated: win.close() }
     Shortcut { sequence: "Ctrl+Alt+N"; enabled: !win.typing; onActivated: win.openSplit() }
     Shortcut { sequence: "Ctrl+W"; enabled: win.split; onActivated: win.closeSplit() }
-    // Tab moves the keyboard: sidebar, left pane, right pane, the active
-    // pane's details column (while there's an app to pick there), and
+    // Tab moves the keyboard: sidebar, left pane and its details column
+    // (while there's an app to pick there), right pane and its details, and
     // around. Shift+Tab goes back.
     Shortcut { sequence: "Tab"; enabled: !win.typing; onActivated: win.moveKeyboard(1) }
     Shortcut { sequence: "Shift+Backtab"; enabled: !win.typing; onActivated: win.moveKeyboard(-1) }
     function moveKeyboard(step) {
         // A file chooser's bar is the last stop: its name, or its answer.
         const bar = chooserBar.item
-        const details = activePane ? activePane.details : null
-        const stops = [sidebar, leftPane].concat(split ? [rightPane] : [], details && details.takesKeyboard ? [details] : [], bar ? [bar] : [])
-        const here = sidebar.activeFocus ? sidebar : details && details.hasKeyboard ? details : bar && bar.hasKeyboard ? bar : activePane
+        // Each pane, then its details, the same way round whichever has the
+        // keyboard.
+        const stops = [sidebar]
+        const details = []
+        for (const pane of split ? [leftPane, rightPane] : [leftPane]) {
+            stops.push(pane)
+            if (pane.details && pane.details.takesKeyboard) {
+                stops.push(pane.details)
+                details.push(pane.details)
+            }
+        }
+        if (bar)
+            stops.push(bar)
+        const here = sidebar.activeFocus ? sidebar : details.find(d => d.hasKeyboard)
+                     ?? (bar && bar.hasKeyboard ? bar : activePane)
         const next = stops[(stops.indexOf(here) + step + stops.length) % stops.length]
         if (next === sidebar)
             sidebar.focusSidebar()
-        else if (next === details)
-            details.focusKeyboard()
+        else if (details.includes(next))
+            next.focusKeyboard()
         else if (next === bar)
             bar.focusKeyboard()
         else
