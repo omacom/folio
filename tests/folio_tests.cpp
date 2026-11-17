@@ -1041,11 +1041,32 @@ private slots:
         QCOMPARE(model.count(), 40);
         for (int row = 0; row < 40; ++row)
             QCOMPARE(model.get(row).value("name").toString(), all.at(row));
-        // The same search again (the folder changed) keeps its matches up.
+        // The same search again (the folder changed) keeps its matches up,
+        // and what was selected and is gone is no longer selected.
+        model.selectRows({0, 1});
+        QVERIFY(QFile::remove(dir.filePath("d00/match-d00.txt")));
         model.reload();
         QCOMPARE(model.count(), 40);
         QTRY_VERIFY(!model.loading());
-        QCOMPARE(model.count(), 40);
+        QCOMPARE(model.count(), 39);
+        QCOMPARE(model.selectedCount(), 1);
+        QCOMPARE(model.selectedPaths(), QStringList({dir.filePath("d01/match-d01.txt")}));
+
+        // A match found early is told before the walk ends, though nothing
+        // else matches after it.
+        QTemporaryDir quiet;
+        write(quiet.filePath("early-match.txt"), "x");
+        for (int i = 0; i < 30; ++i) {
+            QDir(quiet.path()).mkpath(QString("f%1").arg(i));
+            for (int j = 0; j < 5; ++j)
+                write(quiet.filePath(QString("f%1/file-%2.txt").arg(i).arg(j)), "x");
+        }
+        int looks = 0, lookedWhenTold = -1;
+        FolderModel::search(quiet.path(), "match", false, "name",
+            [&] { ++looks; QThread::usleep(2000); return false; }, 1000, QLocale(), {},
+            [&](const QVector<FolderModel::Entry> &) { if (lookedWhenTold < 0) lookedWhenTold = looks; });
+        QVERIFY2(lookedWhenTold > 0 && lookedWhenTold < looks / 2,
+                 qPrintable(QString("told at %1 of %2").arg(lookedWhenTold).arg(looks)));
     }
 
     void folderSearchSkipsSymlinkedFolders()

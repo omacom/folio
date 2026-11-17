@@ -421,11 +421,12 @@ QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QStri
                 Entry e = entryFor(info, mimes);
                 e.name = base.relativeFilePath(e.path);
                 // Only what fits a file chooser's filter uses up the limit.
-                if (fits(filter, e)) {
+                if (fits(filter, e))
                     entries.push_back(e);
-                    tell(false);
-                }
             }
+            // At every entry, not just at matches: a match found early isn't
+            // held back by a long stretch of folders with none.
+            tell(false);
             // Other filesystems (a mounted drive, another machine, /proc
             // from /) and symlinked folders aren't walked into.
             struct stat st;
@@ -839,6 +840,12 @@ void FolderModel::searchHere(quint64 generation) {
             sortEntries(all, m_sort);
             if (!sameListing(m_entries, all))
                 setEntries(all);
+            // What was selected and is no longer found isn't selected.
+            QSet<QString> still;
+            for (const Entry &e : std::as_const(m_entries))
+                if (m_selected.contains(e.path))
+                    still.insert(e.path);
+            setSelected(still);
         }
         setLoading(false);
         emit loaded();
