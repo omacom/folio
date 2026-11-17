@@ -89,8 +89,12 @@ Item {
                     maskSpreadAtMin: 1
                 }
                 asynchronous: true
-                fillMode: Image.PreserveAspectCrop
-                source: row.kind === "image" || row.kind === "video" ? Format.thumb(row.path, row.mime, 128, row.modified) : ""
+                // Pictures fill the square; a page (a PDF's) shows whole.
+                fillMode: row.kind === "image" || row.kind === "video" ? Image.PreserveAspectCrop : Image.PreserveAspectFit
+                // A small picture of any file there's one of, as the tiles
+                // have; a text's opening lines would be unreadable this
+                // small, and folders and plugins' items keep their glyph.
+                source: row.isDir || row.kind === "item" || row.kind === "text" ? "" : Format.thumb(row.path, row.mime, 128, row.modified)
                 visible: status === Image.Ready
             }
             Rectangle {
