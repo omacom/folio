@@ -16,6 +16,10 @@ Rectangle {
     // The right pane of a split has a close button (Ctrl+W).
     property bool closable: false
     signal closeRequested()
+    // The window's last bar has a quiet ? before its buttons, for finding the
+    // shortcuts without knowing the key that shows them.
+    property bool showsHelp: false
+    signal helpRequested()
     signal togglePreview()
     signal cycleView()
     signal editDone()
@@ -203,6 +207,44 @@ Rectangle {
         }
 
         Item { implicitWidth: 16 }
+        // First of the buttons, before those for the folder shown.
+        AbstractButton {
+            id: help
+            visible: bar.showsHelp
+            // As wide as the buttons beside it, the ? itself smaller.
+            implicitWidth: 36
+            implicitHeight: 36
+            focusPolicy: Qt.NoFocus
+            hoverEnabled: true
+            text: qsTr("Keyboard shortcuts")
+            Accessible.name: text
+            onClicked: bar.helpRequested()
+            ToolTip {
+                visible: help.hovered
+                delay: 600
+                text: help.text
+                enter: null
+                exit: null
+            }
+            contentItem: Item {
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 22
+                    height: 22
+                    radius: width / 2
+                    color: "transparent"
+                    border.width: 1
+                    border.color: help.hovered ? theme.foreground : Qt.alpha(theme.secondaryForeground, 0.4)
+                    Text {
+                        anchors.centerIn: parent
+                        text: "?"
+                        font.pixelSize: 13
+                        color: help.hovered ? theme.foreground : Qt.alpha(theme.secondaryForeground, 0.6)
+                    }
+                }
+            }
+            background: null
+        }
         // In a file chooser, the app's filters when it gives a choice of
         // them: a menu under the button, which names the one in use on
         // hover. The right pane of a split leaves them to the left one.

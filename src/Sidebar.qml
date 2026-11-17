@@ -17,8 +17,6 @@ Rectangle {
     // rows, ⏎ (or →, toward the files) opens one and hands the keyboard
     // back to the files, and Delete does what a row's ✕ does.
     signal finished()
-    // The ? in the corner: show or hide the shortcuts.
-    signal helpRequested()
     // Format… in a drive's menu, with what udisks knows of the drive.
     signal formatRequested(var disk)
     property int cursor: 0
@@ -256,13 +254,7 @@ Rectangle {
 
     Flickable {
         id: flick
-        // Stops above the ? in the corner, so a scrolled row never slides
-        // under it.
-        anchors.top: parent.top
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: help.top
-        anchors.bottomMargin: 4
+        anchors.fill: parent
         contentHeight: column.implicitHeight + 20
         clip: true
         boundsBehavior: Flickable.StopAtBounds
@@ -483,45 +475,6 @@ Rectangle {
                     }
                 }
             }
-        }
-    }
-
-    // A quiet ? in the corner, for finding the shortcuts without knowing
-    // the key that shows them.
-    AbstractButton {
-        id: help
-        // A file chooser is a dialog, not the place to learn Files' keys.
-        visible: !chooser
-        anchors.left: parent.left
-        anchors.bottom: parent.bottom
-        anchors.leftMargin: 18
-        anchors.bottomMargin: 12
-        implicitWidth: 24
-        implicitHeight: 24
-        focusPolicy: Qt.NoFocus
-        hoverEnabled: true
-        text: qsTr("Keyboard shortcuts")
-        Accessible.name: text
-        onClicked: sidebar.helpRequested()
-        ToolTip {
-            visible: help.hovered
-            delay: 600
-            text: help.text
-            enter: null
-            exit: null
-        }
-        contentItem: Text {
-            text: "?"
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-            font.pixelSize: 13
-            color: help.hovered ? theme.foreground : Qt.alpha(theme.secondaryForeground, 0.6)
-        }
-        background: Rectangle {
-            radius: width / 2
-            color: "transparent"
-            border.width: 1
-            border.color: help.hovered ? theme.foreground : Qt.alpha(theme.secondaryForeground, 0.4)
         }
     }
 }

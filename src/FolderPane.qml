@@ -459,6 +459,10 @@ FocusScope {
         onTogglePreview: if (pane.host) pane.host.previewVisible = !pane.host.previewVisible
         onCycleView: pane.cycleView()
         onCloseRequested: pane.closeRequested()
+        // On the rightmost pane's bar. A file chooser is a dialog, not the
+        // place to learn Files' keys.
+        showsHelp: !chooser && !!pane.host && (pane.closable || !pane.host.split)
+        onHelpRequested: if (pane.host) pane.host.helpVisible = !pane.host.helpVisible
     }
 
     // With two panes, a line along the top marks the one keys go to.
