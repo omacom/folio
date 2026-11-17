@@ -68,6 +68,7 @@
   "Close": "Close",
   "Close the window": "Close the window",
   "Close this pane": "Close this pane",
+  "Columns, grid or list": "Columns, grid or list",
   "Compress": "Compress",
   "Compressing %L1 of %Ln items into %2…": {
     "one": "Compressing %L1 of %Ln item into %2…",
@@ -208,7 +209,6 @@
   "GVfs gave no local folder for the mount": "GVfs gave no local folder for the mount",
   "Go home": "Go home",
   "Go to the parent folder": "Go to the parent folder",
-  "Grid, list or columns": "Grid, list or columns",
   "Hide Hidden Files": "Hide Hidden Files",
   "Home": "Home",
   "In list and columns: into a folder / back out": "In list and columns: into a folder / back out",
