@@ -125,6 +125,7 @@
   "Couldn't recreate %1.": "Couldn't recreate %1.",
   "Couldn't remove %1.": "Couldn't remove %1.",
   "Couldn't rename %1.": "Couldn't rename %1.",
+  "Couldn't save the hidden folders to %1.": "Couldn't save the hidden folders to %1.",
   "Couldn't save the pin to %1.": "Couldn't save the pin to %1.",
   "Couldn't start a terminal: xdg-terminal-exec isn't installed.": "Couldn't start a terminal: xdg-terminal-exec isn't installed.",
   "Couldn't unmount %1: %2": "Couldn't unmount %1: %2",

@@ -278,6 +278,9 @@ signals:
     void drivesChanged();
     // Work finished in `folder`, which now holds `name` (to select it).
     void done(const QString &folder, const QString &name);
+    // An item renamed from `from` to `to`, by Rename or by undoing or
+    // redoing one, for the sidebar's pins and hidden folders to follow.
+    void renamed(const QString &from, const QString &to);
 
 private:
     void setBusy(const QString &busy);

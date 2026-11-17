@@ -266,6 +266,9 @@ FocusScope {
 
     Connections {
         target: fileOps
+        // A pinned folder's pin, or a folder hidden from Home, follows it
+        // through a rename, and through undoing and redoing one.
+        function onRenamed(from, to) { places.renamed(from, to) }
         function onDone(folder, name) {
             if (folder !== backend.path)
                 return

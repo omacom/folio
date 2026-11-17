@@ -30,9 +30,6 @@ FolioDialog {
         problem = fileOps.rename(item.path, field.text)
         if (problem.length > 0)
             return
-        // A pinned folder's pin, or a folder hidden from Home, follows it.
-        if (item.isDir && typeof places !== "undefined")
-            places.renamed(item.path, item.path.slice(0, item.path.lastIndexOf("/") + 1) + field.text.trim())
         close()
     }
 

@@ -43,7 +43,7 @@ public:
     Q_INVOKABLE void showInHome(const QString &path);
     Q_INVOKABLE bool hiddenFromHome(const QString &path) const;
     // A folder renamed: its pin, or its place among those hidden from Home,
-    // follows it to its new name.
+    // follows it to its new name. Saving either failing says so (failed).
     Q_INVOKABLE void renamed(const QString &from, const QString &to);
 
     // Lets go of the drive at `path`: ejects it when it can be (so a stick

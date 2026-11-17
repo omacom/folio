@@ -239,8 +239,10 @@ void Places::hideFromHome(const QString &path) {
         return;
     QStringList names = readHidden();
     names << QFileInfo(clean).fileName();
-    if (!writeHidden(names))
+    if (!writeHidden(names)) {
+        emit failed(tr("Couldn't save the hidden folders to %1.").arg(hiddenPath()));
         return;
+    }
     refreshPlaces();
     refreshPinned();
     emit changed();
@@ -249,8 +251,12 @@ void Places::hideFromHome(const QString &path) {
 void Places::showInHome(const QString &path) {
     const QString clean = QDir::cleanPath(path);
     QStringList names = readHidden();
-    if (!inHome(clean, m_home) || names.removeAll(QFileInfo(clean).fileName()) == 0 || !writeHidden(names))
+    if (!inHome(clean, m_home) || names.removeAll(QFileInfo(clean).fileName()) == 0)
         return;
+    if (!writeHidden(names)) {
+        emit failed(tr("Couldn't save the hidden folders to %1.").arg(hiddenPath()));
+        return;
+    }
     refreshPlaces();
     refreshPinned();
     emit changed();
@@ -263,7 +269,8 @@ void Places::renamed(const QString &from, const QString &to) {
         names.removeAll(QFileInfo(before).fileName());
         if (inHome(after, m_home))
             names << QFileInfo(after).fileName();
-        writeHidden(names);
+        if (!writeHidden(names))
+            emit failed(tr("Couldn't save the hidden folders to %1.").arg(hiddenPath()));
     }
     // A pin keeps its label, and only its path changes.
     QStringList lines = readBookmarkLines();
@@ -276,8 +283,8 @@ void Places::renamed(const QString &from, const QString &to) {
             moved = true;
         }
     }
-    if (moved)
-        writeBookmarkLines(lines);
+    if (moved && !writeBookmarkLines(lines))
+        emit failed(tr("Couldn't save the pin to %1.").arg(bookmarksPath()));
     refreshPlaces();
     refreshPinned();
     emit changed();
