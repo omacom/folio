@@ -41,12 +41,8 @@
   "A folder here is already called %1.": "Ở đây đã có thư mục tên %1.",
   "A folder, or a server's address like sftp://host/": "Một thư mục hoặc địa chỉ máy chủ như sftp://host/",
   "A name can't contain \"/\".": "Tên không được chứa \"/\".",
-  "Add or remove one from the selection": "Thêm hoặc bỏ một mục khỏi phần đã chọn",
-  "Alt+click": "Alt+nhấp chuột",
   "Archive": "Lưu trữ",
   "Back / ahead 5 seconds": "Tua lùi / tua tiến 5 giây",
-  "Back / forward (or the mouse's thumb buttons)": "Quay lại / đi tiếp (hoặc các nút bên của chuột)",
-  "Bigger, smaller or normal tiles (or Ctrl+scroll)": "Ô lớn hơn, nhỏ hơn hoặc bình thường (hoặc Ctrl+cuộn)",
   "Biggest first": "Lớn nhất trước",
   "Burn": "Ghi",
   "Burn %1?": "Ghi %1?",
@@ -79,7 +75,6 @@
   "Copy": "Sao chép",
   "Copy Path": "Sao chép đường dẫn",
   "Copy the path as text": "Sao chép đường dẫn dưới dạng văn bản",
-  "Copy, cut, paste files": "Sao chép, cắt, dán tệp",
   "Copying %1: %2 of %3…": "Đang sao chép %1: %2 trong số %3…",
   "Copying %L1 of %Ln items…": {
     "other": "Đang sao chép %L1 trong số %Ln mục…"
@@ -123,7 +118,6 @@
   "Cut": "Cắt",
   "Delete": "Xóa",
   "Delete for good?": "Xóa vĩnh viễn?",
-  "Delete in the sidebar": "Xóa trong thanh bên",
   "Delete permanently (asks first)": "Xóa vĩnh viễn (hỏi trước)",
   "Deleted": "Đã xóa",
   "Delete…": "Xóa…",
@@ -139,7 +133,6 @@
   "Do this for the other %Ln clashes": {
     "other": "Áp dụng cho %Ln xung đột còn lại"
   },
-  "Drag on empty space": "Kéo trên vùng trống",
   "Drives can't be changed without udisks2.": "Không thể thay đổi ổ đĩa khi không có udisks2.",
   "Drop to pin": "Thả để ghim",
   "Duplicate": "Tạo bản sao",
@@ -156,7 +149,6 @@
     "other": "Đang dọn sạch thùng rác: %L1 trong số %Ln mục…"
   },
   "Emptying the trash…": "Đang dọn sạch thùng rác…",
-  "Everything else, for files and for drives in the sidebar": "Mọi thứ khác, cho tệp và ổ đĩa trong thanh bên",
   "Everything on this drive will be erased. This can't be undone.": "Tất cả dữ liệu trên ổ đĩa này sẽ bị xóa. Thao tác này không thể hoàn tác.",
   "Extract": "Giải nén",
   "Extracting %1: %Ln items…": {
@@ -194,7 +186,6 @@
   "Go to the parent folder": "Tới thư mục cha",
   "Hide Hidden Files": "Ẩn tệp ẩn",
   "Home": "Thư mục nhà",
-  "In list and columns: into a folder / back out": "Trong dạng danh sách và cột: vào thư mục / quay ra",
   "Keep Both": "Giữ cả hai",
   "Keyboard shortcuts": "Phím tắt",
   "Kind": "Loại",
@@ -203,7 +194,6 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "Gộp sẽ thêm nội dung của thư mục này vào thư mục kia. Các mục trùng tên bên trong sẽ bị thay thế, và các mục bị thay thế sẽ được chuyển vào thùng rác.",
   "Modified": "Đã sửa đổi",
   "Mount": "Kết nối",
-  "Move between the sidebar, the panes and the details": "Di chuyển giữa thanh bên, các ngăn và phần chi tiết",
   "Move the selection": "Di chuyển lựa chọn",
   "Move to the trash": "Chuyển vào thùng rác",
   "Moved only part of %1: %2": "Chỉ di chuyển được một phần của %1: %2",
@@ -255,7 +245,6 @@
   "Pause (K)": "Tạm dừng (K)",
   "Permission was refused.": "Quyền truy cập bị từ chối.",
   "Pin": "Ghim",
-  "Pin or unpin the folder (or drag it to the sidebar)": "Ghim hoặc bỏ ghim thư mục (hoặc kéo vào thanh bên)",
   "Pinned": "Đã ghim",
   "Play (K)": "Phát (K)",
   "Play or pause": "Phát hoặc tạm dừng",
@@ -291,7 +280,6 @@
   "Reload": "Tải lại",
   "Remove from the sidebar": "Xóa khỏi thanh bên",
   "Rename": "Đổi tên",
-  "Rename / duplicate": "Đổi tên / nhân bản",
   "Rename…": "Đổi tên…",
   "Replace": "Thay thế",
   "Replace %1?": "Thay thế %1?",
@@ -315,7 +303,6 @@
   "Restoring %Ln items…": {
     "other": "Đang khôi phục %Ln mục…"
   },
-  "Right-click / Alt+⏎ / Menu": "Chuột phải / Alt+⏎ / Menu",
   "Save": "Lưu",
   "Scroll": "Cuộn",
   "Search %1": "Tìm trong %1",
@@ -324,9 +311,7 @@
   "Select All": "Chọn tất cả",
   "Select a range": "Chọn một khoảng liên tiếp",
   "Select everything": "Chọn tất cả",
-  "Select with a rectangle (Alt adds)": "Chọn bằng khung chữ nhật (Alt để thêm)",
   "Share": "Chia sẻ",
-  "Shift+click / Shift+arrows": "Shift+nhấp chuột / Shift+phím mũi tên",
   "Show Hidden Files": "Hiện tệp ẩn",
   "Show as columns": "Hiển thị dạng cột",
   "Show as grid": "Hiển thị dạng lưới",
@@ -337,11 +322,8 @@
   "Size": "Kích thước",
   "Skip": "Bỏ qua",
   "Something is still using it.": "Nó vẫn đang được sử dụng.",
-  "Sort: name, kind, newest, oldest, size": "Sắp xếp: tên, loại, mới nhất, cũ nhất, kích thước",
   "Sorted by kind": "Đã sắp xếp theo loại",
   "Sorted by name": "Đã sắp xếp theo tên",
-  "Split into two panes / close the right one": "Chia thành hai ngăn / đóng ngăn bên phải",
-  "Stop the file work under way, or dismiss what went wrong": "Dừng tác vụ tệp đang thực hiện, hoặc đóng thông báo lỗi",
   "Stopped after %L1 of %Ln items.": {
     "other": "Đã dừng sau %L1 trong số %Ln mục."
   },
@@ -369,7 +351,6 @@
   "This folder no longer exists.": "Thư mục này không còn tồn tại.",
   "Trash": "Thùng rác",
   "Try again once the work under way is done.": "Hãy thử lại khi tác vụ đang thực hiện hoàn tất.",
-  "Type a path, or a server's address like sftp://host/ (Tab completes)": "Nhập đường dẫn hoặc địa chỉ máy chủ như sftp://host/ (Tab để hoàn thành)",
   "Undid compressing into %1.": "Đã hoàn tác việc nén vào %1.",
   "Undid copying %Ln items.": {
     "other": "Đã hoàn tác việc sao chép %Ln mục."
@@ -388,7 +369,6 @@
   },
   "Undid renaming %1.": "Đã hoàn tác việc đổi tên %1.",
   "Undo": "Hoàn tác",
-  "Undo / redo the last change to files (or Ctrl+Y)": "Hoàn tác / làm lại thay đổi tệp gần nhất (hoặc Ctrl+Y)",
   "Undo Compress": "Hoàn tác nén",
   "Undo Copy": "Hoàn tác sao chép",
   "Undo Delete": "Hoàn tác xóa",
@@ -403,7 +383,6 @@
   "Undoing…": "Đang hoàn tác…",
   "Unmount": "Tháo gắn kết",
   "Unpin": "Bỏ ghim",
-  "Unpin the folder, or take the item off the sidebar": "Bỏ ghim thư mục, hoặc gỡ mục khỏi thanh bên",
   "Untitled Folder": "Thư mục chưa đặt tên",
   "Untitled Folder %1": "Thư mục chưa đặt tên %1",
   "User": "Người dùng",

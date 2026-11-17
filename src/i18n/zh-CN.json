@@ -41,12 +41,8 @@
   "A folder here is already called %1.": "此处已有一个名为 %1 的文件夹。",
   "A folder, or a server's address like sftp://host/": "文件夹，或 sftp://host/ 之类的服务器地址",
   "A name can't contain \"/\".": "名称不能包含“/”。",
-  "Add or remove one from the selection": "在选择中添加或移除一项",
-  "Alt+click": "Alt+单击",
   "Archive": "归档",
   "Back / ahead 5 seconds": "后退 / 前进 5 秒",
-  "Back / forward (or the mouse's thumb buttons)": "后退 / 前进（或鼠标侧键）",
-  "Bigger, smaller or normal tiles (or Ctrl+scroll)": "放大、缩小或恢复正常大小的图块（或 Ctrl+滚动）",
   "Biggest first": "从大到小",
   "Burn": "刻录",
   "Burn %1?": "刻录 %1？",
@@ -79,7 +75,6 @@
   "Copy": "复制",
   "Copy Path": "复制路径",
   "Copy the path as text": "以文本形式复制路径",
-  "Copy, cut, paste files": "复制、剪切、粘贴文件",
   "Copying %1: %2 of %3…": "正在复制 %1：%2 / %3…",
   "Copying %L1 of %Ln items…": {
     "other": "正在复制第 %L1 个，共 %Ln 个项目…"
@@ -123,7 +118,6 @@
   "Cut": "剪切",
   "Delete": "删除",
   "Delete for good?": "永久删除？",
-  "Delete in the sidebar": "在侧边栏中删除",
   "Delete permanently (asks first)": "永久删除（会先询问）",
   "Deleted": "已删除",
   "Delete…": "删除…",
@@ -139,7 +133,6 @@
   "Do this for the other %Ln clashes": {
     "other": "对其他 %Ln 个冲突也执行此操作"
   },
-  "Drag on empty space": "在空白区域拖动",
   "Drives can't be changed without udisks2.": "没有 udisks2，无法修改驱动器。",
   "Drop to pin": "放下以固定",
   "Duplicate": "创建副本",
@@ -156,7 +149,6 @@
     "other": "正在清空回收站：第 %L1 个，共 %Ln 个项目…"
   },
   "Emptying the trash…": "正在清空回收站…",
-  "Everything else, for files and for drives in the sidebar": "其余内容，适用于文件和侧边栏中的驱动器",
   "Everything on this drive will be erased. This can't be undone.": "此驱动器上的所有内容都将被抹除。此操作无法撤销。",
   "Extract": "解压",
   "Extracting %1: %Ln items…": {
@@ -194,7 +186,6 @@
   "Go to the parent folder": "前往上级文件夹",
   "Hide Hidden Files": "不显示隐藏文件",
   "Home": "主文件夹",
-  "In list and columns: into a folder / back out": "列表和分栏中：进入文件夹 / 返回",
   "Keep Both": "保留两者",
   "Keyboard shortcuts": "键盘快捷键",
   "Kind": "类型",
@@ -203,7 +194,6 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "合并会把此文件夹中的内容添加到目标文件夹中。内部同名的项目会被替换，被替换的项目会移到回收站。",
   "Modified": "修改时间",
   "Mount": "挂载",
-  "Move between the sidebar, the panes and the details": "在侧边栏、窗格和详细信息之间切换",
   "Move the selection": "移动选择",
   "Move to the trash": "移到回收站",
   "Moved only part of %1: %2": "仅移动了 %1 的一部分：%2",
@@ -255,7 +245,6 @@
   "Pause (K)": "暂停（K）",
   "Permission was refused.": "权限被拒绝。",
   "Pin": "固定",
-  "Pin or unpin the folder (or drag it to the sidebar)": "固定或取消固定文件夹（或将其拖到侧边栏）",
   "Pinned": "已固定",
   "Play (K)": "播放（K）",
   "Play or pause": "播放或暂停",
@@ -291,7 +280,6 @@
   "Reload": "重新加载",
   "Remove from the sidebar": "从侧边栏移除",
   "Rename": "重命名",
-  "Rename / duplicate": "重命名 / 创建副本",
   "Rename…": "重命名…",
   "Replace": "替换",
   "Replace %1?": "替换 %1？",
@@ -315,7 +303,6 @@
   "Restoring %Ln items…": {
     "other": "正在还原 %Ln 个项目…"
   },
-  "Right-click / Alt+⏎ / Menu": "右键单击 / Alt+⏎ / 菜单键",
   "Save": "保存",
   "Scroll": "滚动",
   "Search %1": "搜索 %1",
@@ -324,9 +311,7 @@
   "Select All": "全选",
   "Select a range": "选择范围",
   "Select everything": "选择全部内容",
-  "Select with a rectangle (Alt adds)": "矩形框选（Alt 添加到选区）",
   "Share": "分享",
-  "Shift+click / Shift+arrows": "Shift+单击 / Shift+方向键",
   "Show Hidden Files": "显示隐藏文件",
   "Show as columns": "显示为列",
   "Show as grid": "显示为网格",
@@ -337,11 +322,8 @@
   "Size": "大小",
   "Skip": "跳过",
   "Something is still using it.": "仍有程序正在使用它。",
-  "Sort: name, kind, newest, oldest, size": "排序：名称、类型、最新、最旧、大小",
   "Sorted by kind": "按类型排序",
   "Sorted by name": "按名称排序",
-  "Split into two panes / close the right one": "拆分为两个窗格 / 关闭右侧窗格",
-  "Stop the file work under way, or dismiss what went wrong": "停止正在进行的文件操作，或关闭错误提示",
   "Stopped after %L1 of %Ln items.": {
     "other": "在第 %L1 个后已停止，共 %Ln 个项目。"
   },
@@ -369,7 +351,6 @@
   "This folder no longer exists.": "此文件夹已不存在。",
   "Trash": "回收站",
   "Try again once the work under way is done.": "请等当前操作完成后再试。",
-  "Type a path, or a server's address like sftp://host/ (Tab completes)": "输入路径或服务器地址，如 sftp://host/（Tab 补全）",
   "Undid compressing into %1.": "已撤销压缩为 %1。",
   "Undid copying %Ln items.": {
     "other": "已撤销复制 %Ln 个项目。"
@@ -388,7 +369,6 @@
   },
   "Undid renaming %1.": "已撤销重命名 %1。",
   "Undo": "撤销",
-  "Undo / redo the last change to files (or Ctrl+Y)": "撤销 / 重做上一次文件更改（或 Ctrl+Y）",
   "Undo Compress": "撤销压缩",
   "Undo Copy": "撤销复制",
   "Undo Delete": "撤销删除",
@@ -403,7 +383,6 @@
   "Undoing…": "正在撤销…",
   "Unmount": "卸载",
   "Unpin": "取消固定",
-  "Unpin the folder, or take the item off the sidebar": "取消固定文件夹，或从侧边栏移除该项",
   "Untitled Folder": "未命名文件夹",
   "Untitled Folder %1": "未命名文件夹 %1",
   "User": "用户",

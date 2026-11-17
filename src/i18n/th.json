@@ -41,12 +41,8 @@
   "A folder here is already called %1.": "โฟลเดอร์ที่นี่ชื่อ %1 อยู่แล้ว",
   "A folder, or a server's address like sftp://host/": "โฟลเดอร์ หรือที่อยู่เซิร์ฟเวอร์ เช่น sftp://host/",
   "A name can't contain \"/\".": "ชื่อมี \"/\" ไม่ได้",
-  "Add or remove one from the selection": "เพิ่มหรือนำรายการหนึ่งออกจากการเลือก",
-  "Alt+click": "Alt+click",
   "Archive": "เก็บถาวร",
   "Back / ahead 5 seconds": "ย้อนกลับ / ไปข้างหน้า 5 วินาที",
-  "Back / forward (or the mouse's thumb buttons)": "ย้อนกลับ / ไปข้างหน้า (หรือปุ่มด้านข้างของเมาส์)",
-  "Bigger, smaller or normal tiles (or Ctrl+scroll)": "ไทล์ใหญ่ขึ้น เล็กลง หรือขนาดปกติ (หรือ Ctrl+scroll)",
   "Biggest first": "ใหญ่ที่สุดก่อน",
   "Burn": "เบิร์น",
   "Burn %1?": "เบิร์น %1?",
@@ -79,7 +75,6 @@
   "Copy": "คัดลอก",
   "Copy Path": "คัดลอกพาธ",
   "Copy the path as text": "คัดลอกพาธเป็นข้อความ",
-  "Copy, cut, paste files": "คัดลอก ตัด วางไฟล์",
   "Copying %1: %2 of %3…": "กำลังคัดลอก %1: %2 จาก %3…",
   "Copying %L1 of %Ln items…": {
     "other": "กำลังคัดลอก %L1 จาก %Ln รายการ…"
@@ -123,7 +118,6 @@
   "Cut": "ตัด",
   "Delete": "ลบ",
   "Delete for good?": "ลบถาวรหรือไม่?",
-  "Delete in the sidebar": "ลบในแถบด้านข้าง",
   "Delete permanently (asks first)": "ลบถาวร (ถามก่อน)",
   "Deleted": "ลบแล้ว",
   "Delete…": "ลบ…",
@@ -139,7 +133,6 @@
   "Do this for the other %Ln clashes": {
     "other": "ทำเช่นนี้กับอีก %Ln รายการที่ขัดกัน"
   },
-  "Drag on empty space": "ลากบนพื้นที่ว่าง",
   "Drives can't be changed without udisks2.": "แก้ไขไดรฟ์ไม่ได้หากไม่มี udisks2",
   "Drop to pin": "วางเพื่อปักหมุด",
   "Duplicate": "ทำสำเนา",
@@ -156,7 +149,6 @@
     "other": "กำลังล้างถังขยะ: %L1 จาก %Ln รายการ…"
   },
   "Emptying the trash…": "กำลังล้างถังขยะ…",
-  "Everything else, for files and for drives in the sidebar": "อื่น ๆ ทั้งหมด สำหรับไฟล์และไดรฟ์ในแถบข้าง",
   "Everything on this drive will be erased. This can't be undone.": "ทุกอย่างบนไดรฟ์นี้จะถูกลบ การกระทำนี้ย้อนกลับไม่ได้",
   "Extract": "แตกไฟล์",
   "Extracting %1: %Ln items…": {
@@ -194,7 +186,6 @@
   "Go to the parent folder": "ไปโฟลเดอร์ด้านบน",
   "Hide Hidden Files": "ซ่อนไฟล์ที่ซ่อน",
   "Home": "หน้าแรก",
-  "In list and columns: into a folder / back out": "ในรายการและคอลัมน์: เข้าโฟลเดอร์ / ย้อนออก",
   "Keep Both": "เก็บทั้งสอง",
   "Keyboard shortcuts": "แป้นพิมพ์ลัด",
   "Kind": "ประเภท",
@@ -203,7 +194,6 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "การรวมจะนำสิ่งในโฟลเดอร์นี้ไปเพิ่มในโฟลเดอร์นั้น รายการที่มีชื่อเดียวกันด้านในจะถูกแทนที่ และรายการที่ถูกแทนที่จะถูกย้ายไปถังขยะ",
   "Modified": "แก้ไขเมื่อ",
   "Mount": "เมานต์",
-  "Move between the sidebar, the panes and the details": "สลับระหว่างแถบด้านข้าง บานหน้าต่าง และรายละเอียด",
   "Move the selection": "เลื่อนสิ่งที่เลือก",
   "Move to the trash": "ย้ายไปถังขยะ",
   "Moved only part of %1: %2": "ย้าย %1 ได้เพียงบางส่วน: %2",
@@ -255,7 +245,6 @@
   "Pause (K)": "หยุดชั่วคราว (K)",
   "Permission was refused.": "การอนุญาตถูกปฏิเสธ",
   "Pin": "ปักหมุด",
-  "Pin or unpin the folder (or drag it to the sidebar)": "ปักหมุดหรือเลิกปักหมุดโฟลเดอร์ (หรือลากไปที่แถบข้าง)",
   "Pinned": "ที่ปักหมุด",
   "Play (K)": "เล่น (K)",
   "Play or pause": "เล่นหรือหยุดชั่วคราว",
@@ -291,7 +280,6 @@
   "Reload": "โหลดใหม่",
   "Remove from the sidebar": "เอาออกจากแถบข้าง",
   "Rename": "เปลี่ยนชื่อ",
-  "Rename / duplicate": "เปลี่ยนชื่อ / ทำสำเนา",
   "Rename…": "เปลี่ยนชื่อ…",
   "Replace": "แทนที่",
   "Replace %1?": "แทนที่ %1?",
@@ -315,7 +303,6 @@
   "Restoring %Ln items…": {
     "other": "กำลังกู้คืน %Ln รายการ…"
   },
-  "Right-click / Alt+⏎ / Menu": "คลิกขวา / Alt+⏎ / เมนู",
   "Save": "บันทึก",
   "Scroll": "เลื่อน",
   "Search %1": "ค้นหา %1",
@@ -324,9 +311,7 @@
   "Select All": "เลือกทั้งหมด",
   "Select a range": "เลือกเป็นช่วง",
   "Select everything": "เลือกทุกอย่าง",
-  "Select with a rectangle (Alt adds)": "ลากกรอบเพื่อเลือก (Alt เพื่อเพิ่ม)",
   "Share": "แชร์",
-  "Shift+click / Shift+arrows": "Shift+คลิก / Shift+ลูกศร",
   "Show Hidden Files": "แสดงไฟล์ที่ซ่อนไว้",
   "Show as columns": "แสดงแบบคอลัมน์",
   "Show as grid": "แสดงแบบตาราง",
@@ -337,11 +322,8 @@
   "Size": "ขนาด",
   "Skip": "ข้าม",
   "Something is still using it.": "ยังมีบางอย่างกำลังใช้งานอยู่",
-  "Sort: name, kind, newest, oldest, size": "จัดเรียง: ชื่อ, ประเภท, ใหม่สุด, เก่าสุด, ขนาด",
   "Sorted by kind": "จัดเรียงตามประเภท",
   "Sorted by name": "จัดเรียงตามชื่อ",
-  "Split into two panes / close the right one": "แยกเป็นสองแผง / ปิดแผงขวา",
-  "Stop the file work under way, or dismiss what went wrong": "หยุดงานไฟล์ที่กำลังทำอยู่ หรือปิดข้อผิดพลาด",
   "Stopped after %L1 of %Ln items.": {
     "other": "หยุดหลังจากทำไป %L1 จาก %Ln รายการ"
   },
@@ -369,7 +351,6 @@
   "This folder no longer exists.": "โฟลเดอร์นี้ไม่มีอยู่แล้ว",
   "Trash": "ถังขยะ",
   "Try again once the work under way is done.": "ลองอีกครั้งเมื่องานที่กำลังทำอยู่เสร็จแล้ว",
-  "Type a path, or a server's address like sftp://host/ (Tab completes)": "พิมพ์เส้นทางหรือที่อยู่เซิร์ฟเวอร์ เช่น sftp://host/ (Tab เพื่อเติมคำ)",
   "Undid compressing into %1.": "เลิกทำการบีบอัดเป็น %1 แล้ว",
   "Undid copying %Ln items.": {
     "other": "เลิกทำการคัดลอก %Ln รายการแล้ว"
@@ -388,7 +369,6 @@
   },
   "Undid renaming %1.": "เลิกทำการเปลี่ยนชื่อ %1 แล้ว",
   "Undo": "เลิกทำ",
-  "Undo / redo the last change to files (or Ctrl+Y)": "เลิกทำ / ทำซ้ำการเปลี่ยนแปลงไฟล์ล่าสุด (หรือ Ctrl+Y)",
   "Undo Compress": "เลิกทำการบีบอัด",
   "Undo Copy": "เลิกทำการคัดลอก",
   "Undo Delete": "เลิกทำการลบ",
@@ -403,7 +383,6 @@
   "Undoing…": "กำลังเลิกทำ…",
   "Unmount": "ถอดการเชื่อมต่อ",
   "Unpin": "เลิกปักหมุด",
-  "Unpin the folder, or take the item off the sidebar": "เลิกปักหมุดโฟลเดอร์ หรือนำรายการออกจากแถบด้านข้าง",
   "Untitled Folder": "โฟลเดอร์ไม่มีชื่อ",
   "Untitled Folder %1": "โฟลเดอร์ไม่มีชื่อ %1",
   "User": "ผู้ใช้",

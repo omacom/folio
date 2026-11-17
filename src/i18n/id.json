@@ -41,12 +41,8 @@
   "A folder here is already called %1.": "Folder di sini sudah bernama %1.",
   "A folder, or a server's address like sftp://host/": "Folder, atau alamat server seperti sftp://host/",
   "A name can't contain \"/\".": "Nama tidak boleh mengandung \"/\".",
-  "Add or remove one from the selection": "Tambahkan atau hapus satu dari pilihan",
-  "Alt+click": "Alt+click",
   "Archive": "Arsip",
   "Back / ahead 5 seconds": "Mundur / maju 5 detik",
-  "Back / forward (or the mouse's thumb buttons)": "Kembali / maju (atau tombol samping mouse)",
-  "Bigger, smaller or normal tiles (or Ctrl+scroll)": "Ubin lebih besar, lebih kecil, atau normal (atau Ctrl+gulir)",
   "Biggest first": "Terbesar dulu",
   "Burn": "Bakar",
   "Burn %1?": "Bakar %1?",
@@ -79,7 +75,6 @@
   "Copy": "Salin",
   "Copy Path": "Salin Jalur",
   "Copy the path as text": "Salin jalur sebagai teks",
-  "Copy, cut, paste files": "Salin, potong, tempel berkas",
   "Copying %1: %2 of %3…": "Menyalin %1: %2 dari %3…",
   "Copying %L1 of %Ln items…": {
     "other": "Menyalin %L1 dari %Ln item…"
@@ -123,7 +118,6 @@
   "Cut": "Potong",
   "Delete": "Hapus",
   "Delete for good?": "Hapus permanen?",
-  "Delete in the sidebar": "Hapus di bilah samping",
   "Delete permanently (asks first)": "Hapus permanen (tanya dulu)",
   "Deleted": "Terhapus",
   "Delete…": "Hapus…",
@@ -139,7 +133,6 @@
   "Do this for the other %Ln clashes": {
     "other": "Lakukan ini untuk %Ln konflik lainnya"
   },
-  "Drag on empty space": "Seret di ruang kosong",
   "Drives can't be changed without udisks2.": "Drive tidak dapat diubah tanpa udisks2.",
   "Drop to pin": "Lepaskan untuk menyematkan",
   "Duplicate": "Gandakan",
@@ -156,7 +149,6 @@
     "other": "Mengosongkan tempat sampah: %L1 dari %Ln item…"
   },
   "Emptying the trash…": "Mengosongkan tempat sampah…",
-  "Everything else, for files and for drives in the sidebar": "Semua lainnya, untuk berkas dan drive di bilah sisi",
   "Everything on this drive will be erased. This can't be undone.": "Semua isi drive ini akan terhapus. Tindakan ini tidak dapat dibatalkan.",
   "Extract": "Ekstrak",
   "Extracting %1: %Ln items…": {
@@ -194,7 +186,6 @@
   "Go to the parent folder": "Ke folder induk",
   "Hide Hidden Files": "Sembunyikan berkas tersembunyi",
   "Home": "Beranda",
-  "In list and columns: into a folder / back out": "Di daftar dan kolom: masuk ke folder / keluar",
   "Keep Both": "Simpan Keduanya",
   "Keyboard shortcuts": "Pintasan keyboard",
   "Kind": "Jenis",
@@ -203,7 +194,6 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "Penggabungan menambahkan isi folder ini ke folder di sana. Item dengan nama yang sama di dalamnya akan diganti, dan item yang diganti akan dipindahkan ke tempat sampah.",
   "Modified": "Dimodifikasi",
   "Mount": "Pasang",
-  "Move between the sidebar, the panes and the details": "Berpindah antara bilah samping, panel, dan detail",
   "Move the selection": "Gerakkan pilihan",
   "Move to the trash": "Pindahkan ke Tempat Sampah",
   "Moved only part of %1: %2": "Hanya sebagian %1 yang dipindahkan: %2",
@@ -255,7 +245,6 @@
   "Pause (K)": "Jeda (K)",
   "Permission was refused.": "Izin ditolak.",
   "Pin": "Sematkan",
-  "Pin or unpin the folder (or drag it to the sidebar)": "Sematkan atau lepaskan sematan folder (atau seret ke bilah sisi)",
   "Pinned": "Disematkan",
   "Play (K)": "Putar (K)",
   "Play or pause": "Putar atau jeda",
@@ -291,7 +280,6 @@
   "Reload": "Muat Ulang",
   "Remove from the sidebar": "Hapus dari bilah sisi",
   "Rename": "Ganti Nama",
-  "Rename / duplicate": "Ganti nama / gandakan",
   "Rename…": "Ganti Nama…",
   "Replace": "Ganti",
   "Replace %1?": "Ganti %1?",
@@ -315,7 +303,6 @@
   "Restoring %Ln items…": {
     "other": "Memulihkan %Ln item…"
   },
-  "Right-click / Alt+⏎ / Menu": "Klik kanan / Alt+⏎ / Menu",
   "Save": "Simpan",
   "Scroll": "Gulir",
   "Search %1": "Cari %1",
@@ -324,9 +311,7 @@
   "Select All": "Pilih Semua",
   "Select a range": "Pilih rentang",
   "Select everything": "Pilih semuanya",
-  "Select with a rectangle (Alt adds)": "Pilih dengan persegi panjang (Alt menambah)",
   "Share": "Bagikan",
-  "Shift+click / Shift+arrows": "Shift+klik / Shift+tombol panah",
   "Show Hidden Files": "Tampilkan Berkas Tersembunyi",
   "Show as columns": "Tampilkan sebagai kolom",
   "Show as grid": "Tampilkan sebagai kisi",
@@ -337,11 +322,8 @@
   "Size": "Ukuran",
   "Skip": "Lewati",
   "Something is still using it.": "Sesuatu masih menggunakannya.",
-  "Sort: name, kind, newest, oldest, size": "Urutkan: nama, jenis, terbaru, terlama, ukuran",
   "Sorted by kind": "Diurutkan berdasarkan jenis",
   "Sorted by name": "Diurutkan berdasarkan nama",
-  "Split into two panes / close the right one": "Bagi jadi dua panel / tutup panel kanan",
-  "Stop the file work under way, or dismiss what went wrong": "Hentikan pekerjaan berkas yang sedang berlangsung, atau tutup pesan kesalahan",
   "Stopped after %L1 of %Ln items.": {
     "other": "Berhenti setelah %L1 dari %Ln item."
   },
@@ -369,7 +351,6 @@
   "This folder no longer exists.": "Folder ini sudah tidak ada.",
   "Trash": "Tempat Sampah",
   "Try again once the work under way is done.": "Coba lagi setelah pekerjaan yang sedang berlangsung selesai.",
-  "Type a path, or a server's address like sftp://host/ (Tab completes)": "Ketik jalur, atau alamat server seperti sftp://host/ (Tab melengkapi)",
   "Undid compressing into %1.": "Pengompresan ke %1 telah diurungkan.",
   "Undid copying %Ln items.": {
     "other": "Penyalinan %Ln item telah diurungkan."
@@ -388,7 +369,6 @@
   },
   "Undid renaming %1.": "Penggantian nama %1 telah diurungkan.",
   "Undo": "Urungkan",
-  "Undo / redo the last change to files (or Ctrl+Y)": "Urungkan / ulangi perubahan terakhir pada berkas (atau Ctrl+Y)",
   "Undo Compress": "Urungkan Pengompresan",
   "Undo Copy": "Urungkan Penyalinan",
   "Undo Delete": "Urungkan Penghapusan",
@@ -403,7 +383,6 @@
   "Undoing…": "Mengurungkan…",
   "Unmount": "Lepas Kait",
   "Unpin": "Lepas Sematan",
-  "Unpin the folder, or take the item off the sidebar": "Lepas sematan folder, atau hapus item dari bilah samping",
   "Untitled Folder": "Folder Tanpa Nama",
   "Untitled Folder %1": "Folder Tanpa Nama %1",
   "User": "Pengguna",

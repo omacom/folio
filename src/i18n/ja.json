@@ -41,12 +41,8 @@
   "A folder here is already called %1.": "ここにはすでに %1 という名前のフォルダーがあります。",
   "A folder, or a server's address like sftp://host/": "フォルダー、または sftp://host/ のようなサーバーのアドレス",
   "A name can't contain \"/\".": "名前に \"/\" は含められません。",
-  "Add or remove one from the selection": "選択に追加または選択から削除",
-  "Alt+click": "Alt+クリック",
   "Archive": "アーカイブ",
   "Back / ahead 5 seconds": "5秒戻る / 5秒進む",
-  "Back / forward (or the mouse's thumb buttons)": "戻る / 進む（またはマウスのサムボタン）",
-  "Bigger, smaller or normal tiles (or Ctrl+scroll)": "タイルを拡大、縮小、または標準に（または Ctrl+スクロール）",
   "Biggest first": "大きい順",
   "Burn": "書き込み",
   "Burn %1?": "%1 を書き込みますか？",
@@ -79,7 +75,6 @@
   "Copy": "コピー",
   "Copy Path": "パスをコピー",
   "Copy the path as text": "パスをテキストとしてコピー",
-  "Copy, cut, paste files": "ファイルをコピー、切り取り、貼り付け",
   "Copying %1: %2 of %3…": "%1 をコピー中: %3 のうち %2…",
   "Copying %L1 of %Ln items…": {
     "other": "%Ln 項目のうち %L1 項目をコピー中…"
@@ -123,7 +118,6 @@
   "Cut": "切り取り",
   "Delete": "削除",
   "Delete for good?": "完全に削除しますか？",
-  "Delete in the sidebar": "サイドバーで削除",
   "Delete permanently (asks first)": "完全に削除（確認あり）",
   "Deleted": "削除しました",
   "Delete…": "削除…",
@@ -139,7 +133,6 @@
   "Do this for the other %Ln clashes": {
     "other": "他の %Ln 件の競合にも適用する"
   },
-  "Drag on empty space": "空白をドラッグ",
   "Drives can't be changed without udisks2.": "udisks2 がないとドライブを変更できません。",
   "Drop to pin": "ドロップしてピン留め",
   "Duplicate": "複製",
@@ -156,7 +149,6 @@
     "other": "ゴミ箱を空にしています: %Ln 項目のうち %L1 項目…"
   },
   "Emptying the trash…": "ゴミ箱を空にしています…",
-  "Everything else, for files and for drives in the sidebar": "その他すべて、ファイルおよびサイドバーのドライブ向け",
   "Everything on this drive will be erased. This can't be undone.": "このドライブ上のすべてのデータが消去されます。元に戻せません。",
   "Extract": "展開",
   "Extracting %1: %Ln items…": {
@@ -194,7 +186,6 @@
   "Go to the parent folder": "親フォルダーへ移動",
   "Hide Hidden Files": "隠しファイルを表示しない",
   "Home": "ホーム",
-  "In list and columns: into a folder / back out": "リストとカラムで: フォルダーに入る / 戻る",
   "Keep Both": "両方を保持",
   "Keyboard shortcuts": "キーボードショートカット",
   "Kind": "種類",
@@ -203,7 +194,6 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "統合すると、このフォルダーの内容がもう一方のフォルダーに追加されます。同名の項目は置き換えられ、置き換えられた項目はゴミ箱へ移動します。",
   "Modified": "変更日時",
   "Mount": "マウント",
-  "Move between the sidebar, the panes and the details": "サイドバー、ペイン、詳細の間を移動",
   "Move the selection": "選択を移動",
   "Move to the trash": "ゴミ箱へ移動",
   "Moved only part of %1: %2": "%1 の一部のみ移動しました: %2",
@@ -255,7 +245,6 @@
   "Pause (K)": "一時停止 (K)",
   "Permission was refused.": "アクセスが拒否されました。",
   "Pin": "ピン留め",
-  "Pin or unpin the folder (or drag it to the sidebar)": "ピン留め / 解除 (サイドバーにドラッグ)",
   "Pinned": "ピン留め済み",
   "Play (K)": "再生 (K)",
   "Play or pause": "再生 / 一時停止",
@@ -291,7 +280,6 @@
   "Reload": "再読み込み",
   "Remove from the sidebar": "サイドバーから削除",
   "Rename": "名前を変更",
-  "Rename / duplicate": "名前を変更 / 複製",
   "Rename…": "名前を変更…",
   "Replace": "置き換える",
   "Replace %1?": "%1 を置き換えますか？",
@@ -315,7 +303,6 @@
   "Restoring %Ln items…": {
     "other": "%Ln 項目を元に戻し中…"
   },
-  "Right-click / Alt+⏎ / Menu": "右クリック / Alt+⏎ / メニュー",
   "Save": "保存",
   "Scroll": "スクロール",
   "Search %1": "%1 を検索",
@@ -324,9 +311,7 @@
   "Select All": "すべて選択",
   "Select a range": "範囲を選択",
   "Select everything": "すべてを選択",
-  "Select with a rectangle (Alt adds)": "矩形で選択 (Alt で追加選択)",
   "Share": "共有",
-  "Shift+click / Shift+arrows": "Shift+クリック / Shift+矢印キー",
   "Show Hidden Files": "隠しファイルを表示",
   "Show as columns": "カラム表示",
   "Show as grid": "グリッド表示",
@@ -337,11 +322,8 @@
   "Size": "サイズ",
   "Skip": "スキップ",
   "Something is still using it.": "まだ使用中です。",
-  "Sort: name, kind, newest, oldest, size": "並び替え: 名前、種類、最新、最古、サイズ",
   "Sorted by kind": "種類順",
   "Sorted by name": "名前順",
-  "Split into two panes / close the right one": "2 ペインに分割 / 右ペインを閉じる",
-  "Stop the file work under way, or dismiss what went wrong": "進行中のファイル操作を停止するか、エラーを閉じる",
   "Stopped after %L1 of %Ln items.": {
     "other": "%Ln 項目のうち %L1 項目で停止しました。"
   },
@@ -369,7 +351,6 @@
   "This folder no longer exists.": "このフォルダーはもう存在しません。",
   "Trash": "ゴミ箱",
   "Try again once the work under way is done.": "進行中の操作が完了してから、もう一度お試しください。",
-  "Type a path, or a server's address like sftp://host/ (Tab completes)": "パス、または sftp://host/ のようなサーバーのアドレスを入力 (Tab で補完)",
   "Undid compressing into %1.": "%1 への圧縮を取り消しました。",
   "Undid copying %Ln items.": {
     "other": "%Ln 項目のコピーを取り消しました。"
@@ -388,7 +369,6 @@
   },
   "Undid renaming %1.": "%1 の名前変更を取り消しました。",
   "Undo": "元に戻す",
-  "Undo / redo the last change to files (or Ctrl+Y)": "ファイルへの最後の変更を元に戻す / やり直す (または Ctrl+Y)",
   "Undo Compress": "圧縮を取り消す",
   "Undo Copy": "コピーを取り消す",
   "Undo Delete": "削除を取り消す",
@@ -403,7 +383,6 @@
   "Undoing…": "取り消し中…",
   "Unmount": "アンマウント",
   "Unpin": "ピン留めを外す",
-  "Unpin the folder, or take the item off the sidebar": "フォルダーのピン留めを外すか、項目をサイドバーから外す",
   "Untitled Folder": "無題のフォルダー",
   "Untitled Folder %1": "無題のフォルダー %1",
   "User": "ユーザー",

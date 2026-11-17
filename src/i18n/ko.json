@@ -41,12 +41,8 @@
   "A folder here is already called %1.": "여기에 이미 %1 이름의 폴더가 있습니다.",
   "A folder, or a server's address like sftp://host/": "폴더 또는 sftp://host/ 같은 서버 주소",
   "A name can't contain \"/\".": "이름에 \"/\"를 포함할 수 없습니다.",
-  "Add or remove one from the selection": "선택 항목에 추가/제거",
-  "Alt+click": "Alt+click",
   "Archive": "압축하기",
   "Back / ahead 5 seconds": "5초 뒤로 / 앞으로",
-  "Back / forward (or the mouse's thumb buttons)": "뒤로 / 앞으로 (또는 마우스 엄지 버튼)",
-  "Bigger, smaller or normal tiles (or Ctrl+scroll)": "타일 크게, 작게 또는 기본 크기 (또는 Ctrl+스크롤)",
   "Biggest first": "가장 큰 항목부터",
   "Burn": "굽기",
   "Burn %1?": "%1을(를) 구울까요?",
@@ -79,7 +75,6 @@
   "Copy": "복사",
   "Copy Path": "경로 복사",
   "Copy the path as text": "경로를 텍스트로 복사",
-  "Copy, cut, paste files": "파일 복사, 잘라내기, 붙여넣기",
   "Copying %1: %2 of %3…": "%1 복사 중: %3 중 %2…",
   "Copying %L1 of %Ln items…": {
     "other": "%Ln개 항목 중 %L1개 복사 중…"
@@ -123,7 +118,6 @@
   "Cut": "잘라내기",
   "Delete": "삭제",
   "Delete for good?": "영구히 삭제할까요?",
-  "Delete in the sidebar": "사이드바에서 삭제",
   "Delete permanently (asks first)": "영구히 삭제 (먼저 확인)",
   "Deleted": "삭제됨",
   "Delete…": "삭제…",
@@ -139,7 +133,6 @@
   "Do this for the other %Ln clashes": {
     "other": "나머지 %Ln개 충돌에도 동일하게 적용"
   },
-  "Drag on empty space": "빈 공간에서 드래그",
   "Drives can't be changed without udisks2.": "udisks2 없이는 드라이브를 변경할 수 없습니다.",
   "Drop to pin": "놓으면 핀으로 고정",
   "Duplicate": "복제",
@@ -156,7 +149,6 @@
     "other": "휴지통 비우는 중: %Ln개 항목 중 %L1개…"
   },
   "Emptying the trash…": "휴지통 비우는 중…",
-  "Everything else, for files and for drives in the sidebar": "사이드바의 파일과 드라이브 등 그 밖의 모든 항목",
   "Everything on this drive will be erased. This can't be undone.": "이 드라이브의 모든 내용이 지워집니다. 되돌릴 수 없습니다.",
   "Extract": "압축 풀기",
   "Extracting %1: %Ln items…": {
@@ -194,7 +186,6 @@
   "Go to the parent folder": "상위 폴더로 이동",
   "Hide Hidden Files": "숨김 파일 숨기기",
   "Home": "홈",
-  "In list and columns: into a folder / back out": "목록과 열 보기에서: 폴더 안으로 / 밖으로",
   "Keep Both": "둘 다 유지",
   "Keyboard shortcuts": "키보드 단축키",
   "Kind": "종류",
@@ -203,7 +194,6 @@
   "Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.": "병합하면 이 폴더의 내용이 저쪽 폴더에 추가됩니다. 이름이 같은 항목은 교체되며, 교체된 항목은 휴지통으로 이동합니다.",
   "Modified": "수정일",
   "Mount": "마운트",
-  "Move between the sidebar, the panes and the details": "사이드바, 패널, 세부 정보 간 이동",
   "Move the selection": "선택 이동",
   "Move to the trash": "휴지통으로 이동",
   "Moved only part of %1: %2": "%1의 일부만 이동했습니다: %2",
@@ -255,7 +245,6 @@
   "Pause (K)": "일시 정지 (K)",
   "Permission was refused.": "권한이 거부되었습니다.",
   "Pin": "고정",
-  "Pin or unpin the folder (or drag it to the sidebar)": "폴더 고정 또는 고정 해제 (또는 사이드바로 드래그)",
   "Pinned": "고정됨",
   "Play (K)": "재생 (K)",
   "Play or pause": "재생 또는 일시 정지",
@@ -291,7 +280,6 @@
   "Reload": "새로고침",
   "Remove from the sidebar": "사이드바에서 제거",
   "Rename": "이름 바꾸기",
-  "Rename / duplicate": "이름 바꾸기 / 복제",
   "Rename…": "이름 바꾸기…",
   "Replace": "바꾸기",
   "Replace %1?": "%1을(를) 교체할까요?",
@@ -315,7 +303,6 @@
   "Restoring %Ln items…": {
     "other": "%Ln개 항목 복원 중…"
   },
-  "Right-click / Alt+⏎ / Menu": "오른쪽 클릭 / Alt+⏎ / 메뉴",
   "Save": "저장",
   "Scroll": "스크롤",
   "Search %1": "%1에서 검색",
@@ -324,9 +311,7 @@
   "Select All": "모두 선택",
   "Select a range": "범위 선택",
   "Select everything": "모든 항목 선택",
-  "Select with a rectangle (Alt adds)": "사각형으로 선택 (Alt를 누르면 선택에 추가)",
   "Share": "공유",
-  "Shift+click / Shift+arrows": "Shift+클릭 / Shift+화살표 키",
   "Show Hidden Files": "숨김 파일 표시",
   "Show as columns": "열로 보기",
   "Show as grid": "격자로 보기",
@@ -337,11 +322,8 @@
   "Size": "크기",
   "Skip": "건너뛰기",
   "Something is still using it.": "무언가가 아직 사용 중입니다.",
-  "Sort: name, kind, newest, oldest, size": "정렬: 이름, 종류, 가장 최근, 가장 오래된, 크기",
   "Sorted by kind": "종류순으로 정렬됨",
   "Sorted by name": "이름순으로 정렬됨",
-  "Split into two panes / close the right one": "두 개의 창으로 분할 / 오른쪽 창 닫기",
-  "Stop the file work under way, or dismiss what went wrong": "진행 중인 파일 작업 중지 또는 오류 닫기",
   "Stopped after %L1 of %Ln items.": {
     "other": "%Ln개 항목 중 %L1개를 마친 뒤 중지했습니다."
   },
@@ -369,7 +351,6 @@
   "This folder no longer exists.": "이 폴더가 더 이상 존재하지 않습니다.",
   "Trash": "휴지통",
   "Try again once the work under way is done.": "진행 중인 작업이 완료되면 다시 시도하세요.",
-  "Type a path, or a server's address like sftp://host/ (Tab completes)": "경로나 sftp://host/ 같은 서버 주소를 입력하세요 (Tab으로 자동 완성)",
   "Undid compressing into %1.": "%1(으)로의 압축을 실행 취소했습니다.",
   "Undid copying %Ln items.": {
     "other": "%Ln개 항목 복사를 실행 취소했습니다."
@@ -388,7 +369,6 @@
   },
   "Undid renaming %1.": "%1의 이름 변경을 실행 취소했습니다.",
   "Undo": "실행 취소",
-  "Undo / redo the last change to files (or Ctrl+Y)": "마지막 파일 변경 실행 취소 / 다시 실행 (또는 Ctrl+Y)",
   "Undo Compress": "압축 실행 취소",
   "Undo Copy": "복사 실행 취소",
   "Undo Delete": "삭제 실행 취소",
@@ -403,7 +383,6 @@
   "Undoing…": "실행 취소 중…",
   "Unmount": "마운트 해제",
   "Unpin": "고정 해제",
-  "Unpin the folder, or take the item off the sidebar": "폴더 고정 해제 또는 사이드바에서 항목 제거",
   "Untitled Folder": "제목 없는 폴더",
   "Untitled Folder %1": "제목 없는 폴더 %1",
   "User": "사용자",
