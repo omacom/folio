@@ -3776,7 +3776,7 @@ private slots:
             return list;
         };
         QCOMPARE(names(Places(home.path())),
-                 QStringList({"Documents", "Omarchy", "project9", "project10", "Work"}));
+                 QStringList({"Documents", "Omarchy", "Project9", "Project10", "Work"}));
 
         // The XDG folders have glyphs of their own; Dropbox's mark comes
         // from its plugin.

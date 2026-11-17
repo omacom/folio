@@ -37,6 +37,12 @@ QString displayName(const QString &name) {
     return name == "omarchy" ? QStringLiteral("Omarchy") : name;
 }
 
+// Home's folders read capitalized there, as the XDG ones are: go as Go,
+// omarchy as Omarchy.
+QString homeName(const QString &name) {
+    return name.isEmpty() ? name : name.left(1).toUpper() + name.mid(1);
+}
+
 // Reads bookmark lines ("file:///path Label") into pinned entries, leaving
 // out folders already listed under Home and missing folders.
 QVariantList parseBookmarks(const QStringList &lines, const QString &home) {
@@ -171,7 +177,7 @@ void Places::refreshPlaces() {
     std::sort(names.begin(), names.end(), [&](const QString &a, const QString &b) { return collator.compare(a, b) < 0; });
     for (const QString &name : names) {
         const QString path = m_home + "/" + name;
-        add(displayName(name), path, icons.value(path, "folder"));
+        add(homeName(name), path, icons.value(path, "folder"));
     }
 
     m_places = places;
