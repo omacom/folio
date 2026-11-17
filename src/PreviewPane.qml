@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Window
 import "Format.js" as Format
 
 // A larger look at the selected file and the facts about it, with the one
@@ -71,12 +72,79 @@ Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: Math.round(Math.min(width * 0.75, pane.height * 0.55))
 
+            // Moving quickly through files, each shows at once the small
+            // thumbnail its row has already made (soft, but instant), and
+            // the sharp picture once the cursor rests on it, or at once when
+            // it was read ahead: resting on a file reads the ones beside it
+            // too, so stepping through a folder finds each one ready. The
+            // slow work (a large picture read, a video's frame made) is never
+            // started for files only passed over.
+            Image {
+                id: quick
+                anchors.fill: parent
+                asynchronous: true
+                fillMode: Image.PreserveAspectFit
+                source: big.shown ? Format.thumb(pane.item.path, pane.item.mime, 128, pane.item.modified) : ""
+                visible: status === Image.Ready && !big.visible
+            }
+            Timer {
+                id: rest
+                interval: 120
+                onTriggered: big.rest()
+            }
+            Connections {
+                target: pane
+                // The same file again (its folder re-read) stays as it is.
+                function onItemChanged() { if (!pane.hasItem || pane.item.path !== big.rested) rest.restart() }
+            }
+            // The files beside the one rested on, read ahead out of sight.
+            Repeater {
+                model: big.ahead
+                Image {
+                    required property var modelData
+                    visible: false
+                    asynchronous: true
+                    source: big.sourceFor(modelData)
+                }
+            }
             Image {
                 id: big
                 anchors.fill: parent
                 asynchronous: true
                 fillMode: Image.PreserveAspectFit
-                source: pane.hasItem && !pane.item.isDir && pane.item.kind !== "text" && !pane.pluginItem ? Format.thumb(pane.item.path, pane.item.mime, 512, pane.item.modified) : ""
+                // As many pixels as it's drawn with, in steps, so resizing
+                // the window doesn't read it again at every width.
+                readonly property int pixels: Math.min(8192, Math.ceil(Math.max(width, height) * Screen.devicePixelRatio / 512) * 512)
+                readonly property bool shown: pane.hasItem && !pane.item.isDir && pane.item.kind !== "text" && !pane.pluginItem
+                // The file the cursor last rested on, and those read ahead.
+                property string rested: ""
+                property var ahead: []
+                function rest() {
+                    rested = pane.hasItem ? pane.item.path : ""
+                    const folder = pane.folderPane ? pane.folderPane.paneBackend.folder : null
+                    const at = pane.folderPane ? pane.folderPane.currentIndex : -1
+                    const near = []
+                    if (folder && at >= 0)
+                        for (const index of [at + 1, at - 1])
+                            if (index >= 0 && index < folder.count) {
+                                const item = folder.get(index)
+                                if (!item.isDir && (item.kind === "image" || item.kind === "video" || item.kind === "pdf"))
+                                    near.push(item)
+                            }
+                    ahead = near
+                }
+                readonly property bool ready: shown && (rested === pane.item.path || ahead.some(item => item.path === pane.item.path))
+                // A picture as sharp as the column is wide (one Qt can't
+                // read, HEIC, gets the largest thumbnail); anything else the
+                // largest thumbnail there is (1024 pixels: a video's frame, a
+                // PDF's first page).
+                function sourceFor(item) {
+                    return item.kind === "image" ? Format.sharp(item.path, item.mime, pixels, item.modified)
+                                                 : Format.thumb(item.path, item.mime, 1024, item.modified)
+                }
+                // Gave up: no picture of it to be had.
+                readonly property bool failed: status === Image.Error
+                source: ready ? sourceFor(pane.item) : ""
                 visible: status === Image.Ready
             }
 
@@ -100,9 +168,13 @@ Rectangle {
                 }
             }
 
+            // Only for what has no picture: while one's on its way (moving
+            // quickly through files) the space stays empty rather than
+            // flashing the icon.
             Glyph {
                 anchors.centerIn: parent
-                visible: !big.visible && pane.hasItem && pane.item.kind !== "text"
+                visible: pane.hasItem && pane.item.kind !== "text"
+                         && (!big.shown || (big.failed && quick.status !== Image.Ready))
                 name: pane.pluginItem ? pane.item.icon : pane.hasItem && pane.item.isDir ? "folder" : "file"
                 size: 72
                 stroke: 1.2

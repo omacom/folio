@@ -71,6 +71,8 @@ FocusScope {
     function selectedPaths() {
         return backend.folder.selectedCount > 0 ? backend.folder.selectedPaths() : (current.path ? [current.path] : [])
     }
+    // The cursor's row, for the details to read the files beside it ahead.
+    readonly property int currentIndex: view.item ? view.item.currentIndex : -1
     readonly property var current: {
         // Re-read when the folder changes underneath the selection.
         backend.folder.count

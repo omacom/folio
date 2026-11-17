@@ -71,6 +71,12 @@ function thumb(path, mime, px, modified) {
     return "image://thumb/" + px + "/" + changed + "/" + encodeURIComponent(mime) + "/" + encodeURIComponent(path)
 }
 
+// A picture as sharp as `px` pixels on its longest side, for the details.
+function sharp(path, mime, px, modified) {
+    const changed = modified ? modified.getTime() : 0
+    return "image://thumb/sharp/" + px + "/" + changed + "/" + encodeURIComponent(mime) + "/" + encodeURIComponent(path)
+}
+
 // A text file's first lines on a page in the theme's colors.
 function page(path, px, modified, paper, ink) {
     const changed = modified ? modified.getTime() : 0
