@@ -231,6 +231,19 @@ Rectangle {
                 font.pixelSize: 12
                 elide: Text.ElideMiddle
             }
+            // When it was made, where the filesystem keeps that.
+            Text { visible: !!pane.info.created; text: qsTr("Created"); color: theme.secondaryForeground; font.pixelSize: 12 }
+            Text {
+                visible: !!pane.info.created
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignRight
+                text: {
+                    translator.language // Re-read when the language (and so the default locale) changes.
+                    return pane.info.created ? Format.stamp(pane.info.created) : ""
+                }
+                color: theme.foreground
+                font.pixelSize: 12
+            }
             Text { visible: !pane.pluginItem; text: pane.trashed || pane.noting ? qsTr("Deleted") : qsTr("Modified"); color: theme.secondaryForeground; font.pixelSize: 12 }
             Text {
                 visible: !pane.pluginItem
@@ -274,13 +287,16 @@ Rectangle {
                 Layout.alignment: Qt.AlignRight
                 implicitHeight: 28
                 text: (current ? current.name : qsTr("Choose")) + "  ▾"
-                onClicked: appsMenu.popup(opensWith, 0, opensWith.height + 4)
+                // A second click closes it again.
+                onClicked: appsMenu.visible ? appsMenu.close() : appsMenu.popup(opensWith, 0, opensWith.height + 4)
                 Keys.onEscapePressed: pane.finished()
                 // Gone with the keyboard on it (another item selected, or the
                 // details hidden), it hands the keyboard back.
                 onVisibleChanged: if (!visible && activeFocus) pane.finished()
                 FolioMenu {
                     id: appsMenu
+                    // A press on the button is left to its click, which closes it.
+                    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
                     Repeater {
                         model: opensWith.apps
                         FolioMenuItem {
