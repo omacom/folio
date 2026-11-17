@@ -8,6 +8,14 @@ QtObject {
     // The ListView or GridView whose currentIndex is the cursor.
     required property var view
     property int anchor: -1
+    // The anchor's item, so its row is found again when rows come or go
+    // above it (a folder opening in the list's tree): it can be on the
+    // other side of them from the cursor.
+    property string anchorPath: ""
+    function setAnchor(row) {
+        anchor = row
+        anchorPath = row >= 0 ? (backend.folder.get(row).path || "") : ""
+    }
     // Set while the cursor is moved on purpose, so moving it doesn't also
     // reset the selection.
     property bool quiet: false
@@ -35,14 +43,14 @@ QtObject {
             return
         const path = view.currentIndex >= 0 ? (backend.folder.get(view.currentIndex).path || "") : ""
         if (path.length > 0 && path === cursorPath) {
-            // Still on its item: the anchor shifts with the rows.
-            if (anchor >= 0)
-                anchor += view.currentIndex - cursorRow
+            // Still on its item: the anchor stays on its own item too.
+            if (anchorPath.length > 0)
+                anchor = backend.folder.indexOfPath(anchorPath)
             cursorRow = view.currentIndex
             return
         }
         backend.folder.selectOnly(view.currentIndex)
-        anchor = view.currentIndex
+        setAnchor(view.currentIndex)
         view.positionViewAtIndex(view.currentIndex, ListView.Contain)
         placed()
     }
@@ -54,10 +62,10 @@ QtObject {
             backend.folder.selectRange(anchor < 0 ? index : anchor, index, (modifiers & Qt.AltModifier) !== 0)
         } else if (modifiers & Qt.AltModifier) {
             backend.folder.toggleSelected(index)
-            anchor = index
+            setAnchor(index)
         } else {
             backend.folder.selectOnly(index)
-            anchor = index
+            setAnchor(index)
         }
         moveTo(index)
     }
@@ -100,7 +108,7 @@ QtObject {
         // With no cursor (let go of by a click on empty space), the range
         // starts at the first item, where a step from no cursor starts.
         if (anchor < 0)
-            anchor = Math.max(0, view.currentIndex)
+            setAnchor(Math.max(0, view.currentIndex))
         moveTo(index)
         backend.folder.selectRange(anchor, index, false)
         view.positionViewAtIndex(index, ListView.Contain)
@@ -110,7 +118,7 @@ QtObject {
     // Ctrl+A or the rubber band since) stays selected.
     function letGo() {
         moveTo(-1)
-        anchor = -1
+        setAnchor(-1)
     }
 
     // Puts the cursor on `row` (or, for -1, the first item). `keep` leaves a
@@ -120,7 +128,7 @@ QtObject {
         moveTo(index)
         if (!(keep && backend.folder.selectedCount > 0)) {
             backend.folder.selectOnly(index)
-            anchor = index
+            setAnchor(index)
         }
         if (index >= 0)
             view.positionViewAtIndex(index, ListView.Contain)

@@ -6631,6 +6631,7 @@ private slots:
                 width: 700; height: 300; visible: true
                 property alias cursor: folderView.currentIndex
                 FolderList { id: folderView; anchors.fill: parent; Component.onCompleted: focusView() }
+                function clickRow(row, modifiers) { folderView.itemAtIndex(row).clicked(modifiers) }
             }
         )", QUrl::fromLocalFile(sourceFolder() + "/ListTreeTest.qml"));
         std::unique_ptr<QObject> root(component.create());
@@ -6680,6 +6681,27 @@ private slots:
         QCOMPARE(root->property("cursor").toInt(), 2);
         QCOMPARE(folder->get(2).value("name").toString(), QString("beside.txt"));
         QCOMPARE(folder->selectedCount(), 2);
+
+        // The range's start keeps to its own item too, though the folder
+        // opened between it and the cursor: a Shift-click then selects from
+        // it, not from where its row was.
+        folder->setExpanded(0, false);
+        QCOMPARE(folder->rowCount(), 2);
+        QDir(home.path()).mkpath("files/beta");
+        write(home.filePath("files/beta/in-beta.txt"), "x");
+        QTRY_COMPARE(folder->rowCount(), 3);
+        // alpha, beta, beside.txt: start on alpha, Shift-click beside.txt.
+        QMetaObject::invokeMethod(root.get(), "clickRow", Q_ARG(QVariant, 0), Q_ARG(QVariant, 0));
+        QMetaObject::invokeMethod(root.get(), "clickRow", Q_ARG(QVariant, 2), Q_ARG(QVariant, int(Qt::ShiftModifier)));
+        QCOMPARE(folder->selectedCount(), 3);
+        folder->setExpanded(1, true);
+        QTRY_COMPARE(folder->rowCount(), 4);
+        // alpha, beta, in-beta.txt, beside.txt: Shift-click in-beta.txt
+        // selects alpha through it.
+        QMetaObject::invokeMethod(root.get(), "clickRow", Q_ARG(QVariant, 2), Q_ARG(QVariant, int(Qt::ShiftModifier)));
+        QCOMPARE(folder->selectedCount(), 3);
+        QVERIFY(folder->isSelected(0));
+        QVERIFY(!folder->isSelected(3));
     }
 
     // Renamed inside a folder opened in the list's tree, an item stays
