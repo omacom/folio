@@ -3,13 +3,13 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import "Format.js" as Format
 
-// A larger look at the selected item and the facts about it, with the one
-// action that matters: open it.
+// A larger look at the selected file and the facts about it, with the one
+// action that matters: open it. The last of the columns, after the file.
 Rectangle {
     id: pane
 
     // The pane whose selected item this shows, and whose backend and file
-    // work the button acts through: in a split, the one used last.
+    // work the button acts through.
     property var folderPane: null
     // Hidden, it shows nothing, so moving through files doesn't read them,
     // look for their trash notes or make large thumbnails for nobody.
@@ -49,9 +49,9 @@ Rectangle {
     onItemChanged: Qt.callLater(describe)
     function describe() { backend.describe(item, !!folderPane && folderPane.inTrash) }
 
-    color: theme.darkBackground
-
-    Rectangle { anchors.left: parent.left; width: 1; height: parent.height; color: Qt.alpha(theme.foreground, 0.12) }
+    // It sits on the columns' background, and their separator marks its
+    // edge.
+    color: "transparent"
 
     ColumnLayout {
         anchors.fill: parent
@@ -271,12 +271,5 @@ Rectangle {
                 Text { Layout.rightMargin: 14; text: "⏎"; color: theme.accentForeground }
             }
         }
-    }
-
-    Text {
-        anchors.centerIn: parent
-        visible: !pane.hasItem
-        text: qsTr("Nothing selected")
-        color: theme.secondaryForeground
     }
 }

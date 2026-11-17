@@ -1,6 +1,6 @@
 # Files
 
-![Files showing a folder of photos in the grid, with the details pane](docs/grid.png)
+![Files showing a folder of photos in the grid](docs/grid.png)
 
 Files (`folio`) is Omarchy's file manager. It's one quiet window that follows your Omarchy theme and language, works from the keyboard, and never crawls your home folder in the background: folders are read when you open them, and thumbnails are made when a tile needs one, shared with every other app through `~/.cache/thumbnails`.
 

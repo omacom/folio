@@ -143,7 +143,6 @@
     "one": "Deleting %Ln item…",
     "other": "Deleting %Ln items…"
   },
-  "Details": "Details",
   "Devices": "Devices",
   "Dimensions": "Dimensions",
   "Dismiss": "Dismiss",
@@ -255,7 +254,6 @@
   "No matches": "No matches",
   "No preview for this type. Press ⏎ to open it.": "No preview for this type. Press ⏎ to open it.",
   "Nothing matches “%1”": "Nothing matches “%1”",
-  "Nothing selected": "Nothing selected",
   "Oldest": "Oldest",
   "Oldest first": "Oldest first",
   "Only folders can be pinned.": "Only folders can be pinned.",
@@ -365,7 +363,6 @@
   "Show as grid": "Show as grid",
   "Show as list": "Show as list",
   "Show hidden files": "Show hidden files",
-  "Show or hide the details pane": "Show or hide the details pane",
   "Show these shortcuts": "Show these shortcuts",
   "Sign in": "Sign in",
   "Size": "Size",

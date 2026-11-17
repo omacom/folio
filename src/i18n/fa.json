@@ -141,7 +141,6 @@
     "one": "در حال حذف %Ln مورد…",
     "other": "در حال حذف %Ln مورد…"
   },
-  "Details": "جزئیات",
   "Devices": "دستگاه‌ها",
   "Dimensions": "ابعاد",
   "Dismiss": "نادیده گرفتن",
@@ -254,7 +253,6 @@
   "No matches": "تطابقی یافت نشد",
   "No preview for this type. Press ⏎ to open it.": "برای این نوع پیش‌نمایشی نیست. برای باز کردن آن ⏎ را فشار دهید.",
   "Nothing matches “%1”": "هیچ‌چیز با «%1» مطابقت ندارد",
-  "Nothing selected": "هیچ‌چیز انتخاب نشده",
   "Oldest": "قدیمی‌ترین",
   "Oldest first": "قدیمی‌ترین اول",
   "Only folders can be pinned.": "فقط پوشه‌ها را می‌توان سنجاق کرد.",
@@ -364,7 +362,6 @@
   "Show as grid": "نمایش به‌صورت شبکه‌ای",
   "Show as list": "نمایش به‌صورت فهرستی",
   "Show hidden files": "نمایش پرونده‌های پنهان",
-  "Show or hide the details pane": "نمایش یا پنهان کردن پنل جزئیات",
   "Show these shortcuts": "نمایش این میانبرها",
   "Sign in": "ورود",
   "Size": "اندازه",

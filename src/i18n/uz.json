@@ -141,7 +141,6 @@
     "one": "%Ln ta element oʻchirilmoqda…",
     "other": "%Ln ta element oʻchirilmoqda…"
   },
-  "Details": "Tafsilotlar",
   "Devices": "Qurilmalar",
   "Dimensions": "Oʻlchamlar",
   "Dismiss": "Yopish",
@@ -254,7 +253,6 @@
   "No matches": "Mos keladiganlar yoʻq",
   "No preview for this type. Press ⏎ to open it.": "Bu tur uchun oldindan koʻrish yoʻq. Ochish uchun ⏎ tugmasini bosing.",
   "Nothing matches “%1”": "“%1”ga mos keladigan narsa yoʻq",
-  "Nothing selected": "Hech narsa tanlanmagan",
   "Oldest": "Eng eskisi",
   "Oldest first": "Avval eng eskilari",
   "Only folders can be pinned.": "Faqat papkalarni qadash mumkin.",
@@ -364,7 +362,6 @@
   "Show as grid": "Panjara sifatida koʻrsatish",
   "Show as list": "Roʻyxat sifatida koʻrsatish",
   "Show hidden files": "Yashirin fayllarni koʻrsatish",
-  "Show or hide the details pane": "Tafsilotlar panelini koʻrsatish yoki yashirish",
   "Show these shortcuts": "Shu yorliqlarni koʻrsatish",
   "Sign in": "Kirish",
   "Size": "Oʻlchami",

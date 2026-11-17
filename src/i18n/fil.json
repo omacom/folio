@@ -141,7 +141,6 @@
     "one": "Binubura ang isang item…",
     "other": "Binubura ang %Ln item…"
   },
-  "Details": "Mga detalye",
   "Devices": "Mga device",
   "Dimensions": "Mga dimensyon",
   "Dismiss": "I-dismiss",
@@ -254,7 +253,6 @@
   "No matches": "Walang tugma",
   "No preview for this type. Press ⏎ to open it.": "Walang preview para sa uring ito. Pindutin ang ⏎ para buksan ito.",
   "Nothing matches “%1”": "Walang tumutugma sa “%1”",
-  "Nothing selected": "Walang napili",
   "Oldest": "Pinakaluma",
   "Oldest first": "Pinakaluma muna",
   "Only folders can be pinned.": "Mga folder lang ang puwedeng i-pin.",
@@ -364,7 +362,6 @@
   "Show as grid": "Ipakita bilang grid",
   "Show as list": "Ipakita bilang listahan",
   "Show hidden files": "Ipakita ang mga nakatagong file",
-  "Show or hide the details pane": "Ipakita o itago ang pane ng mga detalye",
   "Show these shortcuts": "Ipakita ang mga shortcut na ito",
   "Sign in": "Mag-sign in",
   "Size": "Laki",

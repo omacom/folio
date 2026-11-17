@@ -173,7 +173,6 @@
     "many": "جارٍ حذف %Ln عنصرًا…",
     "other": "جارٍ حذف %Ln عنصر…"
   },
-  "Details": "التفاصيل",
   "Devices": "الأجهزة",
   "Dimensions": "الأبعاد",
   "Dismiss": "تجاهل",
@@ -330,7 +329,6 @@
   "No matches": "لا تطابقات",
   "No preview for this type. Press ⏎ to open it.": "لا معاينة لهذا النوع. اضغط ⏎ لفتحه.",
   "Nothing matches “%1”": "لا شيء يطابق “%1”",
-  "Nothing selected": "لا شيء محدد",
   "Oldest": "الأقدم",
   "Oldest first": "الأقدم أولًا",
   "Only folders can be pinned.": "يمكن تثبيت المجلدات فقط.",
@@ -480,7 +478,6 @@
   "Show as grid": "العرض كشبكة",
   "Show as list": "العرض كقائمة",
   "Show hidden files": "إظهار الملفات المخفية",
-  "Show or hide the details pane": "إظهار جزء التفاصيل أو إخفاؤه",
   "Show these shortcuts": "إظهار هذه الاختصارات",
   "Sign in": "تسجيل الدخول",
   "Size": "الحجم",

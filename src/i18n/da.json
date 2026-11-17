@@ -141,7 +141,6 @@
     "one": "Sletter %Ln element…",
     "other": "Sletter %Ln elementer…"
   },
-  "Details": "Detaljer",
   "Devices": "Enheder",
   "Dimensions": "Dimensioner",
   "Dismiss": "Afvis",
@@ -254,7 +253,6 @@
   "No matches": "Ingen resultater",
   "No preview for this type. Press ⏎ to open it.": "Ingen forhåndsvisning for denne type. Tryk på ⏎ for at åbne den.",
   "Nothing matches “%1”": "Intet matcher “%1”",
-  "Nothing selected": "Intet valgt",
   "Oldest": "Ældste",
   "Oldest first": "Ældste først",
   "Only folders can be pinned.": "Kun mapper kan fastgøres.",
@@ -364,7 +362,6 @@
   "Show as grid": "Vis som gitter",
   "Show as list": "Vis som liste",
   "Show hidden files": "Vis skjulte filer",
-  "Show or hide the details pane": "Vis eller skjul detaljepanelet",
   "Show these shortcuts": "Vis disse genveje",
   "Sign in": "Log ind",
   "Size": "Størrelse",

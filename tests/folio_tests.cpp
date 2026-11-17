@@ -841,8 +841,6 @@ private slots:
                 property string viewMode: "columns"
                 property real zoom: 1
                 property bool split: false
-                property bool previewVisible: false
-                property bool detailsFit: false
                 property bool helpVisible: false
                 property var activePane: null
                 function raise() {}
@@ -6973,24 +6971,37 @@ private slots:
         QQuickWindow *window = open(request);
         QVERIFY(window);
         QTRY_COMPARE(listed(window), QStringList({"sub", "b.png", "c.png"}));
-        // The details offer no way to open the file in its app instead. A
-        // chooser opens too narrow for them, so the window is widened.
-        window->setWidth(1100);
+        // The columns show a file's details as a column after it, and the
+        // details offer no way to open the file in its app instead.
+        const auto column = [&]() -> QQuickItem * {
+            QQuickItem *found = nullptr;
+            const std::function<void(QQuickItem *)> find = [&](QQuickItem *item) {
+                if (!found && item->property("folderPane").isValid() && item->property("takesKeyboard").isValid())
+                    found = item;
+                for (QQuickItem *child : item->childItems())
+                    find(child);
+            };
+            find(window->contentItem());
+            return found;
+        };
+        // On the folder, there's what's inside it instead.
+        QVERIFY(!column());
+        QTest::keyClick(window, Qt::Key_Down);
+        QTRY_VERIFY(column() && column()->isVisible());
         {
             QQuickItem *open = nullptr;
             const std::function<void(QQuickItem *)> find = [&](QQuickItem *item) {
-                // The details' own labels: no other button says these.
+                // The details' own button: in them, no other says these.
                 const QString text = item->property("text").toString();
-                if (!open && (text == "Open folder" || text.startsWith("Open with ")))
+                if (!open && (text == "Open" || text.startsWith("Open with ")))
                     open = item;
                 for (QQuickItem *child : item->childItems())
                     find(child);
             };
-            QTRY_VERIFY((find(window->contentItem()), open));
+            QTRY_VERIFY((find(column()), open));
             QVERIFY(!open->isVisible());
         }
         QPointer<QQuickWindow> closing(window);
-        QTest::keyClick(window, Qt::Key_Down);
         QTest::keyClick(window, Qt::Key_Return);
         QCOMPARE(replies, (QList<std::pair<uint, QStringList>>{{0, {uri("b.png")}}}));
         QTRY_VERIFY(!closing);

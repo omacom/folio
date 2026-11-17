@@ -141,7 +141,6 @@
     "one": "Sletter %Ln element…",
     "other": "Sletter %Ln elementer…"
   },
-  "Details": "Detaljer",
   "Devices": "Enheter",
   "Dimensions": "Dimensjoner",
   "Dismiss": "Avvis",
@@ -254,7 +253,6 @@
   "No matches": "Ingen treff",
   "No preview for this type. Press ⏎ to open it.": "Ingen forhåndsvisning for denne typen. Trykk ⏎ for å åpne den.",
   "Nothing matches “%1”": "Ingenting samsvarer med «%1»",
-  "Nothing selected": "Ingenting valgt",
   "Oldest": "Eldste",
   "Oldest first": "Eldste først",
   "Only folders can be pinned.": "Bare mapper kan festes.",
@@ -364,7 +362,6 @@
   "Show as grid": "Vis som rutenett",
   "Show as list": "Vis som liste",
   "Show hidden files": "Vis skjulte filer",
-  "Show or hide the details pane": "Vis eller skjul detaljpanelet",
   "Show these shortcuts": "Vis disse snarveiene",
   "Sign in": "Logg inn",
   "Size": "Størrelse",

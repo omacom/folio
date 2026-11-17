@@ -133,7 +133,6 @@
   "Deleting %Ln items…": {
     "other": "Đang xóa %Ln mục…"
   },
-  "Details": "Chi tiết",
   "Devices": "Thiết bị",
   "Dimensions": "Kích thước",
   "Dismiss": "Bỏ qua",
@@ -235,7 +234,6 @@
   "No matches": "Không có kết quả phù hợp",
   "No preview for this type. Press ⏎ to open it.": "Không có bản xem trước cho loại này. Nhấn ⏎ để mở.",
   "Nothing matches “%1”": "Không có gì khớp với “%1”",
-  "Nothing selected": "Chưa chọn mục nào",
   "Oldest": "Cũ nhất",
   "Oldest first": "Cũ nhất trước",
   "Only folders can be pinned.": "Chỉ thư mục mới có thể ghim.",
@@ -335,7 +333,6 @@
   "Show as grid": "Hiển thị dạng lưới",
   "Show as list": "Hiển thị dạng danh sách",
   "Show hidden files": "Hiện tệp ẩn",
-  "Show or hide the details pane": "Hiện hoặc ẩn ngăn chi tiết",
   "Show these shortcuts": "Hiện các phím tắt này",
   "Sign in": "Đăng nhập",
   "Size": "Kích thước",

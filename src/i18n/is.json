@@ -141,7 +141,6 @@
     "one": "Eyðir %Ln atriði…",
     "other": "Eyðir %Ln atriði…"
   },
-  "Details": "Nánari upplýsingar",
   "Devices": "Tæki",
   "Dimensions": "Mál",
   "Dismiss": "Hunsa",
@@ -254,7 +253,6 @@
   "No matches": "Engar samsvaranir",
   "No preview for this type. Press ⏎ to open it.": "Engin forskoðun fyrir þessa tegund. Ýttu á ⏎ til að opna hana.",
   "Nothing matches “%1”": "Ekkert samsvarar „%1“",
-  "Nothing selected": "Ekkert valið",
   "Oldest": "Elst",
   "Oldest first": "Elst fyrst",
   "Only folders can be pinned.": "Aðeins er hægt að festa möppur.",
@@ -364,7 +362,6 @@
   "Show as grid": "Sýna sem hnitanet",
   "Show as list": "Sýna sem lista",
   "Show hidden files": "Sýna faldar skrár",
-  "Show or hide the details pane": "Sýna eða fela smáatriðareitinn",
   "Show these shortcuts": "Sýna þessa flýtilykla",
   "Sign in": "Skrá sig inn",
   "Size": "Stærð",

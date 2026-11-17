@@ -61,7 +61,7 @@ public:
         QString mime;
         // A file's extension; a plugin item's subtitle.
         QString extension;
-        // A plugin item's glyph and its rows for the details pane.
+        // A plugin item's glyph and its rows for the details column.
         QString icon;
         QVariantList details;
         int itemCount = -1;

@@ -11,6 +11,9 @@ Item {
 
     property alias currentIndex: here.currentIndex
     readonly property int columnWidth: 260
+    // The pane whose selected file the details column describes.
+    property var detailsPane: null
+    readonly property var details: detailsColumn.item
 
     function select(row, keep) { selecting.select(row, keep) }
     signal cursorLetGo()
@@ -219,6 +222,20 @@ Item {
                     visible: inside.count === 0 && !inside.model.loading
                     text: qsTr("No items")
                     color: theme.secondaryForeground
+                }
+            }
+
+            // The selected file's details, where a folder would show what's
+            // inside.
+            Loader {
+                id: detailsColumn
+                active: !!view.detailsPane && view.selected.path !== undefined && view.selected.isDir !== true
+                visible: active
+                sourceComponent: PreviewPane {
+                    width: 300
+                    height: row.height
+                    folderPane: view.detailsPane
+                    onFinished: view.focusView()
                 }
             }
         }

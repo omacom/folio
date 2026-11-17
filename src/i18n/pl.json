@@ -157,7 +157,6 @@
     "many": "Usuwanie %Ln elementów…",
     "other": "Usuwanie %Ln elementu…"
   },
-  "Details": "Szczegóły",
   "Devices": "Urządzenia",
   "Dimensions": "Wymiary",
   "Dismiss": "Odrzuć",
@@ -292,7 +291,6 @@
   "No matches": "Brak dopasowań",
   "No preview for this type. Press ⏎ to open it.": "Brak podglądu dla tego typu. Naciśnij ⏎, aby otworzyć.",
   "Nothing matches “%1”": "Nic nie pasuje do „%1”",
-  "Nothing selected": "Nic nie zaznaczono",
   "Oldest": "Najstarsze",
   "Oldest first": "Od najstarszych",
   "Only folders can be pinned.": "Można przypiąć tylko foldery.",
@@ -422,7 +420,6 @@
   "Show as grid": "Wyświetl jako siatkę",
   "Show as list": "Wyświetl jako listę",
   "Show hidden files": "Pokaż ukryte pliki",
-  "Show or hide the details pane": "Pokaż lub ukryj panel szczegółów",
   "Show these shortcuts": "Pokaż te skróty",
   "Sign in": "Zaloguj się",
   "Size": "Rozmiar",

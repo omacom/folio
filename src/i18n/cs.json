@@ -149,7 +149,6 @@
     "few": "Mazání %Ln položek…",
     "other": "Mazání %Ln položek…"
   },
-  "Details": "Podrobnosti",
   "Devices": "Zařízení",
   "Dimensions": "Rozměry",
   "Dismiss": "Zavřít",
@@ -273,7 +272,6 @@
   "No matches": "Žádné shody",
   "No preview for this type. Press ⏎ to open it.": "Pro tento typ není k dispozici náhled. Stisknutím ⏎ jej otevřete.",
   "Nothing matches “%1”": "Ničemu neodpovídá „%1“",
-  "Nothing selected": "Nic není vybráno",
   "Oldest": "Nejstarší",
   "Oldest first": "Od nejstaršího",
   "Only folders can be pinned.": "Připnout lze pouze složky.",
@@ -393,7 +391,6 @@
   "Show as grid": "Zobrazit jako mřížku",
   "Show as list": "Zobrazit jako seznam",
   "Show hidden files": "Zobrazit skryté soubory",
-  "Show or hide the details pane": "Zobrazit nebo skrýt panel podrobností",
   "Show these shortcuts": "Zobrazit tyto zkratky",
   "Sign in": "Přihlásit se",
   "Size": "Velikost",

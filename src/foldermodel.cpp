@@ -620,7 +620,7 @@ void FolderModel::countFolders(quint64 generation) {
             updated = true;
         }
         // QML re-reads its get() snapshots (the current item, which the
-        // details pane shows) on countChanged, and the counts they show
+        // details column shows) on countChanged, and the counts they show
         // just arrived.
         if (updated)
             emit countChanged();

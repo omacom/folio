@@ -157,7 +157,6 @@
     "few": "Brisanje %Ln elementov…",
     "other": "Brisanje %Ln elementov…"
   },
-  "Details": "Podrobnosti",
   "Devices": "Naprave",
   "Dimensions": "Dimenzije",
   "Dismiss": "Opusti",
@@ -292,7 +291,6 @@
   "No matches": "Ni zadetkov",
   "No preview for this type. Press ⏎ to open it.": "Za to vrsto ni predogleda. Pritisnite ⏎ za odpiranje.",
   "Nothing matches “%1”": "Nič se ne ujema z “%1”",
-  "Nothing selected": "Nič ni izbrano",
   "Oldest": "Najstarejše",
   "Oldest first": "Najprej najstarejše",
   "Only folders can be pinned.": "Pripeti je mogoče samo mape.",
@@ -422,7 +420,6 @@
   "Show as grid": "Prikaži kot mrežo",
   "Show as list": "Prikaži kot seznam",
   "Show hidden files": "Prikaži skrite datoteke",
-  "Show or hide the details pane": "Prikaži ali skrij podokno s podrobnostmi",
   "Show these shortcuts": "Prikaži te bližnjice",
   "Sign in": "Prijavi se",
   "Size": "Velikost",
