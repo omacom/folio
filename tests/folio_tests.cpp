@@ -6185,6 +6185,7 @@ private slots:
                 width: 600; height: 480; visible: true
                 property alias cursor: folderView.currentIndex
                 %1 { id: folderView; anchors.fill: parent; Component.onCompleted: focusView() }
+                function letGo() { folderView.letGo() }
                 function cursorInView() {
                     const item = folderView.menuAnchor()
                     const y = item ? item.mapToItem(null, 0, 0).y : -1
@@ -6232,6 +6233,15 @@ private slots:
             QTest::keyClick(window, Qt::Key_PageUp);
         QCOMPARE(root->property("cursor").toInt(), 0);
         QTRY_VERIFY(cursorInView());
+
+        // Let go of (a click on empty space), Shift+Page Down selects from
+        // the first item on, and again keeps what it selected.
+        QMetaObject::invokeMethod(root.get(), "letGo");
+        QCOMPARE(root->property("cursor").toInt(), -1);
+        QTest::keyClick(window, Qt::Key_PageDown, Qt::ShiftModifier);
+        QTest::keyClick(window, Qt::Key_PageDown, Qt::ShiftModifier);
+        QCOMPARE(root->property("cursor").toInt(), 2 * paged);
+        QCOMPARE(backend.folder()->selectedCount(), 2 * paged + 1);
     }
 
     void gridBandHitsTheTilesBothWays()

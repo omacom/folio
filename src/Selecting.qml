@@ -77,8 +77,10 @@ QtObject {
     function extendTo(index) {
         if (index < 0 || index >= view.count)
             return
+        // With no cursor (let go of by a click on empty space), the range
+        // starts at the first item, where a step from no cursor starts.
         if (anchor < 0)
-            anchor = view.currentIndex
+            anchor = Math.max(0, view.currentIndex)
         moveTo(index)
         backend.folder.selectRange(anchor, index, false)
         view.positionViewAtIndex(index, ListView.Contain)
