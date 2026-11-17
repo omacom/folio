@@ -38,7 +38,7 @@ public:
 
     // Home's folders can be left out of its section (Hide in the sidebar's
     // menu) and put back (Show in Home in the folder's own menu, in home).
-    // Kept by name in ~/.config/folio/hidden-in-home, one per line.
+    // Kept by name in ~/.config/folio/hidden-in-home, a JSON array.
     Q_INVOKABLE void hideFromHome(const QString &path);
     Q_INVOKABLE void showInHome(const QString &path);
     Q_INVOKABLE bool hiddenFromHome(const QString &path) const;

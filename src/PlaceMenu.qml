@@ -13,6 +13,7 @@ FolioMenu {
     property bool pinned: false
 
     signal renameRequested(string path)
+    signal trashRequested(string path)
     signal deleteRequested(string path)
 
     // Opens at the pointer, or (from the keyboard) beside the row, with
@@ -49,6 +50,6 @@ FolioMenu {
     MenuLine { }
     FolioMenuItem {
         text: menu.held ? qsTr("Delete…") : qsTr("Trash")
-        onTriggered: menu.held ? menu.deleteRequested(menu.place.path) : fileOps.trash([menu.place.path])
+        onTriggered: menu.held ? menu.deleteRequested(menu.place.path) : menu.trashRequested(menu.place.path)
     }
 }

@@ -22,6 +22,8 @@ Rectangle {
     // Rename… and Delete… in a folder's menu.
     signal renameRequested(string path)
     signal deleteRequested(string path)
+    // Trash in a folder's menu, done by the pane used last, as the rest are.
+    signal trashRequested(string path)
     // A place picked here: the columns start at it, rather than at the
     // folders above it.
     signal placeChosen(string path)
@@ -135,6 +137,7 @@ Rectangle {
         id: placeMenu
         onRenameRequested: (path) => sidebar.renameRequested(path)
         onDeleteRequested: (path) => sidebar.deleteRequested(path)
+        onTrashRequested: (path) => sidebar.trashRequested(path)
     }
 
     DriveMenu {

@@ -3993,6 +3993,18 @@ private slots:
         QVERIFY(!places.hiddenFromHome(home.filePath("golang")));
         QCOMPARE(places.pinned().size(), 0);
 
+
+        // A name is kept whole, whatever it has in it: hiding one with a
+        // newline hides it, not folders named after its halves.
+        QVERIFY(QDir(home.path()).mkdir("Two\nLines"));
+        QVERIFY(QDir(home.path()).mkdir("Two"));
+        Places lines(home.path());
+        lines.hideFromHome(home.filePath("Two\nLines"));
+        QVERIFY(lines.hiddenFromHome(home.filePath("Two\nLines")));
+        QVERIFY(!lines.hiddenFromHome(home.filePath("Two")));
+        QVERIFY(names(Places(home.path())).contains("Two"));
+        QVERIFY(!names(Places(home.path())).contains("Two\nLines"));
+        lines.showInHome(home.filePath("Two\nLines"));
         // A save that fails says so, and changes nothing.
         const QString settings = home.filePath(".config/folio");
         QVERIFY(QFile::setPermissions(settings, QFile::ReadOwner | QFile::ExeOwner));

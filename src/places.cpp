@@ -6,6 +6,8 @@
 #include <QCollator>
 #include <QDir>
 #include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
 #include <QSaveFile>
 #include <QUrl>
 #include <QFileInfo>
@@ -210,12 +212,16 @@ QString Places::hiddenPath() const {
     return configPath() + "/folio/hidden-in-home";
 }
 
+// A JSON array of names, so a name with any character in it (a newline
+// even) is kept whole.
 QStringList Places::readHidden() const {
     QFile file(hiddenPath());
     if (!file.open(QIODevice::ReadOnly))
         return {};
-    QStringList names = QString::fromUtf8(file.readAll()).split('\n');
-    names.removeAll(QString());
+    QStringList names;
+    for (const QJsonValue &name : QJsonDocument::fromJson(file.readAll()).array())
+        if (!name.toString().isEmpty())
+            names << name.toString();
     return names;
 }
 
@@ -224,7 +230,7 @@ bool Places::writeHidden(const QStringList &names) {
     QSaveFile file(hiddenPath());
     if (!file.open(QIODevice::WriteOnly))
         return false;
-    file.write(names.isEmpty() ? QByteArray() : (names.join('\n') + '\n').toUtf8());
+    file.write(QJsonDocument(QJsonArray::fromStringList(names)).toJson());
     return file.commit();
 }
 
