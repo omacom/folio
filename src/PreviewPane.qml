@@ -55,6 +55,10 @@ Rectangle {
     // It sits on the columns' background, and their separator marks its
     // edge.
     color: "transparent"
+    // It takes all the room right of the columns. The facts and the button
+    // keep to a width that still reads as one block, centered under the
+    // picture.
+    readonly property int textWidth: 480
 
     ColumnLayout {
         anchors.fill: parent
@@ -62,9 +66,10 @@ Rectangle {
         spacing: 22
         visible: pane.hasItem
 
+        // The picture grows with the room, short of crowding out the facts.
         Item {
             Layout.fillWidth: true
-            Layout.preferredHeight: Math.round(width * 0.75)
+            Layout.preferredHeight: Math.round(Math.min(width * 0.75, pane.height * 0.55))
 
             Image {
                 id: big
@@ -108,6 +113,8 @@ Rectangle {
         ColumnLayout {
             spacing: 4
             Layout.fillWidth: true
+            Layout.maximumWidth: pane.textWidth
+            Layout.alignment: Qt.AlignHCenter
             // Aligned explicitly, so that they're mirrored: left as they
             // are, a Latin name would stay on the left.
             Text {
@@ -136,6 +143,8 @@ Rectangle {
 
         GridLayout {
             Layout.fillWidth: true
+            Layout.maximumWidth: pane.textWidth
+            Layout.alignment: Qt.AlignHCenter
             columns: 2
             rowSpacing: 12
             columnSpacing: 16
@@ -249,6 +258,8 @@ Rectangle {
             // A file chooser answers from its own bar, not by opening.
             visible: !chooser
             Layout.fillWidth: true
+            Layout.maximumWidth: pane.textWidth
+            Layout.alignment: Qt.AlignHCenter
             implicitHeight: 40
             focusPolicy: Qt.NoFocus
             hoverEnabled: true

@@ -226,13 +226,15 @@ Item {
             }
 
             // The selected file's details, where a folder would show what's
-            // inside.
+            // inside, filling the rest of the width.
             Loader {
                 id: detailsColumn
                 active: !!view.detailsPane && view.selected.path !== undefined && view.selected.isDir !== true
                 visible: active
                 sourceComponent: PreviewPane {
-                    width: 300
+                    // All the room right of the columns, and no narrower
+                    // than it reads well.
+                    width: Math.max(300, flick.width - (trail.count + 1) * (view.columnWidth + 1))
                     height: row.height
                     folderPane: view.detailsPane
                     onFinished: view.focusView()
