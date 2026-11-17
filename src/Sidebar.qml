@@ -19,6 +19,13 @@ Rectangle {
     signal finished()
     // Format… in a drive's menu, with what udisks knows of the drive.
     signal formatRequested(var disk)
+    // A place picked here: the columns start at it, rather than at the
+    // folders above it.
+    signal placeChosen(string path)
+    function go(path) {
+        placeChosen(path)
+        target.navigate(path)
+    }
     property int cursor: 0
     // The pane the sidebar acts on: the one used last.
     property var target: backend
@@ -65,7 +72,7 @@ Rectangle {
         if (row.root !== undefined)
             sidebar.target.open(row.path)
         else
-            sidebar.target.navigate(row.path)
+            sidebar.go(row.path)
         finished()
     }
     function reveal(item) {
@@ -115,7 +122,7 @@ Rectangle {
 
     DriveMenu {
         id: driveMenu
-        onOpenRequested: (path) => { sidebar.target.navigate(path); sidebar.finished() }
+        onOpenRequested: (path) => { sidebar.go(path); sidebar.finished() }
         onFormatRequested: (disk) => sidebar.formatRequested(disk)
     }
 
@@ -274,7 +281,7 @@ Rectangle {
                      : homeHover.hovered ? theme.foreground : theme.secondaryForeground
                 Accessible.role: Accessible.Button
                 HoverHandler { id: homeHover; cursorShape: Qt.PointingHandCursor }
-                TapHandler { onTapped: sidebar.target.navigate(places.home) }
+                TapHandler { onTapped: sidebar.go(places.home) }
             }
             Repeater {
                 model: places.places
@@ -288,7 +295,7 @@ Rectangle {
                     text: modelData.name
                     glyph: modelData.icon
                     active: sidebar.activePath === modelData.path
-                    onClicked: sidebar.target.navigate(modelData.path)
+                    onClicked: sidebar.go(modelData.path)
                 }
             }
 
@@ -309,7 +316,7 @@ Rectangle {
                     text: modelData.name
                     glyph: modelData.icon
                     active: sidebar.activePath === modelData.path
-                    onClicked: sidebar.target.navigate(modelData.path)
+                    onClicked: sidebar.go(modelData.path)
                     // The name ends short of the unpin button while it shows:
                     // hovered, or on the keyboard's row, where Delete does
                     // the same.
@@ -368,7 +375,7 @@ Rectangle {
                     text: modelData.icon === "trash" ? qsTr("Trash") : qsTr("Recents")
                     glyph: modelData.icon
                     active: sidebar.activePath === modelData.path
-                    onClicked: sidebar.target.navigate(modelData.path)
+                    onClicked: sidebar.go(modelData.path)
                     keyed: sidebar.activeFocus && sidebar.cursor === sidebar.viewsAt + index
                     onKeyedChanged: if (keyed) sidebar.reveal(this)
                 }
@@ -393,7 +400,7 @@ Rectangle {
                     text: modelData.name
                     glyph: eject.visible ? "" : modelData.icon
                     active: sidebar.activePath === modelData.path
-                    onClicked: sidebar.target.navigate(modelData.path)
+                    onClicked: sidebar.go(modelData.path)
                     detail: {
                         translator.language // Re-read when the language (and so its digits) changes.
                         return modelData.free < 0 ? "" : Format.free(modelData.free)
@@ -471,7 +478,7 @@ Rectangle {
                             return section.modelData.view ? section.modelData.view.count.toLocaleString(Qt.locale(), "f", 0) : ""
                         }
                         statusColor: theme.secondaryForeground
-                        onClicked: sidebar.target.navigate(section.modelData.view.path)
+                        onClicked: sidebar.go(section.modelData.view.path)
                     }
                 }
             }

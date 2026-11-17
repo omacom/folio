@@ -135,6 +135,8 @@ FocusScope {
     // follow.
     onActiveFocusChanged: if (activeFocus && host) host.activePane = pane
     function focusView() { if (view.item) view.item.focusView() }
+    // A place picked in the sidebar: the columns start at it.
+    function startAt(path) { if (view.item && view.item.startAt) view.item.startAt(path) }
 
     // Pins a folder to the sidebar, or unpins it when it's pinned already.
     function togglePin(target) {

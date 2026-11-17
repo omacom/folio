@@ -171,6 +171,7 @@ ApplicationWindow {
                 id: sidebar
                 target: win.activePane ? win.activePane.paneBackend : backend
                 onFinished: win.activePane.focusView()
+                onPlaceChosen: (path) => win.activePane.startAt(path)
                 onFormatRequested: (disk) => win.activePane.formatDrive(disk)
                 Layout.topMargin: parent.parent.barHeight
                 Layout.preferredWidth: 190

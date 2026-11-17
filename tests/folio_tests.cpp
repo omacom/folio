@@ -672,6 +672,116 @@ private slots:
         QTRY_COMPARE(orders(), expected);
     }
 
+    // A place picked in the sidebar is the first column shown, with the
+    // folders above it scrolled out of sight to the left; going up shows
+    // them again.
+    void columnsStartAtAPlacePicked()
+    {
+        QTemporaryDir home;
+        QDir(home.path()).mkpath("Dropbox/Audio");
+        QDir(home.path()).mkpath("Work");
+        const QString dropbox = home.filePath("Dropbox");
+        Backend backend(home.path());
+        backend.navigate(home.filePath("Work"));
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        Translator translator(home.filePath("language"), home.path());
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("plugins", QVariantMap{{"views", QVariantMap{}}});
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine);
+        component.setData(R"(
+            import QtQuick
+            Window {
+                width: 1200; height: 480; visible: true
+                FolderColumns { id: folderView; anchors.fill: parent; Component.onCompleted: focusView() }
+                function startAt(path) { folderView.startAt(path) }
+                function scrolled() {
+                    const flick = folderView.children[folderView.children.length - 1]
+                    return flick.contentX
+                }
+            }
+        )", QUrl::fromLocalFile(sourceFolder() + "/ColumnsStartTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        const auto scrolled = [&] {
+            QVariant x;
+            QMetaObject::invokeMethod(root.get(), "scrolled", Q_RETURN_ARG(QVariant, x));
+            return x.toReal();
+        };
+        // Wide enough for home, Work and more: nothing's scrolled.
+        QTRY_COMPARE(backend.path(), home.filePath("Work"));
+        QCOMPARE(scrolled(), 0.0);
+        // Dropbox from the sidebar: home's column is out of sight.
+        QMetaObject::invokeMethod(root.get(), "startAt", Q_ARG(QVariant, dropbox));
+        backend.navigate(dropbox);
+        QTRY_COMPARE(scrolled(), 261.0);
+        // Deeper, it stays out of sight.
+        backend.navigate(dropbox + "/Audio");
+        QTRY_COMPARE(scrolled(), 261.0);
+        // Back up to Dropbox and then home, it's shown again.
+        backend.goUp();
+        QTRY_COMPARE(scrolled(), 261.0);
+        backend.goUp();
+        QTRY_COMPARE(scrolled(), 0.0);
+        // Picking where it already is starts there too.
+        backend.navigate(dropbox);
+        QTRY_COMPARE(scrolled(), 0.0);
+        QMetaObject::invokeMethod(root.get(), "startAt", Q_ARG(QVariant, dropbox));
+        QTRY_COMPARE(scrolled(), 261.0);
+    }
+
+    // A click on a folder in the last column, the one showing what's inside
+    // the selected folder, goes there: the folder it's in is shown, with it
+    // selected and its own contents beside it.
+    void columnsClickIntoTheLastColumn()
+    {
+        QTemporaryDir home;
+        QDir(home.path()).mkpath("Documents/Racing/2025/Le Mans");
+        Backend backend(home.path());
+        backend.navigate(home.filePath("Documents"));
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        Translator translator(home.filePath("language"), home.path());
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("plugins", QVariantMap{{"views", QVariantMap{}}});
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine);
+        component.setData(R"(
+            import QtQuick
+            Window {
+                width: 1200; height: 480; visible: true
+                property alias cursor: folderView.currentIndex
+                readonly property string selected: folderView.selected.name || ""
+                FolderColumns { id: folderView; anchors.fill: parent; Component.onCompleted: focusView() }
+            }
+        )", QUrl::fromLocalFile(sourceFolder() + "/ColumnsClickTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        QTRY_COMPARE(backend.folder()->rowCount(), 1);
+        root->setProperty("cursor", 0);
+        QTRY_COMPARE(root->property("selected").toString(), QString("Racing"));
+        // home's column, Documents', then Racing's contents: 2025.
+        QTest::qWait(300);
+        QTest::mouseClick(window, Qt::LeftButton, {}, QPoint(2 * 261 + 80, 20));
+        QTRY_COMPARE(backend.path(), home.filePath("Documents/Racing"));
+        QTRY_COMPARE(root->property("selected").toString(), QString("2025"));
+    }
+
     void folderListsDirectoriesFirstWithoutHidden()
     {
         QTemporaryDir dir;
