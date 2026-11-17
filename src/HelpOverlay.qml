@@ -35,6 +35,7 @@ Rectangle {
         // The keys in these few are mixed with words; the key names (Shift,
         // Alt, ⏎) stay as they are in every language.
         [qsTr("Shift+click / Shift+arrows"), qsTr("Select a range")],
+        ["Page Up / Page Down", qsTr("A screenful up or down (Shift selects)")],
         [qsTr("Alt+click"), qsTr("Add or remove one from the selection")],
         [qsTr("Drag on empty space"), qsTr("Select with a rectangle (Alt adds)")],
         ["Ctrl+A", qsTr("Select everything")],

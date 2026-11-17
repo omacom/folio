@@ -15,9 +15,9 @@ FileListView {
     // Where the keyboard's menu (Alt+Return) opens: beside the cursor's item.
     function menuAnchor() { return currentItem }
 
-    Selecting { id: selecting; view: list }
+    Selecting { id: selecting; view: list; pageStep: Math.max(1, Math.floor(list.height / 32) - 1) }
     onCurrentIndexChanged: selecting.cursorMoved()
-    Keys.onPressed: (event) => selecting.extendBy(event, event.key === Qt.Key_Up ? -1 : event.key === Qt.Key_Down ? 1 : 0)
+    Keys.onPressed: (event) => selecting.page(event) || selecting.extendBy(event, event.key === Qt.Key_Up ? -1 : event.key === Qt.Key_Down ? 1 : 0)
 
     Band {
         view: list

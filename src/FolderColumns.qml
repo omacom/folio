@@ -16,7 +16,7 @@ Item {
     signal cursorLetGo()
     function letGo() { selecting.letGo(); cursorLetGo() }
 
-    Selecting { id: selecting; view: here }
+    Selecting { id: selecting; view: here; pageStep: Math.max(1, Math.floor(here.height / 32) - 1) }
     function focusView() { here.forceActiveFocus() }
     function menuAnchor() { return here.currentItem }
 
@@ -156,7 +156,7 @@ Item {
                 ColumnDrop { items: here; folder: backend.path }
 
                 onCurrentIndexChanged: selecting.cursorMoved()
-                Keys.onPressed: (event) => selecting.extendBy(event, event.key === Qt.Key_Up ? -1 : event.key === Qt.Key_Down ? 1 : 0)
+                Keys.onPressed: (event) => selecting.page(event) || selecting.extendBy(event, event.key === Qt.Key_Up ? -1 : event.key === Qt.Key_Down ? 1 : 0)
                 // Into a folder is the way the columns grow: leftward, when
                 // mirrored.
                 Keys.onRightPressed: view.LayoutMirroring.enabled ? backend.goUp() : view.enter()

@@ -6208,6 +6208,30 @@ private slots:
             QTRY_VERIFY(cursorInView());
         }
         QVERIFY(root->property("cursor").toInt() >= 29);
+
+        // Page Down moves a screenful (more than one row, keeping the
+        // cursor in sight), Page Up as far back, and both stop at the ends.
+        root->setProperty("cursor", 0);
+        QTRY_VERIFY(cursorInView());
+        const int before = 0;
+        QTest::keyClick(window, Qt::Key_PageDown);
+        const int paged = root->property("cursor").toInt() - before;
+        QVERIFY2(paged > 1, qPrintable(QString::number(paged)));
+        QTRY_VERIFY(cursorInView());
+        QCOMPARE(backend.folder()->selectedCount(), 1);
+        QTest::keyClick(window, Qt::Key_PageUp);
+        QCOMPARE(root->property("cursor").toInt(), before);
+        QTRY_VERIFY(cursorInView());
+        for (int i = 0; i < 80; ++i)
+            QTest::keyClick(window, Qt::Key_PageDown);
+        QCOMPARE(root->property("cursor").toInt(), 79);
+        // With Shift, it selects the way there.
+        QTest::keyClick(window, Qt::Key_PageUp, Qt::ShiftModifier);
+        QCOMPARE(backend.folder()->selectedCount(), paged + 1);
+        for (int i = 0; i < 80; ++i)
+            QTest::keyClick(window, Qt::Key_PageUp);
+        QCOMPARE(root->property("cursor").toInt(), 0);
+        QTRY_VERIFY(cursorInView());
     }
 
     void gridBandHitsTheTilesBothWays()
