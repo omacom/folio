@@ -48,6 +48,9 @@ Rectangle {
     // and describing that would drop what's been read of this one.
     onItemChanged: Qt.callLater(describe)
     function describe() { backend.describe(item, !!folderPane && folderPane.inTrash) }
+    // Gone (a folder selected, or another view), it describes nothing, so
+    // plugins stop being asked about the file it showed last.
+    Component.onDestruction: backend.describe({}, false)
 
     // It sits on the columns' background, and their separator marks its
     // edge.

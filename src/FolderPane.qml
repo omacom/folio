@@ -63,7 +63,9 @@ FocusScope {
     // have it, not while Tab has put it in the sidebar or the details, where
     // Delete or Space would act on files out of the keyboard's sight.
     readonly property bool paneKeys: active && !typing
-    readonly property bool keys: paneKeys && activeFocus
+    // The details column is inside the pane, so the pane keeps the keyboard
+    // while Tab has put it there.
+    readonly property bool keys: paneKeys && activeFocus && !(details && details.hasKeyboard)
     // What file actions act on: everything selected, or the item under
     // the cursor when nothing is.
     function selectedPaths() {
