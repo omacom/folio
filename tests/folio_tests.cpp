@@ -22,6 +22,7 @@
 #include <QJsonObject>
 #include <QProcess>
 #include <QQmlComponent>
+#include <QThread>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQmlEngine>
@@ -994,6 +995,57 @@ private slots:
         QVERIFY(loaded.wait(3000));
         model.setPath(dir.filePath("Photos"));
         QVERIFY(model.query().isEmpty());
+    }
+
+    // A search tells what it finds as it goes, rather than all at the end:
+    // a big tree could keep the window showing nothing for a long while.
+    void folderSearchShowsMatchesAsTheyreFound()
+    {
+        QTemporaryDir dir;
+        for (int i = 0; i < 40; ++i) {
+            const QString folder = QString("d%1").arg(i, 2, 10, QLatin1Char('0'));
+            QDir(dir.path()).mkpath(folder);
+            write(dir.filePath(folder + "/match-" + folder + ".txt"), "x");
+            write(dir.filePath(folder + "/other.txt"), "x");
+        }
+        // A slow walk (each look at the stop check takes a while), so the
+        // matches come in several batches before it's done.
+        QStringList told;
+        int batches = 0;
+        const auto found = FolderModel::search(dir.path(), "match", false, "name",
+            [] { QThread::usleep(2000); return false; }, 1000, QLocale(), {},
+            [&](const QVector<FolderModel::Entry> &batch) {
+                ++batches;
+                for (const auto &e : batch)
+                    told << e.name;
+            });
+        QVERIFY2(batches > 1, qPrintable(QString::number(batches)));
+        QStringList all;
+        for (const auto &e : found)
+            all << e.name;
+        QCOMPARE(all.size(), 40);
+        told.sort();
+        QCOMPARE(told, all);
+
+        // The model shows a new search from empty, at once, not the folder it
+        // searches; and ends with its matches in the folder's order.
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 40);
+        model.setQuery("match");
+        QCOMPARE(model.count(), 0);
+        QVERIFY(model.loading());
+        QTRY_VERIFY(!model.loading());
+        QCOMPARE(model.count(), 40);
+        for (int row = 0; row < 40; ++row)
+            QCOMPARE(model.get(row).value("name").toString(), all.at(row));
+        // The same search again (the folder changed) keeps its matches up.
+        model.reload();
+        QCOMPARE(model.count(), 40);
+        QTRY_VERIFY(!model.loading());
+        QCOMPARE(model.count(), 40);
     }
 
     void folderSearchSkipsSymlinkedFolders()
