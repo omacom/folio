@@ -123,7 +123,9 @@ Item {
         id: hover
         // The picture that follows the pointer while dragging; taken ahead
         // of time because a drag can't wait for it.
-        onHoveredChanged: if (hovered) art.grabToImage(result => tile.Drag.imageSource = result.url)
+        // Cleared first: Qt (6.12) reloads a new picture at the size of the
+        // one before, which for a grab only warns ("Ignoring sourceSize").
+        onHoveredChanged: if (hovered) art.grabToImage(result => { tile.Drag.imageSource = ""; tile.Drag.imageSource = result.url })
     }
 
     // Dragging hands the file to whatever it lands on as a URI list: the

@@ -152,7 +152,9 @@ Item {
 
     HoverHandler {
         id: hover
-        onHoveredChanged: if (hovered) row.grabToImage(result => row.Drag.imageSource = result.url)
+        // Cleared first: Qt (6.12) reloads a new picture at the size of the
+        // one before, which for a grab only warns ("Ignoring sourceSize").
+        onHoveredChanged: if (hovered) row.grabToImage(result => { row.Drag.imageSource = ""; row.Drag.imageSource = result.url })
     }
     TapHandler {
         id: tap
