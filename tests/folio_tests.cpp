@@ -6669,6 +6669,73 @@ private slots:
         QTRY_COMPARE(backend.path(), home.path());
     }
 
+    // Renamed inside a folder opened in the list's tree, an item stays
+    // selected under its new name, wherever that sorts it.
+    void listKeepsARenamedNestedItemSelected()
+    {
+        QTemporaryDir home, plugins;
+        QDir(home.path()).mkpath("files/alpha");
+        for (const char *name : {"a.txt", "b.txt", "c.txt"})
+            write(home.filePath(QString("files/alpha/") + name), "x");
+        Backend backend(home.path());
+        Theme theme(home.filePath("theme"));
+        Places places(home.path());
+        FileOps fileOps;
+        Plugins bundled("en", {plugins.path()}, home.filePath("folio.conf"));
+        Translator translator(home.filePath("language"), home.path());
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        QQmlEngine engine;
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("chooser", static_cast<QObject *>(nullptr));
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("plugins", &bundled);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("places", &places);
+        QQmlComponent component(&engine);
+        component.setData(R"(
+            import QtQuick
+            import QtQuick.Controls
+            ApplicationWindow {
+                width: 900; height: 620; visible: true
+                property string viewMode: "list"
+                property real zoom: 1
+                property bool split: false
+                property bool helpVisible: false
+                property var activePane: null
+                function raise() {}
+                function requestActivate() {}
+                FolderPane { id: pane; anchors.fill: parent; focus: true }
+                Component.onCompleted: activePane = pane
+                readonly property var paneItem: pane
+            }
+        )", QUrl::fromLocalFile(sourceFolder() + "/RenameNestedTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        auto *pane = root->property("paneItem").value<QObject *>();
+        QVERIFY(pane);
+        QVERIFY(QMetaObject::invokeMethod(pane, "focusView"));
+        FolderModel *folder = backend.folder();
+        backend.navigate(home.filePath("files"));
+        QTRY_COMPARE(folder->count(), 1);
+        folder->setExpanded(0, true);
+        QTRY_COMPARE(folder->count(), 4);
+        const auto cursor = [&] { return pane->property("current").toMap().value("path").toString(); };
+        QVERIFY(QMetaObject::invokeMethod(pane, "focusView"));
+        QTest::keyClick(window, Qt::Key_Down);
+        QTRY_COMPARE(cursor(), home.filePath("files/alpha/a.txt"));
+
+        // a.txt renamed to z.txt sorts last: the cursor goes with it.
+        QCOMPARE(fileOps.rename(home.filePath("files/alpha/a.txt"), "z.txt"), QString());
+        QTRY_COMPARE_WITH_TIMEOUT(cursor(), home.filePath("files/alpha/z.txt"), 3000);
+        QCOMPARE(folder->get(folder->indexOfPath(home.filePath("files/alpha/z.txt"))).value("selected").toBool(), true);
+        QCOMPARE(folder->selectedCount(), 1);
+    }
+
     void gridBandHitsTheTilesBothWays()
     {
         // The rubber band's hit areas sit where the grid put the tiles, also

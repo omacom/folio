@@ -270,8 +270,22 @@ FocusScope {
         // through a rename, and through undoing and redoing one.
         function onRenamed(from, to) { places.renamed(from, to) }
         function onDone(folder, name) {
-            if (folder !== backend.path)
+            // Done inside a folder opened in place (the list's tree): its
+            // item is found by its whole path, now or once the folder's
+            // been read again.
+            if (folder !== backend.path) {
+                if (!backend.folder.expandable || !folder.startsWith(backend.path + "/"))
+                    return
+                const path = folder + "/" + name
+                const inside = backend.folder.indexOfPath(path)
+                if (inside >= 0 && view.item) {
+                    view.item.select(inside, false)
+                } else {
+                    pane.lastPath = path
+                    pane.cursorLetGo = false
+                }
                 return
+            }
             const row = backend.folder.indexOf(name)
             if (row >= 0 && view.item)
                 view.item.select(row, false)

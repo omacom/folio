@@ -868,6 +868,16 @@ void FolderModel::setExpanded(int row, bool expanded) {
         if (row < 0)
             return;
         m_open.insert(folder, items);
+        // A re-read that finished first may have listed it already: its rows
+        // are replaced, never listed twice.
+        int end = row + 1;
+        while (end < m_entries.size() && m_entries[end].depth > m_entries[row].depth)
+            ++end;
+        if (end > row + 1) {
+            beginRemoveRows({}, row + 1, end - 1);
+            m_entries.remove(row + 1, end - row - 1);
+            endRemoveRows();
+        }
         const QVector<Entry> rows = flatten(items, m_open, m_entries[row].depth + 1);
         if (rows.isEmpty())
             return;
