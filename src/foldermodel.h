@@ -201,6 +201,9 @@ signals:
     void selectionChanged();
     void loaded();
     void expandableChanged();
+    // A folder opened in place couldn't be read (or read again), and was
+    // closed: `message` says which, and why.
+    void expandFailed(const QString &message);
 
 private:
     void setLoading(bool loading);
@@ -219,6 +222,12 @@ private:
     // hold. One just opened is in m_expanded until its listing arrives.
     QSet<QString> m_expanded;
     QHash<QString, QVector<Entry>> m_open;
+    // Each opening's own number, while it's read, so a reading from before
+    // the folder was closed and opened again is dropped.
+    QHash<QString, quint64> m_opening;
+    quint64 m_openings = 0;
+    // Closes a folder that couldn't be read, saying why.
+    void failExpanded(const QString &folder, const QString &error);
     void forgetExpanded();
     void setSelected(const QSet<QString> &paths);
     bool m_loading = false;

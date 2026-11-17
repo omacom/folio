@@ -54,6 +54,11 @@ FileListView {
     }
     Keys.onRightPressed: LayoutMirroring.enabled ? shallower() : deeper()
     Keys.onLeftPressed: LayoutMirroring.enabled ? deeper() : shallower()
+    // A folder that couldn't be opened in place says why.
+    Connections {
+        target: backend.folder
+        function onExpandFailed(message) { backend.showMessage(message) }
+    }
     // Open folders close on going to another view; coming back, the list
     // starts closed.
     Component.onDestruction: backend.folder.collapseAll()

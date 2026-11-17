@@ -561,17 +561,21 @@ void FolderModel::reload() {
     const QStringList expanded = expandable() ? QStringList(m_expanded.begin(), m_expanded.end()) : QStringList();
     *m_latest = generation;
     const auto latest = m_latest;
-    auto *watcher = new QFutureWatcher<std::tuple<QVector<Entry>, QString, QStringList, QHash<QString, QVector<Entry>>>>(this);
+    auto *watcher = new QFutureWatcher<std::tuple<QVector<Entry>, QString, QStringList, QHash<QString, QVector<Entry>>, QHash<QString, QString>>>(this);
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation] {
         watcher->deleteLater();
         if (generation != m_generation)
             return; // A newer listing replaced this one while it ran.
         m_staleClear.stop();
-        const auto [listed, error, trashDirs, open] = watcher->result();
-        // The folders opened in place, each with its items under it.
+        const auto [listed, error, trashDirs, open, unread] = watcher->result();
+        // The folders opened in place, each with its items under it, and
+        // those that can no longer be read closed.
         for (auto it = open.begin(); it != open.end(); ++it)
             if (m_expanded.contains(it.key()))
                 m_open.insert(it.key(), it.value());
+        for (auto it = unread.begin(); it != unread.end(); ++it)
+            if (m_expanded.contains(it.key()))
+                failExpanded(it.key(), it.value());
         const QVector<Entry> entries = m_open.isEmpty() ? listed : flatten(listed, m_open);
         // Unchanged (the usual case after showing a remembered listing):
         // leave the items alone, and only fill in folder counts still missing.
@@ -611,17 +615,23 @@ void FolderModel::reload() {
                      : search(path, query, showHidden, sort, overtaken, 1000, locale, filter);
         if (!isPluginView(path))
             entries.removeIf([&](const Entry &entry) { return !fits(filter, entry); });
-        // Every folder opened in place, read again with it.
+        // Every folder opened in place, read again with it; one that can't
+        // be is told by its error.
         QHash<QString, QVector<Entry>> open;
+        QHash<QString, QString> unread;
         for (const QString &folder : expanded) {
             if (overtaken())
                 break;
-            QString ignored;
-            auto items = list(folder, showHidden, sort, &ignored, overtaken, locale);
+            QString why;
+            auto items = list(folder, showHidden, sort, &why, overtaken, locale);
+            if (!why.isEmpty()) {
+                unread.insert(folder, why);
+                continue;
+            }
             items.removeIf([&](const Entry &entry) { return !fits(filter, entry); });
             open.insert(folder, items);
         }
-        return std::make_tuple(entries, error, trashDirs, open);
+        return std::make_tuple(entries, error, trashDirs, open, unread);
     }));
 }
 
@@ -806,6 +816,7 @@ void FolderModel::setExpanded(int row, bool expanded) {
             if (*it == folder || it->startsWith(inside)) {
                 m_watcher.removePath(*it);
                 m_open.remove(*it);
+                m_opening.remove(*it);
                 it = m_expanded.erase(it);
             } else {
                 ++it;
@@ -832,22 +843,30 @@ void FolderModel::setExpanded(int row, bool expanded) {
     m_expanded.insert(folder);
     m_watcher.addPath(folder);
     emit dataChanged(at, at, {ExpandedRole});
+    const quint64 opening = ++m_openings;
+    m_opening.insert(folder, opening);
     const quint64 generation = m_generation;
     const bool showHidden = m_showHidden;
     const QString sort = m_sort;
     const QStringList filter = m_filter;
     const QLocale locale;
     const auto latest = m_latest;
-    auto *watcher = new QFutureWatcher<QVector<Entry>>(this);
-    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, folder] {
+    auto *watcher = new QFutureWatcher<std::pair<QVector<Entry>, QString>>(this);
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, folder, opening] {
         watcher->deleteLater();
-        // A re-read since (which reads it too), or closed again meanwhile.
-        if (generation != m_generation || !m_expanded.contains(folder))
+        // A re-read since (which reads it too), or closed meanwhile, and
+        // perhaps opened again: only this opening's reading counts.
+        if (generation != m_generation || m_opening.value(folder) != opening)
             return;
+        m_opening.remove(folder);
+        const auto &[items, error] = watcher->result();
+        if (!error.isEmpty()) {
+            failExpanded(folder, error);
+            return;
+        }
         const int row = indexOfPath(folder);
         if (row < 0)
             return;
-        const QVector<Entry> items = watcher->result();
         m_open.insert(folder, items);
         const QVector<Entry> rows = flatten(items, m_open, m_entries[row].depth + 1);
         if (rows.isEmpty())
@@ -860,11 +879,26 @@ void FolderModel::setExpanded(int row, bool expanded) {
         countFolders(generation);
     });
     watcher->setFuture(QtConcurrent::run(&FolderModel::listingPool(), [folder, showHidden, sort, filter, latest, generation, locale] {
-        QString ignored;
-        auto items = list(folder, showHidden, sort, &ignored, [&] { return *latest != generation; }, locale);
+        QString error;
+        auto items = list(folder, showHidden, sort, &error, [&] { return *latest != generation; }, locale);
         items.removeIf([&](const Entry &entry) { return !fits(filter, entry); });
-        return items;
+        return std::make_pair(items, error);
     }));
+}
+
+void FolderModel::failExpanded(const QString &folder, const QString &error) {
+    // Closed as a click on its arrow would, its items (if any were shown)
+    // going with it.
+    if (const int row = indexOfPath(folder); row >= 0 && m_expanded.contains(folder)) {
+        setExpanded(row, false);
+    } else {
+        m_expanded.remove(folder);
+        m_open.remove(folder);
+        m_opening.remove(folder);
+        m_watcher.removePath(folder);
+    }
+    //: %1 is a folder's name, %2 why it couldn't be opened.
+    emit expandFailed(tr("%1: %2").arg(QFileInfo(folder).fileName(), error));
 }
 
 void FolderModel::forgetExpanded() {
@@ -873,6 +907,7 @@ void FolderModel::forgetExpanded() {
             m_watcher.removePath(folder);
     m_expanded.clear();
     m_open.clear();
+    m_opening.clear();
 }
 
 void FolderModel::collapseAll() {

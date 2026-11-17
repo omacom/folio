@@ -834,6 +834,27 @@ private slots:
         model.setExpanded(0, true);
         QTRY_COMPARE(names(), QStringList({"alpha", "  inner", "  x.txt", "  y.txt", "beta", "top.txt"}));
 
+        // Closed and opened again before its first reading is in, it lists
+        // its items once, not once for each opening.
+        model.setExpanded(0, false);
+        model.setExpanded(0, true);
+        model.setExpanded(0, false);
+        model.setExpanded(0, true);
+        QTRY_COMPARE(names(), QStringList({"alpha", "  inner", "  x.txt", "  y.txt", "beta", "top.txt"}));
+        QTest::qWait(200);
+        QCOMPARE(names(), QStringList({"alpha", "  inner", "  x.txt", "  y.txt", "beta", "top.txt"}));
+
+        // One that can't be read closes again, saying why, rather than
+        // looking empty.
+        QSignalSpy failed(&model, &FolderModel::expandFailed);
+        QVERIFY(QFile::setPermissions(dir.filePath("beta"), QFileDevice::Permissions()));
+        model.setExpanded(4, true);
+        QTRY_COMPARE(failed.count(), 1);
+        QVERIFY(failed.last().first().toString().startsWith("beta: "));
+        QVERIFY(!model.isExpanded(4));
+        QCOMPARE(names(), QStringList({"alpha", "  inner", "  x.txt", "  y.txt", "beta", "top.txt"}));
+        QVERIFY(QFile::setPermissions(dir.filePath("beta"), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+
         // Files and the folder's other views don't open.
         model.setExpanded(5, true);
         QVERIFY(!model.isExpanded(5));
