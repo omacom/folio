@@ -28,9 +28,11 @@ public:
     // otherwise from Folio's own cache (~/.cache/folio/sharp) when one's been
     // made, and made from the file when not. A picture Qt can't read gets
     // the largest thumbnail instead. `fresh` says the picture was made just
-    // now, for keep() to cache.
-    QImage sharp(const QString &path, const QString &mime, int pixels, bool *fresh) const;
-    void keep(const QImage &image, const QString &path, int pixels) const;
+    // now, for keep() to cache, dated `modified`: the picture's time as it
+    // was before its pixels were read, so one saved over meanwhile is made
+    // again rather than kept old under its new time.
+    QImage sharp(const QString &path, const QString &mime, int pixels, bool *fresh, QDateTime *modified) const;
+    void keep(const QImage &image, const QString &path, int pixels, const QDateTime &modified) const;
 
     static QString cacheKey(const QString &path);
     static QString bucketFor(int size);

@@ -5841,13 +5841,21 @@ private slots:
         Thumbnails thumbnails(dir.filePath("cache/thumbnails"), {dir.filePath("none")});
 
         bool fresh = false;
-        QImage image = thumbnails.sharp(big, "image/png", 1024, &fresh);
+        QDateTime read;
+        QImage image = thumbnails.sharp(big, "image/png", 1024, &fresh, &read);
         QVERIFY(fresh);
         QCOMPARE(image.size(), QSize(1024, 682));
-        thumbnails.keep(image, big, 1024);
+        QCOMPARE(read, QFileInfo(big).lastModified());
+        thumbnails.keep(image, big, 1024, read);
         const QString kept = dir.filePath("cache/folio/sharp/1024/") + Thumbnails::cacheKey(big).chopped(4) + ".jpg";
         QVERIFY2(QFileInfo::exists(kept), qPrintable(kept));
-        image = thumbnails.sharp(big, "image/png", 1024, &fresh);
+        // Only its owner may read it, and the folders it's in.
+        QCOMPARE(QFileInfo(kept).permissions() & (QFile::ReadGroup | QFile::ReadOther), QFileDevice::Permissions());
+        QCOMPARE(QFileInfo(QFileInfo(kept).absolutePath()).permissions() & (QFile::ReadOther | QFile::ExeOther), QFileDevice::Permissions());
+        // Kept under the time it was read at, not the file's time now: one
+        // saved over while it was read is made again.
+        QCOMPARE(QFileInfo(kept).lastModified(), read);
+        image = thumbnails.sharp(big, "image/png", 1024, &fresh, &read);
         QVERIFY(!fresh);
         QCOMPARE(image.size(), QSize(1024, 682));
 
@@ -5857,10 +5865,10 @@ private slots:
             QVERIFY(file.open(QIODevice::ReadWrite));
             QVERIFY(file.setFileTime(QDateTime::currentDateTime().addSecs(60), QFileDevice::FileModificationTime));
         }
-        thumbnails.sharp(big, "image/png", 1024, &fresh);
+        thumbnails.sharp(big, "image/png", 1024, &fresh, &read);
         QVERIFY(fresh);
 
-        image = thumbnails.sharp(small, "image/png", 1024, &fresh);
+        image = thumbnails.sharp(small, "image/png", 1024, &fresh, &read);
         QVERIFY(!fresh);
         QCOMPARE(image.size(), QSize(400, 300));
     }

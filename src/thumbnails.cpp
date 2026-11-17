@@ -158,12 +158,13 @@ QString Thumbnails::sharpPath(const QString &path, int pixels, bool alpha) const
     return QFileInfo(m_cache).absolutePath() + "/folio/sharp/" + QString::number(pixels) + "/" + key + (alpha ? ".png" : ".jpg");
 }
 
-QImage Thumbnails::sharp(const QString &path, const QString &mime, int pixels, bool *fresh) const {
+QImage Thumbnails::sharp(const QString &path, const QString &mime, int pixels, bool *fresh, QDateTime *read) const {
     *fresh = false;
     const QFileInfo info(path);
     if (!info.isFile())
         return {};
     const QDateTime modified = info.lastModified();
+    *read = modified;
     for (const bool alpha : {false, true}) {
         const QFileInfo cached(sharpPath(path, pixels, alpha));
         if (cached.exists() && cached.lastModified() == modified)
@@ -186,13 +187,19 @@ QImage Thumbnails::sharp(const QString &path, const QString &mime, int pixels, b
     return image;
 }
 
-void Thumbnails::keep(const QImage &image, const QString &path, int pixels) const {
-    const QDateTime modified = QFileInfo(path).lastModified();
+void Thumbnails::keep(const QImage &image, const QString &path, int pixels, const QDateTime &modified) const {
     const QString target = sharpPath(path, pixels, image.hasAlphaChannel());
-    QDir().mkpath(QFileInfo(target).absolutePath());
+    // Copies of private pictures: only their owner may read them, as with
+    // the thumbnails (see save()).
+    const QString folder = QFileInfo(target).absolutePath();
+    QDir().mkpath(folder);
+    const auto ownerOnly = QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner;
+    for (const QString &dir : {QFileInfo(folder).absolutePath(), folder})
+        QFile::setPermissions(dir, ownerOnly);
     QSaveFile file(target);
     if (!file.open(QIODevice::WriteOnly) || !image.save(&file, image.hasAlphaChannel() ? "PNG" : "JPG", image.hasAlphaChannel() ? 10 : 90))
         return;
+    file.setPermissions(QFile::ReadOwner | QFile::WriteOwner);
     if (file.commit()) {
         QFile written(target);
         if (written.open(QIODevice::ReadWrite))
@@ -427,7 +434,8 @@ public:
             const QString mime = QUrl::fromPercentEncoding(parts.at(3).toUtf8());
             const QString path = QUrl::fromPercentEncoding(parts.mid(4).join('/').toUtf8());
             bool fresh = false;
-            m_image = m_thumbnails->sharp(path, mime, pixels, &fresh);
+            QDateTime modified;
+            m_image = m_thumbnails->sharp(path, mime, pixels, &fresh, &modified);
             // Shown first, kept after: writing it shouldn't hold it up. Qt
             // may delete the response once it's finished, so nothing of it
             // is used after.
@@ -437,7 +445,7 @@ public:
                 m_error = QStringLiteral("No picture");
             emit finished();
             if (!made.isNull())
-                thumbnails->keep(made, path, pixels);
+                thumbnails->keep(made, path, pixels, modified);
             return;
         }
         if (!m_cancelled && parts.size() >= 6 && parts.at(0) == "page") {
