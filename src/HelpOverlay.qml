@@ -34,8 +34,9 @@ Rectangle {
     // a list of keys pressed together. A word starting with ~ is something
     // done with the mouse ("click"), said rather than drawn as a key. Key
     // names (Shift, Alt, Ctrl) stay as they are in every language.
+    // The preview window gives its own, in the same form.
     readonly property bool mirrored: LayoutMirroring.enabled
-    readonly property var groups: [
+    property var groups: [
         { title: qsTr("Moving around"), shortcuts: [
             [qsTr("Move the selection"), [["←", "↑", "→", "↓"]]],
             [qsTr("Into a folder / back out"), mirrored ? [["←"], ["→"]] : [["→"], ["←"]]],
@@ -55,7 +56,7 @@ Rectangle {
             [qsTr("Select everything"), [["Ctrl", "A"]]]
         ]},
         { title: qsTr("Files"), shortcuts: [
-            [qsTr("Copy, cut, paste"), [["Ctrl", "C"], ["X"], ["V"]]],
+            [qsTr("Copy, cut, paste"), [["Ctrl", "C"], ["Ctrl", "X"], ["Ctrl", "V"]]],
             [qsTr("Copy the path as text"), [["Ctrl", "Shift", "C"]]],
             [qsTr("Rename"), [["F2"]]],
             [qsTr("Duplicate"), [["Ctrl", "Shift", "D"]]],
@@ -69,8 +70,8 @@ Rectangle {
             [qsTr("Stop the work under way"), [["Escape"]]]
         ]},
         { title: qsTr("View"), shortcuts: [
-            [qsTr("Columns, grid or list"), [["Ctrl", "1"], ["2"], ["3"]]],
-            [qsTr("Bigger, smaller or normal tiles"), [["Ctrl", "="], ["-"], ["0"]]],
+            [qsTr("Columns, grid or list"), [["Ctrl", "1"], ["Ctrl", "2"], ["Ctrl", "3"]]],
+            [qsTr("Bigger, smaller or normal tiles"), [["Ctrl", "="], ["Ctrl", "-"], ["Ctrl", "0"]]],
             [qsTr("Next or previous sort order"), [["S"], ["Shift", "S"]]],
             [qsTr("Show hidden files"), [["Ctrl", "H"]]],
             [qsTr("Reload"), [["F5"]]]

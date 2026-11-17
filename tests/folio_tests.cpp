@@ -22,6 +22,7 @@
 #include <QJsonObject>
 #include <QProcess>
 #include <QQmlComponent>
+#include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQmlPropertyMap>
@@ -6214,6 +6215,34 @@ private slots:
         Previewer previewer;
         previewer.start(dir.filePath("blob.txt"), false, "name");
         QTRY_COMPARE(previewer.viewer(), QString("other"));
+    }
+
+    // The preview window loads as the app loads it, its shortcuts with it.
+    void previewWindowLoads()
+    {
+        QTemporaryDir dir;
+        write(dir.filePath("notes.txt"), "hello\n");
+        Theme theme(dir.filePath("theme"));
+        Translator translator(dir.filePath("language"), dir.path());
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.filePath("none")});
+        Previewer previewer;
+        previewer.start(dir.filePath("notes.txt"), false, "name");
+        QQmlApplicationEngine engine;
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("previewer", &previewer);
+        QStringList problems;
+        QObject::connect(&engine, &QQmlApplicationEngine::warnings, [&](const QList<QQmlError> &warnings) {
+            for (const QQmlError &warning : warnings)
+                problems << warning.toString();
+        });
+        engine.load(QUrl("qrc:/PreviewWindow.qml"));
+        QVERIFY2(!engine.rootObjects().isEmpty(), qPrintable(problems.join("\n")));
+        QObject *window = engine.rootObjects().first();
+        window->setProperty("helpVisible", true);
+        QCoreApplication::processEvents();
+        QVERIFY2(problems.isEmpty(), qPrintable(problems.join("\n")));
     }
 
     void previewerShowsOnlyWhatLaysOutQuickly()
