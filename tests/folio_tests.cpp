@@ -783,6 +783,75 @@ private slots:
         QTRY_COMPARE(root->property("selected").toString(), QString("2025"));
     }
 
+    // The list's tree: a folder opened in place lists its items under it a
+    // level in, read again with the folder when anything changes; closed,
+    // they go, with anything opened or selected inside.
+    void folderOpensFoldersInPlace()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("alpha/inner");
+        QDir(dir.path()).mkpath("beta");
+        write(dir.filePath("alpha/x.txt"), "x");
+        write(dir.filePath("alpha/inner/deep.txt"), "x");
+        write(dir.filePath("top.txt"), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        const auto names = [&] {
+            QStringList list;
+            for (int row = 0; row < model.count(); ++row)
+                list << QString(model.get(row).value("depth").toInt() * 2, ' ') + model.get(row).value("name").toString();
+            return list;
+        };
+        QCOMPARE(names(), QStringList({"alpha", "beta", "top.txt"}));
+        QVERIFY(model.expandable());
+
+        model.setExpanded(0, true);
+        QVERIFY(model.isExpanded(0));
+        QTRY_COMPARE(names(), QStringList({"alpha", "  inner", "  x.txt", "beta", "top.txt"}));
+        QCOMPARE(model.parentRow(2), 0);
+        QCOMPARE(model.parentRow(3), -1);
+        // Only the folder's own items go by their names.
+        QCOMPARE(model.indexOf("x.txt"), -1);
+        QCOMPARE(model.indexOfPath(dir.filePath("alpha/x.txt")), 2);
+
+        // A level deeper still.
+        model.setExpanded(1, true);
+        QTRY_COMPARE(names(), QStringList({"alpha", "  inner", "    deep.txt", "  x.txt", "beta", "top.txt"}));
+
+        // A file added inside shows, the folder read again with it.
+        write(dir.filePath("alpha/y.txt"), "y");
+        QTRY_COMPARE_WITH_TIMEOUT(names(), QStringList({"alpha", "  inner", "    deep.txt", "  x.txt", "  y.txt", "beta", "top.txt"}), 3000);
+
+        // Closed, what's inside goes, the folder opened within it and what
+        // was selected there too.
+        model.selectRows({2, 4});
+        QCOMPARE(model.selectedCount(), 2);
+        model.setExpanded(0, false);
+        QCOMPARE(names(), QStringList({"alpha", "beta", "top.txt"}));
+        QCOMPARE(model.selectedCount(), 0);
+        model.setExpanded(0, true);
+        QTRY_COMPARE(names(), QStringList({"alpha", "  inner", "  x.txt", "  y.txt", "beta", "top.txt"}));
+
+        // Files and the folder's other views don't open.
+        model.setExpanded(5, true);
+        QVERIFY(!model.isExpanded(5));
+        model.collapseAll();
+        QCOMPARE(names(), QStringList({"alpha", "beta", "top.txt"}));
+
+        // A search is a flat list, and nothing opens in it.
+        model.setExpanded(0, true);
+        QTRY_COMPARE(model.count(), 6);
+        model.setQuery("x");
+        QVERIFY(!model.expandable());
+        QVERIFY(loaded.wait(3000));
+        QVERIFY(!names().join(",").contains("  "));
+        model.setQuery({});
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(names(), QStringList({"alpha", "beta", "top.txt"}));
+    }
+
     void folderListsDirectoriesFirstWithoutHidden()
     {
         QTemporaryDir dir;
@@ -6507,6 +6576,76 @@ private slots:
         QTest::keyClick(window, Qt::Key_PageDown, Qt::ShiftModifier);
         QCOMPARE(root->property("cursor").toInt(), 2 * paged);
         QCOMPARE(backend.folder()->selectedCount(), 2 * paged + 1);
+    }
+
+    // The list's keys for its tree, as the Finder's: → opens a folder in
+    // place, then steps into it; ← steps back out to the folder, closes it,
+    // and from the top goes up a folder. A click on a folder's arrow opens
+    // or closes it.
+    void listWalksItsTree()
+    {
+        QTemporaryDir home;
+        QDir(home.path()).mkpath("files/alpha");
+        write(home.filePath("files/alpha/inside.txt"), "x");
+        write(home.filePath("files/beside.txt"), "x");
+        Backend backend(home.path());
+        backend.navigate(home.filePath("files"));
+        QTRY_COMPARE(backend.folder()->rowCount(), 2);
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        Translator translator(home.filePath("language"), home.path());
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("plugins", QVariantMap{{"views", QVariantMap{}}});
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine);
+        component.setData(R"(
+            import QtQuick
+            Window {
+                width: 700; height: 300; visible: true
+                property alias cursor: folderView.currentIndex
+                FolderList { id: folderView; anchors.fill: parent; Component.onCompleted: focusView() }
+            }
+        )", QUrl::fromLocalFile(sourceFolder() + "/ListTreeTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowActive(window));
+        FolderModel *folder = backend.folder();
+        root->setProperty("cursor", 0);
+
+        QTest::keyClick(window, Qt::Key_Right);
+        QTRY_COMPARE(folder->rowCount(), 3);
+        QVERIFY(folder->isExpanded(0));
+        QCOMPARE(root->property("cursor").toInt(), 0);
+        QTest::keyClick(window, Qt::Key_Right);
+        QCOMPARE(root->property("cursor").toInt(), 1);
+        QCOMPARE(folder->get(1).value("name").toString(), QString("inside.txt"));
+        QTest::keyClick(window, Qt::Key_Left);
+        QCOMPARE(root->property("cursor").toInt(), 0);
+        QTest::keyClick(window, Qt::Key_Left);
+        QCOMPARE(folder->rowCount(), 2);
+        QVERIFY(!folder->isExpanded(0));
+        QCOMPARE(backend.path(), home.filePath("files"));
+
+        // The arrow, at the row's start, opens it too, without moving into it.
+        QTest::mouseClick(window, Qt::LeftButton, {}, QPoint(13, 16));
+        QTRY_COMPARE(folder->rowCount(), 3);
+        QCOMPARE(backend.path(), home.filePath("files"));
+        QTest::qWait(200);
+        window->grabWindow().save(sourceFolder() + "/../build/tree.png");
+        QTest::mouseClick(window, Qt::LeftButton, {}, QPoint(13, 16));
+        QCOMPARE(folder->rowCount(), 2);
+
+        // From the top, ← goes up a folder, as before.
+        QTest::keyClick(window, Qt::Key_Left);
+        QTRY_COMPARE(backend.path(), home.path());
     }
 
     void gridBandHitsTheTilesBothWays()
