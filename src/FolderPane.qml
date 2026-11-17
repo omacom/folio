@@ -135,6 +135,8 @@ FocusScope {
     // follow.
     onActiveFocusChanged: if (activeFocus && host) host.activePane = pane
     function focusView() { if (view.item) view.item.focusView() }
+    // Rename… in a sidebar folder's menu.
+    function renameFolder(path) { rename.open({ path: path, isDir: true }) }
     // A place picked in the sidebar: the columns start at it.
     function startAt(path) { if (view.item && view.item.startAt) view.item.startAt(path) }
 
@@ -275,6 +277,9 @@ FocusScope {
         }
         function onFailed(message) { backend.showMessage(message) }
         function onNotice(notice) { backend.showNotice(notice) }
+        // Work done (a folder of home's trashed, say) shows in the sidebar
+        // at once, not at its next look in 15 seconds.
+        function onBusyChanged() { if (!fileOps.busy) places.refresh() }
         // A drive about to be formatted or burned is left first, by every
         // pane, and the sidebar shows it as it is afterwards.
         function onReleasing(root) { places.leave(root) }

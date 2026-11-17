@@ -24,17 +24,17 @@
 
 namespace {
 
-// Home's own folders, all but the hidden ones (as refreshPlaces lists them),
-// are already under Home.
-bool listedUnderHome(const QString &path, const QString &home) {
-    const QString clean = QDir::cleanPath(home);
-    const QFileInfo info(path);
-    return path == clean || (info.absolutePath() == clean && !info.isHidden());
+// Whether `path` is one of home's own folders, which only Home lists.
+bool inHome(const QString &path, const QString &home) {
+    return QFileInfo(path).absolutePath() == QDir::cleanPath(home);
 }
 
-// Omarchy's own folder reads as the name it goes by.
-QString displayName(const QString &name) {
-    return name == "omarchy" ? QStringLiteral("Omarchy") : name;
+// Home's own folders, all but the dot-hidden ones and those hidden from
+// Home (as refreshPlaces lists them), are already under Home.
+bool listedUnderHome(const QString &path, const QString &home, const QStringList &hidden) {
+    const QString clean = QDir::cleanPath(home);
+    const QFileInfo info(path);
+    return path == clean || (inHome(path, home) && !info.isHidden() && !hidden.contains(info.fileName()));
 }
 
 // Home's folders read capitalized there, as the XDG ones are: go as Go,
@@ -43,9 +43,14 @@ QString homeName(const QString &name) {
     return name.isEmpty() ? name : name.left(1).toUpper() + name.mid(1);
 }
 
+// Omarchy's own folder reads as the name it goes by.
+QString displayName(const QString &name) {
+    return name == "omarchy" ? QStringLiteral("Omarchy") : name;
+}
+
 // Reads bookmark lines ("file:///path Label") into pinned entries, leaving
 // out folders already listed under Home and missing folders.
-QVariantList parseBookmarks(const QStringList &lines, const QString &home) {
+QVariantList parseBookmarks(const QStringList &lines, const QString &home, const QStringList &hidden) {
     QVariantList pinned;
     QStringList seen;
     for (const QString &raw : lines) {
@@ -62,7 +67,7 @@ QVariantList parseBookmarks(const QStringList &lines, const QString &home) {
         const QString path = QDir::cleanPath(url.toLocalFile());
         // Home's visible folders are already under Home; Omarchy also seeds
         // a few of those as bookmarks for the file dialogs.
-        if (listedUnderHome(path, home) || seen.contains(path) || !QFileInfo(path).isDir())
+        if (listedUnderHome(path, home, hidden) || seen.contains(path) || !QFileInfo(path).isDir())
             continue;
         seen << path;
         pinned << QVariantMap{{"name", label.isEmpty() ? displayName(QFileInfo(path).fileName()) : label},
@@ -175,7 +180,10 @@ void Places::refreshPlaces() {
     collator.setNumericMode(true);
     collator.setCaseSensitivity(Qt::CaseInsensitive);
     std::sort(names.begin(), names.end(), [&](const QString &a, const QString &b) { return collator.compare(a, b) < 0; });
+    m_hidden = readHidden();
     for (const QString &name : names) {
+        if (m_hidden.contains(name))
+            continue;
         const QString path = m_home + "/" + name;
         add(homeName(name), path, icons.value(path, "folder"));
     }
@@ -188,11 +196,91 @@ void Places::refreshPlaces() {
                QVariantMap{{"path", QDir::cleanPath(FileOps::homeTrash() + "/files")}, {"icon", "trash"}}};
 }
 
+QString Places::configPath() const {
+    // Tests use a temporary home, whose settings live inside it.
+    return m_realHome ? QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
+                      : m_home + "/.config";
+}
+
 QString Places::bookmarksPath() const {
-    // Tests use a temporary home, whose bookmarks live inside it.
-    const QString config = m_realHome ? QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
-                                      : m_home + "/.config";
-    return config + "/gtk-3.0/bookmarks";
+    return configPath() + "/gtk-3.0/bookmarks";
+}
+
+QString Places::hiddenPath() const {
+    return configPath() + "/folio/hidden-in-home";
+}
+
+QStringList Places::readHidden() const {
+    QFile file(hiddenPath());
+    if (!file.open(QIODevice::ReadOnly))
+        return {};
+    QStringList names = QString::fromUtf8(file.readAll()).split('\n');
+    names.removeAll(QString());
+    return names;
+}
+
+bool Places::writeHidden(const QStringList &names) {
+    QDir().mkpath(QFileInfo(hiddenPath()).absolutePath());
+    QSaveFile file(hiddenPath());
+    if (!file.open(QIODevice::WriteOnly))
+        return false;
+    file.write(names.isEmpty() ? QByteArray() : (names.join('\n') + '\n').toUtf8());
+    return file.commit();
+}
+
+bool Places::hiddenFromHome(const QString &path) const {
+    const QString clean = QDir::cleanPath(path);
+    return inHome(clean, m_home) && m_hidden.contains(QFileInfo(clean).fileName());
+}
+
+void Places::hideFromHome(const QString &path) {
+    const QString clean = QDir::cleanPath(path);
+    if (!inHome(clean, m_home) || hiddenFromHome(clean))
+        return;
+    QStringList names = readHidden();
+    names << QFileInfo(clean).fileName();
+    if (!writeHidden(names))
+        return;
+    refreshPlaces();
+    refreshPinned();
+    emit changed();
+}
+
+void Places::showInHome(const QString &path) {
+    const QString clean = QDir::cleanPath(path);
+    QStringList names = readHidden();
+    if (!inHome(clean, m_home) || names.removeAll(QFileInfo(clean).fileName()) == 0 || !writeHidden(names))
+        return;
+    refreshPlaces();
+    refreshPinned();
+    emit changed();
+}
+
+void Places::renamed(const QString &from, const QString &to) {
+    const QString before = QDir::cleanPath(from), after = QDir::cleanPath(to);
+    if (hiddenFromHome(before)) {
+        QStringList names = readHidden();
+        names.removeAll(QFileInfo(before).fileName());
+        if (inHome(after, m_home))
+            names << QFileInfo(after).fileName();
+        writeHidden(names);
+    }
+    // A pin keeps its label, and only its path changes.
+    QStringList lines = readBookmarkLines();
+    bool moved = false;
+    for (QString &line : lines) {
+        const int space = line.indexOf(' ');
+        const QUrl url(space < 0 ? line : line.left(space));
+        if (url.isLocalFile() && QDir::cleanPath(url.toLocalFile()) == before) {
+            line = QString::fromUtf8(QUrl::fromLocalFile(after).toEncoded()) + (space < 0 ? QString() : line.mid(space));
+            moved = true;
+        }
+    }
+    if (moved)
+        writeBookmarkLines(lines);
+    refreshPlaces();
+    refreshPinned();
+    emit changed();
 }
 
 QStringList Places::readBookmarkLines() const {
@@ -216,7 +304,7 @@ bool Places::writeBookmarkLines(const QStringList &lines) {
 }
 
 void Places::refreshPinned() {
-    m_pinned = parseBookmarks(readBookmarkLines(), m_home);
+    m_pinned = parseBookmarks(readBookmarkLines(), m_home, m_hidden);
 }
 
 bool Places::isPinned(const QString &path) const {
@@ -232,7 +320,7 @@ QString Places::pin(const QString &path) {
     const QFileInfo info(clean);
     if (!info.isDir())
         return tr("Only folders can be pinned.");
-    if (listedUnderHome(clean, m_home))
+    if (listedUnderHome(clean, m_home, m_hidden))
         return tr("%1 is already under Home.").arg(displayName(info.fileName()));
     if (isPinned(clean))
         return {};

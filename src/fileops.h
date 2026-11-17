@@ -89,6 +89,7 @@ public:
     // plain text, so pasting into a terminal or editor gives the path.
     // Whether Shift is held right now, for menus that change with it.
     Q_INVOKABLE static bool shiftHeld();
+    Q_INVOKABLE static bool altHeld();
     Q_INVOKABLE void copy(const QStringList &paths);
     Q_INVOKABLE void cut(const QStringList &paths);
     Q_INVOKABLE void yank(const QStringList &paths);

@@ -139,6 +139,12 @@ FolioMenu {
         keys: "Ctrl+P"
         onTriggered: fileMenu.pinRequested(fileMenu.target.path)
     }
+    // A folder of home's hidden from its sidebar section goes back there.
+    FolioMenuItem {
+        shown: fileMenu.forFolder && places.hiddenFromHome(fileMenu.target.path)
+        text: qsTr("Show in Home")
+        onTriggered: places.showInHome(fileMenu.target.path)
+    }
     MenuLine { shown: fileMenu.forItem && fileMenu.forFiles }
     FolioMenuItem {
         shown: !fileMenu.trashView && fileMenu.forItem && fileMenu.forFiles

@@ -151,6 +151,10 @@ bool FileOps::shiftHeld() {
     return QGuiApplication::queryKeyboardModifiers() & Qt::ShiftModifier;
 }
 
+bool FileOps::altHeld() {
+    return QGuiApplication::queryKeyboardModifiers() & Qt::AltModifier;
+}
+
 void FileOps::copy(const QStringList &paths) {
     if (!paths.isEmpty())
         QGuiApplication::clipboard()->setMimeData(mimeDataFor(paths, false));

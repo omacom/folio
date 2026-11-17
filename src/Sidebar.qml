@@ -19,6 +19,9 @@ Rectangle {
     signal finished()
     // Format… in a drive's menu, with what udisks knows of the drive.
     signal formatRequested(var disk)
+    // Rename… and Delete… in a folder's menu.
+    signal renameRequested(string path)
+    signal deleteRequested(string path)
     // A place picked here: the columns start at it, rather than at the
     // folders above it.
     signal placeChosen(string path)
@@ -102,22 +105,36 @@ Rectangle {
     // Rows taken away under the keyboard leave it on the last one.
     onRowsChanged: cursor = Math.max(0, Math.min(cursor, rows.length - 1))
 
-    // Alt+⏎ (or the Menu key) on a drive opens its menu beside it; the
-    // files' menu stands aside for it.
+    // Alt+⏎ (or the Menu key) on a drive or a folder of Home or Pinned
+    // opens its menu beside it; the files' menu stands aside for it.
     readonly property var keyedDrive: activeFocus && cursor >= devicesAt && cursor < pluginsAt
                                       ? driveRows.itemAt(cursor - devicesAt) : null
+    readonly property var keyedPlace: !activeFocus ? null
+                                    : cursor < pinnedAt ? homeRows.itemAt(cursor)
+                                    : cursor < viewsAt ? pinRows.itemAt(cursor - pinnedAt) : null
     function menuKey(event) {
         return ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.AltModifier))
             || event.key === Qt.Key_Menu || (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))
     }
-    Keys.onShortcutOverride: (event) => event.accepted = menuKey(event) && keyedDrive !== null
+    Keys.onShortcutOverride: (event) => event.accepted = menuKey(event) && (keyedDrive !== null || keyedPlace !== null)
     // Return has its own handler, which Keys calls before this one.
     Keys.onPressed: (event) => event.accepted = openDriveMenu(event)
     function openDriveMenu(event) {
-        if (!menuKey(event) || !keyedDrive)
+        if (!menuKey(event))
             return false
-        driveMenu.show(keyedDrive.modelData, keyedDrive)
+        if (keyedDrive)
+            driveMenu.show(keyedDrive.modelData, keyedDrive)
+        else if (keyedPlace)
+            placeMenu.show(keyedPlace.modelData, cursor >= pinnedAt, keyedPlace)
+        else
+            return false
         return true
+    }
+
+    PlaceMenu {
+        id: placeMenu
+        onRenameRequested: (path) => sidebar.renameRequested(path)
+        onDeleteRequested: (path) => sidebar.deleteRequested(path)
     }
 
     DriveMenu {
@@ -284,8 +301,10 @@ Rectangle {
                 TapHandler { onTapped: sidebar.go(places.home) }
             }
             Repeater {
+                id: homeRows
                 model: places.places
                 PlaceRow {
+                    id: homeRow
                     required property var modelData
                     required property int index
                     dropPath: modelData.path
@@ -296,6 +315,10 @@ Rectangle {
                     glyph: modelData.icon
                     active: sidebar.activePath === modelData.path
                     onClicked: sidebar.go(modelData.path)
+                    TapHandler {
+                        acceptedButtons: Qt.RightButton
+                        onTapped: placeMenu.show(homeRow.modelData, false, null)
+                    }
                 }
             }
 
@@ -304,6 +327,7 @@ Rectangle {
             // empty) as the place to drop it.
             SectionLabel { text: qsTr("Pinned"); visible: places.pinned.length > 0 || sidebar.dragging }
             Repeater {
+                id: pinRows
                 model: places.pinned
                 PlaceRow {
                     id: pinRow
@@ -321,6 +345,10 @@ Rectangle {
                     // hovered, or on the keyboard's row, where Delete does
                     // the same.
                     endPadding: unpin.visible ? unpin.implicitWidth + 6 : 14
+                    TapHandler {
+                        acceptedButtons: Qt.RightButton
+                        onTapped: placeMenu.show(pinRow.modelData, true, null)
+                    }
                     IconButton {
                         id: unpin
                         anchors.right: parent.right

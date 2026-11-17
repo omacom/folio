@@ -3934,6 +3934,51 @@ private slots:
         QCOMPARE(places.pinned().size(), 1);
     }
 
+    // Hide in a Home folder's sidebar menu takes it out of Home; Show in
+    // Home puts it back. A hidden one can be pinned, and a rename takes its
+    // hiding (or its pin) along.
+    void placesHideFoldersFromHome()
+    {
+        QTemporaryDir home;
+        for (const char *dir : {"Work", "go", "Dropbox", "Elsewhere/deep"})
+            QDir(home.path()).mkpath(dir);
+        auto names = [](const Places &p) {
+            QStringList list;
+            for (const auto &v : p.places()) list << v.toMap().value("name").toString();
+            return list;
+        };
+        Places places(home.path());
+        QCOMPARE(names(places), QStringList({"Dropbox", "Elsewhere", "Go", "Work"}));
+
+        places.hideFromHome(home.filePath("go"));
+        QCOMPARE(names(places), QStringList({"Dropbox", "Elsewhere", "Work"}));
+        QVERIFY(places.hiddenFromHome(home.filePath("go")));
+        QVERIFY(!places.hiddenFromHome(home.filePath("Work")));
+        // Only home's own folders are hidden from Home.
+        places.hideFromHome(home.filePath("Elsewhere/deep"));
+        QVERIFY(!places.hiddenFromHome(home.filePath("Elsewhere/deep")));
+        // Kept between launches.
+        QCOMPARE(names(Places(home.path())), QStringList({"Dropbox", "Elsewhere", "Work"}));
+
+        // No longer under Home, it can be pinned.
+        QCOMPARE(places.pin(home.filePath("go")), QString());
+        QCOMPARE(places.pinned().size(), 1);
+
+        // Renamed, it stays hidden and pinned under its new name.
+        QVERIFY(QDir(home.path()).rename("go", "golang"));
+        places.renamed(home.filePath("go"), home.filePath("golang"));
+        QVERIFY(places.hiddenFromHome(home.filePath("golang")));
+        QVERIFY(!places.hiddenFromHome(home.filePath("go")));
+        QVERIFY(places.isPinned(home.filePath("golang")));
+        QCOMPARE(names(places), QStringList({"Dropbox", "Elsewhere", "Work"}));
+
+        // Shown in Home again, it's there rather than among the pins.
+        places.showInHome(home.filePath("golang"));
+        QCOMPARE(names(places), QStringList({"Dropbox", "Elsewhere", "Golang", "Work"}));
+        QVERIFY(!places.hiddenFromHome(home.filePath("golang")));
+        QCOMPARE(places.pinned().size(), 0);
+    }
+
     void typedViewsGoToTheirView()
     {
         // The path bar shows a view as its own name, so Return on it, or
