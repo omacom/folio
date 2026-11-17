@@ -272,6 +272,11 @@ Item {
         }
     }
 
+    // Hovered, a plugin's icon brightens: to the theme's bright color, or,
+    // in a theme without one apart from its text's, a touch of the accent.
+    readonly property color hoverColor: Qt.colorEqual(theme.brightForeground, theme.foreground)
+                                        ? Qt.tint(theme.foreground, Qt.alpha(theme.accent, 0.35)) : theme.brightForeground
+
     Component {
         id: itemArt
 
@@ -284,7 +289,7 @@ Item {
                 name: tile.icon
                 size: 76
                 stroke: 1.2
-                color: tile.current ? theme.accent : hover.hovered ? theme.brightForeground : theme.foreground
+                color: tile.current ? theme.accent : hover.hovered ? tile.hoverColor : theme.foreground
             }
         }
     }
