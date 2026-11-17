@@ -87,8 +87,10 @@ Rectangle {
     ]
 
     // As many columns as fit, and the groups dealt out among them in turn
-    // to whichever is shortest, so they come out about as long.
-    readonly property int columnWidth: 400
+    // to whichever is shortest, so they come out about as long. A column
+    // narrows to fit a small window (the preview's can be 480 wide), its
+    // descriptions eliding first, and what still doesn't fit scrolls.
+    readonly property int columnWidth: Math.min(400, Math.max(240, width - 64 - 56))
     readonly property int columnGap: 48
     readonly property int columnCount: Math.max(1, Math.min(3, Math.floor((width - 64 - 56 + columnGap) / (columnWidth + columnGap))))
     readonly property var columns: {
@@ -122,7 +124,7 @@ Rectangle {
             id: flick
             anchors.fill: parent
             anchors.margins: 28
-            contentWidth: width
+            contentWidth: Math.max(width, content.implicitWidth)
             contentHeight: content.implicitHeight
             clip: true
             boundsBehavior: Flickable.StopAtBounds
@@ -154,6 +156,7 @@ Rectangle {
                             id: column
                             required property var modelData
                             Layout.preferredWidth: overlay.columnWidth
+                            Layout.maximumWidth: overlay.columnWidth
                             Layout.alignment: Qt.AlignTop
                             spacing: 22
                             Repeater {
