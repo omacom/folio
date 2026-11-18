@@ -7091,6 +7091,94 @@ private slots:
         QTRY_COMPARE(root->property("menuFor").toString(), expected.toString());
     }
 
+    // The columns' own right-click handlers, for a folder on the way here
+    // and for what's inside the selected folder, pick what's under the
+    // pointer in a scrolled column too, and say the folder it's in.
+    void columnsRightClickPicksTheItemUnderItWhenScrolled()
+    {
+        QTemporaryDir home;
+        for (int i = 0; i < 60; ++i)
+            QDir(home.path()).mkpath(QString("many/d%1").arg(i, 2, 10, QLatin1Char('0')));
+        QDir(home.path()).mkpath("many/d50/inner");
+        for (int i = 0; i < 60; ++i)
+            write(home.filePath(QString("many/d50/inner/file-%1.txt").arg(i, 2, 10, QLatin1Char('0'))), "x");
+        Backend backend(home.path());
+        backend.navigate(home.filePath("many/d50"));
+        QTRY_COMPARE(backend.folder()->rowCount(), 1);
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        Translator translator(home.filePath("language"), home.path());
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("plugins", QVariantMap{{"views", QVariantMap{}}});
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine);
+        component.setData(R"(
+            import QtQuick
+            Window {
+                width: 1000; height: 400; visible: true
+                property alias cursor: folderView.currentIndex
+                property string menuFor: ""
+                FolderColumns { id: folderView; anchors.fill: parent; Component.onCompleted: focusView()
+                     onContextMenu: (item, folder, at) => menuFor = (item ? item.name : "") + " in " + folder }
+                // The columns, by the folder each shows.
+                function views() {
+                    const found = []
+                    const walk = (item) => {
+                        if (item.indexAt !== undefined && item.model && item.model.path !== undefined) found.push(item)
+                        for (const child of item.children) walk(child)
+                    }
+                    walk(folderView)
+                    return found
+                }
+                function scroll(suffix, y) {
+                    for (const view of views())
+                        if (view.model.path.endsWith(suffix)) view.contentY = y
+                }
+                // What's drawn at a point of the window, and in which folder.
+                function nameAt(x, y) {
+                    for (const view of views()) {
+                        const p = view.mapFromItem(null, x, y)
+                        if (p.x < 0 || p.y < 0 || p.x >= view.width || p.y >= view.height || !view.visible)
+                            continue
+                        const index = view.indexAt(p.x + view.contentX, p.y + view.contentY)
+                        return index >= 0 ? view.model.get(index).name + " in " + view.model.path : ""
+                    }
+                    return ""
+                }
+            }
+        )", QUrl::fromLocalFile(sourceFolder() + "/ColumnsRightClickTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        // Inner selected: many's column, scrolled to d50, then d50's, then
+        // inner's, scrolled down too.
+        root->setProperty("cursor", 0);
+        QTest::qWait(300);
+        QMetaObject::invokeMethod(root.get(), "scroll", Q_ARG(QVariant, "/inner"), Q_ARG(QVariant, 600));
+        QTest::qWait(100);
+        const auto nameAt = [&](const QPoint &at) {
+            QVariant name;
+            QMetaObject::invokeMethod(root.get(), "nameAt", Q_RETURN_ARG(QVariant, name), Q_ARG(QVariant, at.x()), Q_ARG(QVariant, at.y()));
+            return name.toString();
+        };
+        // A folder on the way here (many, column 2 after home's) and what's
+        // inside the selected folder (the last column).
+        for (const QPoint at : {QPoint(390, 200), QPoint(910, 200)}) {
+            const QString expected = nameAt(at);
+            QVERIFY2(!expected.isEmpty() && !expected.startsWith(" in"), qPrintable(expected));
+            root->setProperty("menuFor", QString());
+            QTest::mouseClick(window, Qt::RightButton, {}, at);
+            QTRY_COMPARE(root->property("menuFor").toString(), expected);
+        }
+    }
+
     void gridBandHitsTheTilesBothWays()
     {
         // The rubber band's hit areas sit where the grid put the tiles, also
