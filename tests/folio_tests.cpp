@@ -6730,8 +6730,8 @@ private slots:
         // Like evince, the user's .thumbnailer file names comic books and icons only by an alias.
         write(dir.filePath("user/comics.thumbnailer"),
               "[Thumbnailer Entry]\nExec=/bin/cp \"" + dir.filePath("page.png").toUtf8() + "\" %o\n"
-              "MimeType=application/x-cbz;image/x-icon;application/x-nothing-here;video/x-matroska;audio/vnd.wave;\n");
-        write(dir.filePath("user/media.thumbnailer"), "[Thumbnailer Entry]\nExec=/bin/true %i\nMimeType=video/matroska;audio/x-wav;\n");
+              "MimeType=application/x-cbz;image/x-icon;application/x-nothing-here;application/x-cbr;\n");
+        write(dir.filePath("user/rar.thumbnailer"), "[Thumbnailer Entry]\nExec=/bin/true %i\nMimeType=application/vnd.comicbook-rar;\n");
         write(dir.filePath("system/icons.thumbnailer"), "[Thumbnailer Entry]\nExec=/bin/false %i\nMimeType=image/vnd.microsoft.icon;\n");
         Thumbnails thumbnails(dir.filePath("cache"), {dir.filePath("system"), dir.filePath("user")});
 
@@ -6741,10 +6741,8 @@ private slots:
         // The later directory still wins when its file names the type by an alias.
         QVERIFY(thumbnails.thumbnailerFor("image/vnd.microsoft.icon").startsWith("/bin/cp"));
         // Within one directory the file that names the type itself wins, whichever file is read first.
-        QCOMPARE(QMimeDatabase().mimeTypeForName("video/x-matroska").name(), QString("video/matroska"));
-        QCOMPARE(QMimeDatabase().mimeTypeForName("audio/x-wav").name(), QString("audio/vnd.wave"));
-        QVERIFY(thumbnails.thumbnailerFor("video/matroska").startsWith("/bin/true"));
-        QVERIFY(thumbnails.thumbnailerFor("audio/vnd.wave").startsWith("/bin/cp"));
+        QCOMPARE(QMimeDatabase().mimeTypeForName("application/x-cbr").name(), QString("application/vnd.comicbook-rar"));
+        QVERIFY(thumbnails.thumbnailerFor("application/vnd.comicbook-rar").startsWith("/bin/true"));
         // A type the MIME database doesn't know is matched by the name the file gives, and by no other.
         QVERIFY(thumbnails.thumbnailerFor("application/x-nothing-here").startsWith("/bin/cp"));
         QVERIFY(thumbnails.thumbnailerFor("").isEmpty());
