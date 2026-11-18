@@ -1,6 +1,7 @@
 #include "thumbnails.h"
 #include "foldermodel.h"
 #include "mounter.h"
+#include "rawembed.h"
 
 #include <QBuffer>
 #include <QCryptographicHash>
@@ -250,6 +251,12 @@ QImage Thumbnails::load(const QString &path, const QString &mime, int size) cons
 }
 
 QImage Thumbnails::generate(const QString &path, const QString &mime, int pixels, bool &attempted) const {
+    // A camera RAW with no installed thumbnailer, the desktop's own answer, shows the JPEG the camera embedded.
+    // Finding none isn't remembered: a RAW thumbnailer installed later still gets its turn.
+    if (RawEmbed::handles(mime) && !m_thumbnailers.contains(mime)) {
+        if (const QImage image = RawEmbed::thumbnail(path, pixels); !image.isNull())
+            return image;
+    }
     // Common photo formats decode fastest in-process; anything Qt can't read
     // (HEIC, JPEG XL) falls through to the installed thumbnailers.
     if (mime.startsWith("image/")) {
@@ -388,8 +395,9 @@ void Thumbnails::remember(QImage image, const QString &path, int size, const QDa
 }
 
 // Markers say which round of thumbnailing failed: ones from before a fix
-// (round 2: files on other machines) are tried again once.
-static const QString failedRound = QStringLiteral("2");
+// (round 2: files on other machines; round 3: names holding a %, helpers
+// that never started, camera RAW) are tried again once.
+static const QString failedRound = QStringLiteral("3");
 
 void Thumbnails::rememberFailure(const QString &path, const QDateTime &modified) const {
     QImage marker(1, 1, QImage::Format_ARGB32);
