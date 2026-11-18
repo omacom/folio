@@ -16,7 +16,6 @@
 #include <QMimeDatabase>
 #include <QProcess>
 #include <QQuickTextureFactory>
-#include <QRunnable>
 #include <QSaveFile>
 #include <QFile>
 #include <QStandardPaths>
@@ -208,6 +207,18 @@ void Thumbnails::keep(const QImage &image, const QString &path, int pixels, cons
         if (written.open(QIODevice::ReadWrite))
             written.setFileTime(modified, QFileDevice::FileModificationTime);
     }
+}
+
+QImage Thumbnails::cached(const QString &path, int size) const {
+    const QFileInfo info(path);
+    if (info.absoluteFilePath().startsWith(m_cache + "/"))
+        return {};
+    // Probe the local PNG before touching source metadata. A cold miss must
+    // not add a second round trip to the source file on a network mount.
+    const QImage image(cachePath(path, size));
+    if (image.isNull() || !info.isFile() || !madeFor(image, info.lastModified()))
+        return {};
+    return image;
 }
 
 QImage Thumbnails::load(const QString &path, const QString &mime, int size) const {
@@ -435,13 +446,30 @@ void Thumbnails::save(QImage image, const QString &target, const QString &path, 
 
 namespace {
 
-class ThumbnailResponse : public QQuickImageResponse, public QRunnable {
+class ThumbnailResponse : public QQuickImageResponse {
 public:
-    ThumbnailResponse(const Thumbnails *thumbnails, const QString &id) : m_thumbnails(thumbnails), m_id(id) {
-        setAutoDelete(false);
+    ThumbnailResponse(const Thumbnails *thumbnails, const QString &id) : m_thumbnails(thumbnails), m_id(id) {}
+
+    void readCache(QThreadPool *generators) {
+        if (m_cancelled) {
+            complete();
+            return;
+        }
+        const QStringList parts = m_id.split('/');
+        if (parts.size() >= 4) {
+            const QString path = QUrl::fromPercentEncoding(parts.mid(3).join('/').toUtf8());
+            m_image = m_thumbnails->cached(path, qBound(64, parts.at(0).toInt(), 1024));
+        }
+        if (m_cancelled || !m_image.isNull()) {
+            complete();
+            return;
+        }
+        // This is the last access to the response from the cache task: the
+        // generation task may finish and Qt may delete it immediately.
+        generators->start([this] { run(); });
     }
 
-    void run() override {
+    void run() {
         // A decoder that throws (LibRaw on a camera RAW it can't read, #164)
         // must not take Folio down: an exception out of a pool thread ends
         // the process. The file gets no thumbnail instead; once finished()
@@ -496,10 +524,8 @@ public:
             const QString path = QUrl::fromPercentEncoding(parts.mid(3).join('/').toUtf8());
             m_image = m_thumbnails->load(path, mime, qBound(64, size, 1024));
         }
-        if (m_image.isNull())
-            m_error = QStringLiteral("No thumbnail");
         told = true;
-        emit finished();
+        complete();
     }
 
     void cancel() override { m_cancelled = true; }
@@ -510,6 +536,14 @@ public:
     QString errorString() const override { return m_error; }
 
 private:
+    void complete() {
+        if (m_cancelled)
+            m_image = {};
+        if (m_image.isNull())
+            m_error = QStringLiteral("No thumbnail");
+        emit finished();
+    }
+
     const Thumbnails *m_thumbnails;
     QString m_id;
     QImage m_image;
@@ -523,11 +557,22 @@ ThumbnailProvider::ThumbnailProvider(const Thumbnails *thumbnails) : m_thumbnail
     // Thumbnailers are separate processes; a few at once keeps a big folder
     // filling in quickly without starving the machine.
     m_pool.setMaxThreadCount(qBound(2, QThread::idealThreadCount() / 2, 6));
+    m_cachePool.setMaxThreadCount(2);
+}
+
+ThumbnailProvider::~ThumbnailProvider() {
+    // Cache misses can still enqueue generation. Drain in that order, and
+    // keep every response alive until its one finished signal.
+    m_cachePool.waitForDone();
+    m_pool.waitForDone();
 }
 
 // The size comes in the id; no view sets a sourceSize to request one.
 QQuickImageResponse *ThumbnailProvider::requestImageResponse(const QString &id, const QSize &) {
     auto *response = new ThumbnailResponse(m_thumbnails, id);
-    m_pool.start(response);
+    if (id.startsWith("page/") || id.startsWith("sharp/"))
+        m_pool.start([response] { response->run(); });
+    else
+        m_cachePool.start([response, generators = &m_pool] { response->readCache(generators); });
     return response;
 }
