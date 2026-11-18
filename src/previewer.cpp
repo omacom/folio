@@ -197,10 +197,9 @@ void Previewer::previous() { move(Move::Previous); }
 void Previewer::stepRow(int direction) { move(direction < 0 ? Move::Up : Move::Down); }
 
 void Previewer::move(Move move) {
-    if (m_awaitingStep) {
-        m_queued.append(move);
+    // Folio answers within milliseconds, sooner than a key repeats.
+    if (m_awaitingStep)
         return;
-    }
     // On its own, the preview has no rows: ↑ and ↓ go to the previous and
     // next file.
     if (!m_reporting && (move == Move::Up || move == Move::Down))
@@ -218,7 +217,7 @@ void Previewer::move(Move move) {
     case Move::Down: {
         m_awaitingStep = true;
         // A reply that never comes (a Folio too old to send it, or stuck)
-        // holds the arrows for a second, not for good.
+        // stills the arrows for a second, not for good.
         const quint64 step = ++m_step;
         QTimer::singleShot(1000, this, [this, step] {
             if (step == m_step)
@@ -233,8 +232,6 @@ void Previewer::move(Move move) {
 void Previewer::stepped() {
     m_awaitingStep = false;
     ++m_step;
-    while (!m_awaitingStep && !m_queued.isEmpty())
-        move(m_queued.takeFirst());
 }
 
 void Previewer::receive(const QString &line) {

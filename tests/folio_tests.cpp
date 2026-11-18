@@ -7661,7 +7661,7 @@ private slots:
         QCOMPARE(previewer.index(), 0);
     }
 
-    void previewerHoldsArrowsUntilFolioHasStepped()
+    void previewerLetsArrowsGoUntilFolioHasStepped()
     {
         QTemporaryDir dir;
         for (const char *name : {"a.png", "b.png", "c.png", "d.png"})
@@ -7673,31 +7673,38 @@ private slots:
         previewer.start(dir.filePath("a.png"), false, "name");
         QTRY_COMPARE(previewer.count(), 4);
 
-        // ↓ then → before Folio answers: → waits, and is taken from the item
-        // Folio moved to, not from a.png.
+        // ↓ then → and ↓ before Folio answers: they're let go, rather than
+        // taken from a.png (undoing the move) or replayed past c.png before
+        // it's been looked at.
         previewer.stepRow(1);
         previewer.next();
+        previewer.stepRow(1);
         QCOMPARE(reported.count(), 1);
         QCOMPARE(reported.at(0).at(0).toString(), QString("step 1"));
         previewer.receive(dir.filePath("c.png"));
+        previewer.receive("stepped");
         QCOMPARE(previewer.index(), 2);
         QCOMPARE(reported.count(), 1);
-        previewer.receive("stepped");
+        // Once it has, the arrows are taken from where Folio moved to.
+        previewer.next();
         QCOMPARE(previewer.index(), 3);
         QCOMPARE(reported.count(), 2);
         QCOMPARE(reported.at(1).at(0).toString(), QFileInfo(dir.filePath("d.png")).absoluteFilePath());
 
         // At the last row Folio doesn't move, and only says it has stepped.
         previewer.stepRow(1);
-        previewer.previous();
         previewer.receive("stepped");
+        QCOMPARE(previewer.index(), 3);
+        previewer.previous();
         QCOMPARE(previewer.index(), 2);
 
-        // A reply that never comes holds the arrows for a moment only.
+        // A reply that never comes stills the arrows for a moment only.
         previewer.stepRow(-1);
         previewer.previous();
         QCOMPARE(previewer.index(), 2);
-        QTRY_COMPARE(previewer.index(), 1);
+        QTest::qWait(1100);
+        previewer.previous();
+        QCOMPARE(previewer.index(), 1);
     }
 
     void previewerSaysWhileItReadsText()

@@ -19,7 +19,8 @@
 // the item it steps to, and each side follows the other. ↑ and ↓ are written
 // as "step -1" and "step 1": rows belong to the folder view, so Folio moves
 // its selection, sends the new item back, then "stepped". Arrows pressed
-// before that wait for it: taken from the old item, they'd undo the move.
+// before that are let go: taken from the old item, they'd undo the move,
+// and replayed later, from a file not yet looked at, they'd skip it.
 class Previewer : public QObject {
     Q_OBJECT
     // Listing the folder only changes where the item sits among its
@@ -117,10 +118,9 @@ private:
     bool m_reporting = false;
     bool m_overStdio = false;
     // Set from a "step" until Folio's "stepped"; the arrows pressed meanwhile
-    // wait in m_queued, in order.
+    // are let go.
     bool m_awaitingStep = false;
     quint64 m_step = 0;
-    QVector<Move> m_queued;
     QSocketNotifier *m_stdin = nullptr;
     QByteArray m_pending;
 };
