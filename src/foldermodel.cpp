@@ -397,7 +397,7 @@ struct SearchFilter {
         const QString q = query.trimmed();
         if (q.startsWith(QLatin1String("re:"), Qt::CaseInsensitive)) {
             useRegex = true;
-            regex = QRegularExpression(q.mid(3).trimmed(), QRegularExpression::CaseInsensitiveOption);
+            regex = QRegularExpression(q.mid(3), QRegularExpression::CaseInsensitiveOption);
             return;
         }
         // Split keeping the empty words between repeated spaces, so the text

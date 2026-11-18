@@ -1095,6 +1095,8 @@ private slots:
         write(dir.filePath("my  notes.txt"), "x");
         write(dir.filePath("my notes.txt"), "x");
         QCOMPARE(names("my  notes"), QString("my  notes.txt"));
+        // A pattern keeps its spaces, a leading one too.
+        QCOMPARE(names("re: notes\\.txt$"), QString("my  notes.txt, my notes.txt"));
     }
 
     void folderSearchSkipsSymlinkedFolders()
