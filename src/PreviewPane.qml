@@ -46,6 +46,9 @@ Rectangle {
     readonly property var info: backend.details
     // The item's type: its name's, or the one read from what it holds when its name gave none, never one read for another item.
     readonly property string type: (info.path === item.path && info.mime) || item.mime || ""
+    // Text files show their opening lines in a frame, archives bsdtar can list the names inside.
+    readonly property bool archive: hasItem && backend.listsArchive(type)
+    readonly property bool listed: hasItem && (item.kind === "text" || archive)
     // Described once the folder's loaded has put the cursor back on its
     // item: a re-read leaves another item on the cursor's row for a moment,
     // and describing that would drop what's been read of this one.
@@ -123,7 +126,7 @@ Rectangle {
                 // As many pixels as it's drawn with, in steps, so resizing
                 // the window doesn't read it again at every width.
                 readonly property int pixels: Math.min(8192, Math.ceil(Math.max(width, height) * Screen.devicePixelRatio / 512) * 512)
-                readonly property bool shown: pane.hasItem && !pane.item.isDir && pane.item.kind !== "text" && !pane.pluginItem
+                readonly property bool shown: pane.hasItem && !pane.item.isDir && !pane.listed && !pane.pluginItem
                 // The file the cursor last rested on, and those read ahead.
                 property string rested: ""
                 property var ahead: []
@@ -156,10 +159,10 @@ Rectangle {
                 visible: status === Image.Ready
             }
 
-            // Text files show their opening lines instead of a picture.
+            // Text files show their opening lines instead of a picture, archives the names inside.
             Rectangle {
                 anchors.fill: parent
-                visible: pane.hasItem && pane.item.kind === "text"
+                visible: pane.listed
                 color: theme.background
                 border.width: 1
                 border.color: Qt.alpha(theme.foreground, 0.12)
@@ -174,6 +177,13 @@ Rectangle {
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
                 }
+                Sentence {
+                    visible: pane.archive && !pane.info.text
+                    margin: 14
+                    text: pane.info.sentence || qsTr("Reading the archive…")
+                    color: theme.secondaryForeground
+                    font.pixelSize: 12
+                }
             }
 
             // Only for what has no picture: while one's on its way (moving
@@ -181,7 +191,7 @@ Rectangle {
             // flashing the icon.
             Glyph {
                 anchors.centerIn: parent
-                visible: pane.hasItem && pane.item.kind !== "text"
+                visible: pane.hasItem && !pane.listed
                          && (!big.shown || (big.failed && quick.status !== Image.Ready))
                 name: pane.pluginItem ? pane.item.icon : pane.hasItem && pane.item.isDir ? "folder" : "file"
                 size: 72

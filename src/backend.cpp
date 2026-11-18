@@ -493,6 +493,8 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
     const QString kind = item.value("kind").toString();
     const QString mime = item.value("mime").toString();
     const quint64 generation = ++*m_describing;
+    // Whatever a helper program was reading for the last item goes unread.
+    m_helper.stop();
     // The same item again (its folder re-read) keeps what it shows until
     // the new reading is in, rather than flickering.
     QVariantMap details;
@@ -506,6 +508,19 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
     // a plugin's own items.
     m_pluginItem = path.startsWith('/') && !inTrash ? item : QVariantMap();
     showPluginRows(askPlugins());
+    // What a helper program reads comes on top of the rest.
+    const auto help = [this, path, mime](const QVariantMap &details) {
+        // An archive's names, shown as bsdtar prints them: by the type read
+        // from what it holds when its name gave none.
+        if (Previewer::listsArchive(details.value("mime", mime).toString())) {
+            Previewer::listArchive(m_helper, path, [this, details](const QString &text, const QString &sentence) {
+                m_details = details;
+                m_details.insert("text", text);
+                m_details.insert("sentence", sentence);
+                emit detailsChanged();
+            });
+        }
+    };
     // Every real file and folder has a creation time to read; a plugin's
     // item has none.
     if (!path.startsWith('/'))
@@ -514,13 +529,14 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
     // Reading the file waits on its disk, which for a slow mount would hold
     // up moving through files, so it happens off the UI thread.
     auto *watcher = new QFutureWatcher<QVariantMap>(this);
-    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, details]() mutable {
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, details, help]() mutable {
         watcher->deleteLater();
         if (generation != *m_describing)
             return; // The selection moved on while this was read.
         details.insert(watcher->result());
         m_details = details;
         emit detailsChanged();
+        help(details);
     });
     // Stepping through files faster than they're read queues readings; the
     // ones overtaken before they start are skipped rather than left to tie
