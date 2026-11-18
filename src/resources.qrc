@@ -33,6 +33,7 @@
         <file>DriveMenu.qml</file>
         <file>PlaceMenu.qml</file>
         <file>FolioText.qml</file>
+        <file>omarchy.svg</file>
         <file>Spinner.qml</file>
         <file>RenameDialog.qml</file>
         <file>MountPrompt.qml</file>

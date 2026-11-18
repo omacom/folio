@@ -4257,6 +4257,10 @@ private slots:
         QCOMPARE(names(withDropbox).at(1), QString("Dropbox"));
         QCOMPARE(withDropbox.places().at(1).toMap().value("icon").toString(), QString("folder"));
         QCOMPARE(withDropbox.places().at(0).toMap().value("icon").toString(), QString("documents"));
+        // Omarchy's folder shows Omarchy's mark, from the app's resources.
+        QCOMPARE(withDropbox.places().at(2).toMap().value("name").toString(), QString("Omarchy"));
+        QCOMPARE(withDropbox.places().at(2).toMap().value("icon").toString(), QString(":/omarchy.svg"));
+        QVERIFY(QFile::exists(":/omarchy.svg"));
     }
 
     void placesPinFoldersAsGtkBookmarks()

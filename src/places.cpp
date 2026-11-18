@@ -187,7 +187,8 @@ void Places::refreshPlaces() {
         if (m_hidden.contains(name))
             continue;
         const QString path = m_home + "/" + name;
-        add(homeName(name), path, icons.value(path, "folder"));
+        // Omarchy's own folder shows Omarchy's mark.
+        add(homeName(name), path, icons.value(path, name == "omarchy" ? QStringLiteral(":/omarchy.svg") : QStringLiteral("folder")));
     }
 
     m_places = places;
