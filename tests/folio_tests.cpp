@@ -58,6 +58,8 @@
 #include "thumbnails.h"
 #include "translator.h"
 #include "windows.h"
+#include <algorithm>
+#include <random>
 
 // Puts XDG_DATA_HOME, where the trash and recent files live, in `path` for
 // as long as the returned guard does.
@@ -2186,6 +2188,42 @@ private slots:
         QCOMPARE(order("modified"), QString("Zeta b.txt c.txt a.png"));
         QCOMPARE(order("oldest"), QString("Zeta a.png c.txt b.txt"));
         QCOMPARE(order("size"), QString("Zeta a.png c.txt b.txt"));
+    }
+
+    void folderSortsAsTheCollatorCompares()
+    {
+        // Names that differ in case, accents, numbers and nothing at all,
+        // shuffled: sorting by keys gives the order (ties included) a
+        // stable sort comparing every pair gives.
+        QVector<FolderModel::Entry> entries;
+        const QStringList names{"file2.txt", "File10.txt", "file1.TXT", "éclair.png", "eclair.png", "Zebra",
+                                "zebra", "a b.md", "a-b.md", "readme", "README", "10.jpg", "9.jpg"};
+        for (int i = 0; i < 400; ++i) {
+            FolderModel::Entry e;
+            e.name = names[i % names.size()];
+            e.path = QString::number(i);
+            e.isDir = i % 7 == 0;
+            e.size = i % 3;
+            e.modified = QDateTime::fromSecsSinceEpoch(i % 5);
+            e.extension = QFileInfo(e.name).suffix().toUpper();
+            e.kind = i % 2 ? "text" : "image";
+            entries.push_back(e);
+        }
+        std::mt19937 shuffle(7);
+        std::shuffle(entries.begin(), entries.end(), shuffle);
+        for (const QLocale &locale : {QLocale("en_US"), QLocale("sv_SE"), QLocale::c()}) {
+            for (const QString &sort : FolderModel::sortModes()) {
+                auto keyed = entries, compared = entries;
+                FolderModel::sortEntries(keyed, sort, locale);
+                std::stable_sort(compared.begin(), compared.end(), FolderModel::before(sort, locale));
+                QStringList a, b;
+                for (int i = 0; i < keyed.size(); ++i) {
+                    a << keyed[i].path;
+                    b << compared[i].path;
+                }
+                QCOMPARE(a, b);
+            }
+        }
     }
 
     void folderKeepsASelection()
