@@ -149,7 +149,7 @@ Item {
                         TapHandler {
                             acceptedButtons: Qt.RightButton
                             onTapped: (point) => {
-                                const index = column.indexAt(point.position.x + column.contentX, point.position.y + column.contentY)
+                                const index = column.indexAt(point.position.x, point.position.y)
                                 view.contextMenu(index >= 0 ? folder.get(index) : null, ancestor.path, point.scenePosition)
                             }
                         }
@@ -225,7 +225,7 @@ Item {
                 TapHandler {
                     acceptedButtons: Qt.RightButton
                     onTapped: (point) => {
-                        const index = inside.indexAt(point.position.x + inside.contentX, point.position.y + inside.contentY)
+                        const index = inside.indexAt(point.position.x, point.position.y)
                         view.contextMenu(index >= 0 ? inside.model.get(index) : null, view.selected.path, point.scenePosition)
                     }
                 }

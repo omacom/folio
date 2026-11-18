@@ -7018,6 +7018,79 @@ private slots:
         QCOMPARE(folder->selectedCount(), 1);
     }
 
+    // Right-click selects the item under the pointer in a scrolled view too,
+    // not one as far further on as the view is scrolled (#129): the menu
+    // acted on another file.
+    void rightClickPicksTheItemUnderItWhenScrolled_data()
+    {
+        QTest::addColumn<QString>("viewType");
+        QTest::newRow("grid") << QString("FolderGrid");
+        QTest::newRow("list") << QString("FolderList");
+        QTest::newRow("columns") << QString("FolderColumns");
+    }
+
+    void rightClickPicksTheItemUnderItWhenScrolled()
+    {
+        QFETCH(QString, viewType);
+        QTemporaryDir home;
+        QVERIFY(QDir(home.path()).mkdir("files"));
+        for (int i = 0; i < 80; ++i)
+            write(home.filePath(QString("files/file-%1.txt").arg(i, 2, 10, QLatin1Char('0'))), "x");
+        Backend backend(home.path());
+        backend.navigate(home.filePath("files"));
+        QTRY_COMPARE(backend.folder()->rowCount(), 80);
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        Translator translator(home.filePath("language"), home.path());
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("plugins", QVariantMap{{"views", QVariantMap{}}});
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine);
+        component.setData(QString(R"(
+            import QtQuick
+            Window {
+                width: 600; height: 400; visible: true
+                property alias cursor: folderView.currentIndex
+                property string menuFor: ""
+                %1 { id: folderView; anchors.fill: parent; Component.onCompleted: focusView()
+                     onContextMenu: (item, folder, at) => menuFor = item ? item.name : "" }
+                // The item drawn at a point of the window.
+                function nameAt(x, y) {
+                    const views = []
+                    const walk = (item) => {
+                        if (item.model === backend.folder && item.indexAt !== undefined) views.push(item)
+                        for (const child of item.children) walk(child)
+                    }
+                    walk(folderView)
+                    const view = views[0]
+                    const p = view.mapFromItem(null, x, y)
+                    const index = view.indexAt(p.x + view.contentX, p.y + view.contentY)
+                    return index >= 0 ? backend.folder.get(index).name : ""
+                }
+            }
+        )").arg(viewType).toUtf8(), QUrl::fromLocalFile(sourceFolder() + "/RightClickTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        // Scrolled well down, by putting the cursor far on.
+        root->setProperty("cursor", 60);
+        QTest::qWait(200);
+        // In the columns, in the column of the folder shown, after its parent's.
+        const QPoint at(viewType == "FolderColumns" ? 390 : 200, window->height() / 2);
+        QVariant expected;
+        QMetaObject::invokeMethod(root.get(), "nameAt", Q_RETURN_ARG(QVariant, expected), Q_ARG(QVariant, at.x()), Q_ARG(QVariant, at.y()));
+        QVERIFY(!expected.toString().isEmpty());
+        QTest::mouseClick(window, Qt::RightButton, {}, at);
+        QTRY_COMPARE(root->property("menuFor").toString(), expected.toString());
+    }
+
     void gridBandHitsTheTilesBothWays()
     {
         // The rubber band's hit areas sit where the grid put the tiles, also
