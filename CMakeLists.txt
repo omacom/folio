@@ -67,7 +67,12 @@ install(FILES share/folio.desktop share/folio-chooser.desktop DESTINATION ${CMAK
 # Other apps' Open and Save dialogs: `folio chooser` is an xdg-desktop-portal
 # FileChooser backend, which D-Bus starts on demand.
 install(FILES share/folio.portal DESTINATION ${CMAKE_INSTALL_DATADIR}/xdg-desktop-portal/portals)
-install(FILES share/org.freedesktop.impl.portal.desktop.folio.service DESTINATION ${CMAKE_INSTALL_DATADIR}/dbus-1/services)
+# D-Bus starts the chooser by its full path, so it's the one this install puts
+# folio at, not the /usr/bin the source names.
+file(READ share/org.freedesktop.impl.portal.desktop.folio.service portal_service)
+string(REPLACE "/usr/bin/folio" "${CMAKE_INSTALL_FULL_BINDIR}/folio" portal_service "${portal_service}")
+file(WRITE ${CMAKE_BINARY_DIR}/org.freedesktop.impl.portal.desktop.folio.service "${portal_service}")
+install(FILES ${CMAKE_BINARY_DIR}/org.freedesktop.impl.portal.desktop.folio.service DESTINATION ${CMAKE_INSTALL_DATADIR}/dbus-1/services)
 install(FILES share/folio.svg DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
 install(FILES LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/folio)
 install(FILES README.md docs/plugins.md DESTINATION ${CMAKE_INSTALL_DOCDIR})
