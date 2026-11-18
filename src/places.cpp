@@ -144,10 +144,14 @@ Places::Places(const QString &home, QObject *parent)
 }
 
 void Places::refresh() {
+    // Told only when a list changed: each time it's told, the sidebar
+    // makes all its rows again, and the poll mostly finds nothing new.
+    const QVariantList places = m_places, pinned = m_pinned, views = m_views;
     refreshPlaces();
     refreshPinned();
     refreshDevices();
-    emit changed();
+    if (m_places != places || m_pinned != pinned || m_views != views)
+        emit changed();
 }
 
 QString Places::userDirectory(int location, const QString &fallback) const {

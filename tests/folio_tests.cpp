@@ -4192,6 +4192,23 @@ private slots:
         QCOMPARE(withDropbox.places().at(0).toMap().value("icon").toString(), QString("documents"));
     }
 
+    void placesTellOnlyWhatChanged()
+    {
+        // The poll finds the same folders most times: the sidebar isn't
+        // told, so it doesn't make its rows again.
+        QTemporaryDir home;
+        QDir(home.path()).mkpath("Work");
+        Places places(home.path());
+        QTest::qWait(300); // the drives, read in the background
+        QSignalSpy changed(&places, &Places::changed);
+        places.refresh();
+        QTest::qWait(300);
+        QCOMPARE(changed.count(), 0);
+        QDir(home.path()).mkpath("Music");
+        places.refresh();
+        QCOMPARE(changed.count(), 1);
+    }
+
     void placesPinFoldersAsGtkBookmarks()
     {
         QTemporaryDir home;
