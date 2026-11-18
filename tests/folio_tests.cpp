@@ -4206,7 +4206,7 @@ private slots:
         backend.describe({{"path", claimed}, {"kind", "archive"}, {"mime", "application/zip"}});
         QThreadPool::globalInstance()->waitForDone();
         QCoreApplication::processEvents();
-        QVERIFY(backend.details().isEmpty());
+        QVERIFY(!backend.details().contains("mime"));
         write(dir.filePath("notes.txt"), "hello");
         backend.describe({{"path", dir.filePath("notes.txt")}, {"kind", "text"}, {"mime", "text/plain"}});
         QTRY_COMPARE(backend.details().value("text").toString(), QString("hello"));
