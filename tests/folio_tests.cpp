@@ -4199,10 +4199,11 @@ private slots:
         QTemporaryDir home;
         QDir(home.path()).mkpath("Work");
         Places places(home.path());
-        QTest::qWait(300); // the drives, read in the background
+        // Checked before the event loop runs again: the drives, read in
+        // the background, are told when they change, and their free space
+        // may have.
         QSignalSpy changed(&places, &Places::changed);
         places.refresh();
-        QTest::qWait(300);
         QCOMPARE(changed.count(), 0);
         QDir(home.path()).mkpath("Music");
         places.refresh();
