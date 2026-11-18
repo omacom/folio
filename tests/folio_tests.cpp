@@ -6250,6 +6250,45 @@ private slots:
         QVERIFY(!withBroken.load(picture.filePath(), "image/png", 128).isNull());
     }
 
+    // A file on another machine goes to a thumbnailer given a URI by a link
+    // to it, a file:// one with its extension: GIO would turn the mount's
+    // own path back into sftp://, which most thumbnailers can't open. The
+    // thumbnail is still kept under the file's own path.
+    void thumbnailsReachOtherMachinesByALink()
+    {
+        QTemporaryDir dir;
+        QImage frame(64, 32, QImage::Format_RGB32);
+        frame.fill(Qt::green);
+        QVERIFY(frame.save(dir.filePath("frame.png")));
+        // Says what it was given, and makes the frame its thumbnail.
+        write(dir.filePath("record"), "#!/bin/sh\necho \"$1\" > \"" + dir.filePath("given").toUtf8()
+              + "\"\ncp \"" + dir.filePath("frame.png").toUtf8() + "\" \"$2\"\n");
+        QVERIFY(QFile::setPermissions(dir.filePath("record"), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+        write(dir.filePath("record.thumbnailer"),
+              "[Thumbnailer Entry]\nExec=" + dir.filePath("record").toUtf8() + " %u %o\nMimeType=application/pdf;\n");
+        QDir(dir.path()).mkpath("gvfs/sftp:host=far/home");
+        const QString remote = dir.filePath("gvfs/sftp:host=far/home/Order 42.pdf");
+        write(remote, "%PDF");
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.path()}, dir.filePath("gvfs"));
+
+        QVERIFY(!thumbnails.load(remote, "application/pdf", 128).isNull());
+        QFile given(dir.filePath("given"));
+        QVERIFY(given.open(QIODevice::ReadOnly));
+        const QUrl url(QString::fromUtf8(given.readAll()).trimmed());
+        QCOMPARE(url.scheme(), QString("file"));
+        QVERIFY2(!url.toLocalFile().startsWith(dir.filePath("gvfs")), qPrintable(url.toString()));
+        QCOMPARE(QFileInfo(url.toLocalFile()).fileName(), QString("input.pdf"));
+        QVERIFY(QFile::exists(dir.filePath("cache/normal/" + Thumbnails::cacheKey(remote))));
+
+        // A file here goes as it is.
+        const QString local = dir.filePath("Order 43.pdf");
+        write(local, "%PDF");
+        QVERIFY(!thumbnails.load(local, "application/pdf", 128).isNull());
+        given.close();
+        QVERIFY(given.open(QIODevice::ReadOnly));
+        QCOMPARE(QUrl(QString::fromUtf8(given.readAll()).trimmed()).toLocalFile(), local);
+    }
+
     void thumbnailsSetTextOnAPage()
     {
         QTemporaryDir dir;

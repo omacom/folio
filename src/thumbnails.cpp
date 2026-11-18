@@ -82,10 +82,12 @@ QStringList expandCommand(const QString &command, const QString &input, const QS
 
 } // namespace
 
-Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbnailerDirectories)
+Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbnailerDirectories,
+                       const QString &remoteRoot)
     : m_cache(cacheDirectory.isEmpty()
                   ? QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + "/thumbnails"
-                  : cacheDirectory) {
+                  : cacheDirectory),
+      m_remoteRoot(remoteRoot.isEmpty() ? Mounter::root() : remoteRoot) {
     QStringList directories = thumbnailerDirectories;
     if (directories.isEmpty()) {
         // Later directories win, so the user's own thumbnailers override the
@@ -348,7 +350,7 @@ QImage Thumbnails::runThumbnailer(const QString &command, const QString &path, i
     // sftp://…, which most can't open, Papers' among them. A link here reads
     // through the mount the same, and GIO leaves it a file.
     QString input = path;
-    if (path.startsWith(Mounter::root() + "/")) {
+    if (path.startsWith(m_remoteRoot + "/")) {
         const QString suffix = QFileInfo(path).suffix();
         const QString link = scratch.filePath(suffix.isEmpty() ? "input" : "input." + suffix);
         if (QFile::link(path, link))
