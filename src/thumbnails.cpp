@@ -442,6 +442,23 @@ public:
     }
 
     void run() override {
+        // A decoder that throws (LibRaw on a camera RAW it can't read, #164)
+        // must not take Folio down: an exception out of a pool thread ends
+        // the process. The file gets no thumbnail instead; once finished()
+        // has been told, the response may be gone, so it's left alone.
+        bool told = false;
+        try {
+            work(told);
+        } catch (...) {
+            if (!told) {
+                m_image = QImage();
+                m_error = QStringLiteral("No thumbnail");
+                emit finished();
+            }
+        }
+    }
+
+    void work(bool &told) {
         // id = <size>/<modified>/<url-encoded mime>/<url-encoded path>, or
         // page/<size>/<modified>/<paper>/<ink>/<url-encoded path> for text.
         // The time is only there to tell Qt's own cache apart; load() checks
@@ -463,6 +480,7 @@ public:
             const Thumbnails *thumbnails = m_thumbnails;
             if (m_image.isNull())
                 m_error = QStringLiteral("No picture");
+            told = true;
             emit finished();
             if (!made.isNull())
                 thumbnails->keep(made, path, pixels, modified);
@@ -480,6 +498,7 @@ public:
         }
         if (m_image.isNull())
             m_error = QStringLiteral("No thumbnail");
+        told = true;
         emit finished();
     }
 
