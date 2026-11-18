@@ -6231,6 +6231,23 @@ private slots:
         // the one it names.
         write(dir.filePath("photo.heic"), "not a real heic");
         QCOMPARE(thumbnails.load(dir.filePath("photo.heic"), "image/*", 128).size(), QSize(64, 32));
+
+        // What failed is remembered with the round it failed in, and one
+        // remembered from before a fix (files on other machines) is tried
+        // again.
+        write(dir.filePath("broken.thumbnailer"), "[Thumbnailer Entry]\nExec=/bin/false %o\nMimeType=image/x-broken;\n");
+        Thumbnails withBroken(dir.filePath("cache"), {dir.path()});
+        write(dir.filePath("never.broken"), "x");
+        QVERIFY(withBroken.load(dir.filePath("never.broken"), "image/x-broken", 128).isNull());
+        const QImage marker(dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(dir.filePath("never.broken"))));
+        QCOMPARE(marker.text("X-Folio::Round"), QString("2"));
+        // An old marker, without its round, for a picture that can be made.
+        const QFileInfo picture(dir.filePath("frame.png"));
+        QImage old(1, 1, QImage::Format_ARGB32);
+        old.setText("Thumb::MTime", QString::number(picture.lastModified().toSecsSinceEpoch()));
+        old.setText("X-Folio::MTime", QString::number(picture.lastModified().toMSecsSinceEpoch()));
+        QVERIFY(old.save(dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(picture.filePath()))));
+        QVERIFY(!withBroken.load(picture.filePath(), "image/png", 128).isNull());
     }
 
     void thumbnailsSetTextOnAPage()
