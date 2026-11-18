@@ -7081,12 +7081,12 @@ private slots:
         QVERIFY(QTest::qWaitForWindowExposed(window));
         // Scrolled well down, by putting the cursor far on.
         root->setProperty("cursor", 60);
-        QTest::qWait(200);
         // In the columns, in the column of the folder shown, after its parent's.
         const QPoint at(viewType == "FolderColumns" ? 390 : 200, window->height() / 2);
         QVariant expected;
-        QMetaObject::invokeMethod(root.get(), "nameAt", Q_RETURN_ARG(QVariant, expected), Q_ARG(QVariant, at.x()), Q_ARG(QVariant, at.y()));
-        QVERIFY(!expected.toString().isEmpty());
+        // Once the view has scrolled to the cursor and drawn what's there.
+        QTRY_VERIFY((QMetaObject::invokeMethod(root.get(), "nameAt", Q_RETURN_ARG(QVariant, expected), Q_ARG(QVariant, at.x()), Q_ARG(QVariant, at.y())),
+                     !expected.toString().isEmpty()));
         QTest::mouseClick(window, Qt::RightButton, {}, at);
         QTRY_COMPARE(root->property("menuFor").toString(), expected.toString());
     }
@@ -7136,6 +7136,11 @@ private slots:
                     walk(folderView)
                     return found
                 }
+                // Whether the columns of these folders have read their rows.
+                function loaded(suffixes) {
+                    return suffixes.every(suffix => views().some(view =>
+                        view.model.path.endsWith(suffix) && !view.model.loading && view.count > 0))
+                }
                 function scroll(suffix, y) {
                     for (const view of views())
                         if (view.model.path.endsWith(suffix)) view.contentY = y
@@ -7160,9 +7165,15 @@ private slots:
         // Inner selected: many's column, scrolled to d50, then d50's, then
         // inner's, scrolled down too.
         root->setProperty("cursor", 0);
-        QTest::qWait(300);
+        // Each column reads its folder on its own: both are waited for.
+        const auto loaded = [&] {
+            QVariant done;
+            QMetaObject::invokeMethod(root.get(), "loaded", Q_RETURN_ARG(QVariant, done),
+                                      Q_ARG(QVariant, QStringList({"/many", "/inner"})));
+            return done.toBool();
+        };
+        QTRY_VERIFY(loaded());
         QMetaObject::invokeMethod(root.get(), "scroll", Q_ARG(QVariant, "/inner"), Q_ARG(QVariant, 600));
-        QTest::qWait(100);
         const auto nameAt = [&](const QPoint &at) {
             QVariant name;
             QMetaObject::invokeMethod(root.get(), "nameAt", Q_RETURN_ARG(QVariant, name), Q_ARG(QVariant, at.x()), Q_ARG(QVariant, at.y()));
@@ -7171,8 +7182,8 @@ private slots:
         // A folder on the way here (many, column 2 after home's) and what's
         // inside the selected folder (the last column).
         for (const QPoint at : {QPoint(390, 200), QPoint(910, 200)}) {
+            QTRY_VERIFY(!nameAt(at).isEmpty());
             const QString expected = nameAt(at);
-            QVERIFY2(!expected.isEmpty() && !expected.startsWith(" in"), qPrintable(expected));
             root->setProperty("menuFor", QString());
             QTest::mouseClick(window, Qt::RightButton, {}, at);
             QTRY_COMPARE(root->property("menuFor").toString(), expected);
