@@ -88,31 +88,31 @@ ApplicationWindow {
                         spacing: 2
                         // Aligned explicitly, so that they're mirrored: left
                         // as they are, a Latin name would stay on the left.
-                        Text {
+                        FolioText {
                             Layout.fillWidth: true
                             horizontalAlignment: Text.AlignLeft
                             text: win.item.name || ""
                             color: theme.brightForeground
-                            font.pixelSize: 15
+                            size: 15
                             font.weight: Font.DemiBold
                             elide: Text.ElideMiddle
                         }
-                        Text {
+                        FolioText {
                             Layout.fillWidth: true
                             horizontalAlignment: Text.AlignLeft
                             text: Format.summary(win.item, previewer.type)
                             color: theme.secondaryForeground
-                            font.pixelSize: 12
+                            size: 12
                             elide: Text.ElideRight
                         }
                     }
 
-                    Text {
+                    FolioText {
                         visible: previewer.count > 1
                         text: qsTr("%1 of %2").arg((previewer.index + 1).toLocaleString(Qt.locale(), "f", 0))
                                               .arg(previewer.count.toLocaleString(Qt.locale(), "f", 0))
                         color: theme.secondaryForeground
-                        font.pixelSize: 12
+                        size: 12
                     }
                     // Mirrored, Next sits left of Previous; each points away
                     // from the other, at the key that does the same.
@@ -157,7 +157,7 @@ ApplicationWindow {
                     source: win.viewer === "pdf" ? "qrc:/PdfPreview.qml" : win.external ? "qrc:/MediaPreview.qml" : ""
                 }
 
-                Text {
+                FolioText {
                     anchors.centerIn: parent
                     width: parent.width - 96
                     horizontalAlignment: Text.AlignHCenter
@@ -258,7 +258,7 @@ ApplicationWindow {
                 onWheel: event => flick.zoomBy(event.angleDelta.y > 0 ? 1.1 : 1 / 1.1)
             }
 
-            Text {
+            FolioText {
                 anchors.centerIn: parent
                 visible: flick.source.status === Image.Error
                 text: qsTr("Couldn't read this picture.")
@@ -303,7 +303,8 @@ ApplicationWindow {
                 color: theme.foreground
                 selectionColor: theme.accent
                 selectedTextColor: theme.accentForeground
-                font.pixelSize: 13
+                font.family: theme.fontFamily
+                font.pixelSize: Math.round(13 * theme.textScale)
             }
 
             ScrollBar.vertical: FolioScrollBar { }
@@ -341,7 +342,7 @@ ApplicationWindow {
                 stroke: 1.1
                 color: theme.accent
             }
-            Text {
+            FolioText {
                 Layout.alignment: Qt.AlignHCenter
                 text: Format.count(win.item.itemCount)
                 color: theme.secondaryForeground
@@ -377,13 +378,13 @@ ApplicationWindow {
                     stroke: 1.1
                     color: theme.secondaryForeground
                 }
-                Text {
+                FolioText {
                     Layout.alignment: Qt.AlignHCenter
                     text: win.item.extension || ""
                     color: theme.accent
                     font.weight: Font.DemiBold
                 }
-                Text {
+                FolioText {
                     Layout.alignment: Qt.AlignHCenter
                     text: thumb.status === Image.Loading ? qsTr("Making a preview…") : qsTr("No preview for this type. Press ⏎ to open it.")
                     color: theme.secondaryForeground

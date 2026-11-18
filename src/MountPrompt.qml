@@ -41,7 +41,7 @@ FolioDialog {
 
     // Aligned explicitly, so that it's mirrored: GVfs may word it in
     // another language than Folio's.
-    Text {
+    FolioText {
         Layout.fillWidth: true
         horizontalAlignment: Text.AlignLeft
         text: prompt.mounter.prompt

@@ -12,6 +12,7 @@ endif()
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Network Qml Quick QuickControls2 DBus Concurrent Test)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GIO REQUIRED IMPORTED_TARGET gio-2.0 gio-unix-2.0)
+pkg_check_modules(FONTCONFIG REQUIRED IMPORTED_TARGET fontconfig)
 find_package(ZLIB REQUIRED)
 
 # Everything but main.cpp, shared by the app and the tests, so a new source
@@ -22,7 +23,7 @@ add_library(folio_core STATIC ${folio_sources})
 target_include_directories(folio_core PUBLIC src)
 target_link_libraries(folio_core PUBLIC
   Qt6::Core Qt6::Gui Qt6::Network Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::DBus Qt6::Concurrent
-  PkgConfig::GIO ZLIB::ZLIB)
+  PkgConfig::GIO PkgConfig::FONTCONFIG ZLIB::ZLIB)
 target_compile_options(folio_core PUBLIC -Wall -Wextra)
 
 add_executable(folio src/main.cpp src/resources.qrc)

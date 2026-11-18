@@ -15,6 +15,7 @@
 #include <functional>
 #include <thread>
 #include <QFile>
+#include <QFontDatabase>
 #include <QGuiApplication>
 #include <QImage>
 #include <QJsonArray>
@@ -7163,6 +7164,59 @@ private slots:
         write(dir.filePath("theme/colors.toml"), "background = \"#101315\"\nforeground = \"#e0e0e0\"\nlighter_background = \"#2a2e36\"\n");
         Theme distinct(dir.path());
         QCOMPARE(distinct.lighterBackground(), QColor("#2a2e36"));
+    }
+
+    // Folio's font is the system's fixed-width one, Omarchy's pick, followed
+    // live: omarchy-font-set rewrites fontconfig's monospace in
+    // ~/.config/fontconfig/fonts.conf, and the window takes it without a
+    // restart. Its size scales Folio's text from Omarchy's default, 11pt.
+    void themeFollowsTheSystemFont()
+    {
+        QCOMPARE(Theme::textScaleFor(11), 1.0);
+        QCOMPARE(Theme::textScaleFor(13.2), 1.2);
+        QCOMPARE(Theme::textScaleFor(40), 1.5);
+        QCOMPARE(Theme::textScaleFor(4), 0.75);
+        QCOMPARE(Theme::textScaleFor(-1), 1.0);
+
+        QTemporaryDir config;
+        const QByteArray was = qgetenv("XDG_CONFIG_HOME");
+        qputenv("XDG_CONFIG_HOME", QFile::encodeName(config.path()));
+        const QFont appFont = QGuiApplication::font();
+        const auto restore = qScopeGuard([&] {
+            if (was.isEmpty())
+                qunsetenv("XDG_CONFIG_HOME");
+            else
+                qputenv("XDG_CONFIG_HOME", was);
+            QGuiApplication::setFont(appFont);
+        });
+        // A family other than what monospace means now, that fontconfig
+        // knows by that name.
+        const QString before = Theme::resolveFamily("monospace");
+        QString other;
+        for (const QString &family : QFontDatabase::families())
+            if (family != before && Theme::resolveFamily(family) == family) {
+                other = family;
+                break;
+            }
+        if (other.isEmpty())
+            QSKIP("only one font family is installed");
+
+        Theme theme(config.filePath("theme"));
+        QSignalSpy changed(&theme, &Theme::fontChanged);
+        theme.followSystemFont();
+        QCOMPARE(QGuiApplication::font().family(), theme.fontFamily());
+        QVERIFY(theme.fontFamily() != other);
+
+        // As omarchy-font-set writes it.
+        QDir(config.path()).mkpath("fontconfig");
+        write(config.filePath("fontconfig/fonts.conf"),
+              "<?xml version=\"1.0\"?>\n<!DOCTYPE fontconfig SYSTEM \"fonts.dtd\">\n<fontconfig>\n"
+              "  <match target=\"pattern\">\n    <test name=\"family\" qual=\"any\"><string>monospace</string></test>\n"
+              "    <edit name=\"family\" mode=\"prepend_first\" binding=\"strong\"><string>" + other.toUtf8() + "</string></edit>\n"
+              "  </match>\n</fontconfig>\n");
+        QTRY_COMPARE_WITH_TIMEOUT(theme.fontFamily(), other, 3000);
+        QCOMPARE(QGuiApplication::font().family(), other);
+        QVERIFY(changed.count() >= 1);
     }
 
     void themeFollowsHyprlandRounding()

@@ -89,7 +89,7 @@ Rectangle {
             id: pathField
             Layout.fillWidth: true
             visible: bar.editing
-            font.pixelSize: 14
+            font.pixelSize: Math.round(14 * theme.textScale)
             placeholderText: qsTr("A folder, or a server's address like sftp://host/")
             onAccepted: {
                 if (backend.goTyped(text))
@@ -107,7 +107,7 @@ Rectangle {
             id: searchField
             Layout.fillWidth: true
             visible: bar.searching && !bar.editing
-            font.pixelSize: 14
+            font.pixelSize: Math.round(14 * theme.textScale)
             // Room at the end for where it searches; padding isn't mirrored.
             leftPadding: LayoutMirroring.enabled ? scope.implicitWidth + 24 + searchingSpinner.room : 12
             rightPadding: LayoutMirroring.enabled ? 12 : scope.implicitWidth + 24 + searchingSpinner.room
@@ -124,7 +124,7 @@ Rectangle {
             // Where it searches, at the end of the field. Unlike a
             // placeholder, it stays while typing. Plugins' views have
             // nothing below them.
-            Text {
+            FolioText {
                 id: scope
                 // Recents, Trash and plugins' views are named in C++, which
                 // retranslating QML doesn't redo.
@@ -137,7 +137,7 @@ Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 text: backend.path.startsWith("plugin:") ? qsTr("Search %1").arg(here) : qsTr("Search %1 and below").arg(here)
                 color: theme.secondaryForeground
-                font.pixelSize: 12
+                size: 12
             }
             onTextEdited: searchDelay.restart()
             // Enter or ↓ goes to the results, leaving the search up.
@@ -186,17 +186,17 @@ Rectangle {
                         required property int index
                         readonly property bool last: index === backend.crumbs.length - 1
                         spacing: 10
-                        Text {
+                        FolioText {
                             // No separator after / itself: "/ run", not "/ / run".
                             visible: crumb.index > 0 && !(crumb.index === 1 && backend.crumbs[0].name === "/")
                             text: "/"
                             color: Qt.alpha(theme.foreground, 0.35)
-                            font.pixelSize: 14
+                            size: 14
                         }
-                        Text {
+                        FolioText {
                             text: crumb.modelData.name
                             color: crumb.last ? theme.brightForeground : crumbMouse.containsMouse ? theme.foreground : theme.secondaryForeground
-                            font.pixelSize: 14
+                            size: 14
                             font.weight: crumb.last ? Font.DemiBold : Font.Normal
                             MouseArea {
                                 id: crumbMouse
@@ -227,6 +227,8 @@ Rectangle {
             Accessible.name: text
             onClicked: bar.helpRequested()
             ToolTip {
+                font.family: theme.fontFamily
+                font.pixelSize: Math.round(13 * theme.textScale)
                 visible: help.hovered
                 delay: 600
                 text: help.text
@@ -242,10 +244,10 @@ Rectangle {
                     color: "transparent"
                     border.width: 1
                     border.color: help.hovered ? theme.foreground : Qt.alpha(theme.secondaryForeground, 0.4)
-                    Text {
+                    FolioText {
                         anchors.centerIn: parent
                         text: "?"
-                        font.pixelSize: 13
+                        size: 13
                         color: help.hovered ? theme.foreground : Qt.alpha(theme.secondaryForeground, 0.6)
                     }
                 }

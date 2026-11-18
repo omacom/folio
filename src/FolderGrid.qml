@@ -104,7 +104,7 @@ GridView {
         onActivated: backend.open(path)
     }
 
-    Text {
+    FolioText {
         anchors.centerIn: parent
         // A search says it's looking until it finds something, or is done.
         readonly property bool searching: backend.folder.loading && backend.folder.query.length > 0

@@ -156,12 +156,12 @@ Rectangle {
                 border.width: 1
                 border.color: Qt.alpha(theme.foreground, 0.12)
                 clip: true
-                Text {
+                FolioText {
                     anchors.fill: parent
                     anchors.margins: 14
                     text: pane.info.text || ""
                     color: theme.foreground
-                    font.pixelSize: 10
+                    size: 10
                     wrapMode: Text.WrapAnywhere
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
@@ -189,18 +189,18 @@ Rectangle {
             Layout.alignment: Qt.AlignHCenter
             // Aligned explicitly, so that they're mirrored: left as they
             // are, a Latin name would stay on the left.
-            Text {
+            FolioText {
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignLeft
                 text: pane.item.name || ""
                 color: theme.brightForeground
-                font.pixelSize: 15
+                size: 15
                 font.weight: Font.DemiBold
                 wrapMode: Text.WrapAnywhere
                 maximumLineCount: 3
                 elide: Text.ElideRight
             }
-            Text {
+            FolioText {
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignLeft
                 text: {
@@ -208,7 +208,7 @@ Rectangle {
                     return Format.summary(pane.item, backend.typeName(pane.item.mime || ""))
                 }
                 color: theme.secondaryForeground
-                font.pixelSize: 12
+                size: 12
                 elide: Text.ElideRight
             }
         }
@@ -221,19 +221,19 @@ Rectangle {
             rowSpacing: 12
             columnSpacing: 16
 
-            Text { visible: pane.trashed; text: qsTr("Original location"); color: theme.secondaryForeground; font.pixelSize: 12 }
-            Text {
+            FolioText { visible: pane.trashed; text: qsTr("Original location"); color: theme.secondaryForeground; size: 12}
+            FolioText {
                 visible: pane.trashed
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignRight
                 text: pane.trashed ? pane.homeless(pane.origin.replace(/\/[^\/]*$/, "") || "/") : ""
                 color: theme.foreground
-                font.pixelSize: 12
+                size: 12
                 elide: Text.ElideMiddle
             }
             // When it was made, where the filesystem keeps that.
-            Text { visible: !!pane.info.created; text: qsTr("Created"); color: theme.secondaryForeground; font.pixelSize: 12 }
-            Text {
+            FolioText { visible: !!pane.info.created; text: qsTr("Created"); color: theme.secondaryForeground; size: 12}
+            FolioText {
                 visible: !!pane.info.created
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignRight
@@ -242,10 +242,10 @@ Rectangle {
                     return pane.info.created ? Format.stamp(pane.info.created) : ""
                 }
                 color: theme.foreground
-                font.pixelSize: 12
+                size: 12
             }
-            Text { visible: !pane.pluginItem; text: pane.trashed || pane.noting ? qsTr("Deleted") : qsTr("Modified"); color: theme.secondaryForeground; font.pixelSize: 12 }
-            Text {
+            FolioText { visible: !pane.pluginItem; text: pane.trashed || pane.noting ? qsTr("Deleted") : qsTr("Modified"); color: theme.secondaryForeground; size: 12}
+            FolioText {
                 visible: !pane.pluginItem
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignRight
@@ -255,10 +255,10 @@ Rectangle {
                     return pane.hasItem && when ? Format.stamp(when) : ""
                 }
                 color: theme.foreground
-                font.pixelSize: 12
+                size: 12
             }
-            Text { visible: !!pane.drive; text: qsTr("Free space"); color: theme.secondaryForeground; font.pixelSize: 12 }
-            Text {
+            FolioText { visible: !!pane.drive; text: qsTr("Free space"); color: theme.secondaryForeground; size: 12}
+            FolioText {
                 visible: !!pane.drive
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignRight
@@ -267,11 +267,11 @@ Rectangle {
                     return pane.drive ? Format.size(pane.drive.free) : ""
                 }
                 color: theme.foreground
-                font.pixelSize: 12
+                size: 12
             }
             // What the file opens with, picked from the apps that can open
             // its type, which makes that app the type's default.
-            Text { visible: opensWith.visible; text: qsTr("Opens with"); color: theme.secondaryForeground; font.pixelSize: 12 }
+            FolioText { visible: opensWith.visible; text: qsTr("Opens with"); color: theme.secondaryForeground; size: 12}
             PlainButton {
                 id: opensWith
                 // Read again after picking one, which changes the default.
@@ -311,21 +311,21 @@ Rectangle {
                     }
                 }
             }
-            Text { visible: !!pane.info.width; text: qsTr("Dimensions"); color: theme.secondaryForeground; font.pixelSize: 12 }
-            Text {
+            FolioText { visible: !!pane.info.width; text: qsTr("Dimensions"); color: theme.secondaryForeground; size: 12}
+            FolioText {
                 visible: !!pane.info.width
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignRight
                 text: pane.info.width ? qsTr("%1 × %2").arg(pane.info.width.toLocaleString(Qt.locale(), "f", 0))
                                                      .arg(pane.info.height.toLocaleString(Qt.locale(), "f", 0)) : ""
                 color: theme.foreground
-                font.pixelSize: 12
+                size: 12
             }
             // Plugins' rows, label and value in turn, after Folio's own: a
             // plugin's item's details, or what plugins say about a file.
             Repeater {
                 model: (pane.pluginItem ? pane.item.details : pane.info.plugins || []).reduce((all, row) => all.concat([row[0], row[1]]), [])
-                Text {
+                FolioText {
                     required property string modelData
                     required property int index
                     readonly property bool label: index % 2 === 0
@@ -333,7 +333,7 @@ Rectangle {
                     horizontalAlignment: label ? Text.AlignLeft : Text.AlignRight
                     text: modelData
                     color: label ? theme.secondaryForeground : theme.foreground
-                    font.pixelSize: 12
+                    size: 12
                     elide: label ? Text.ElideNone : Text.ElideMiddle
                 }
             }
@@ -369,8 +369,8 @@ Rectangle {
             }
             contentItem: RowLayout {
                 // A long app name ends in … rather than running past the button.
-                Text { Layout.leftMargin: 14; Layout.fillWidth: true; text: openButton.text; elide: Text.ElideRight; color: theme.accentForeground; font.weight: Font.DemiBold }
-                Text { Layout.rightMargin: 14; text: "⏎"; color: theme.accentForeground }
+                FolioText { Layout.leftMargin: 14; Layout.fillWidth: true; text: openButton.text; elide: Text.ElideRight; color: theme.accentForeground; font.weight: Font.DemiBold }
+                FolioText { Layout.rightMargin: 14; text: "⏎"; color: theme.accentForeground }
             }
         }
     }

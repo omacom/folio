@@ -67,7 +67,7 @@ Item {
         }
     }
 
-    Text {
+    FolioText {
         id: label
         anchors.top: artBox.bottom
         anchors.topMargin: 12
@@ -75,7 +75,7 @@ Item {
         width: parent.width - 28
         text: tile.name
         color: tile.current ? theme.accent : theme.foreground
-        font.pixelSize: 12
+        size: 12
         horizontalAlignment: Text.AlignHCenter
         wrapMode: Text.WrapAtWordBoundaryOrAnywhere
         maximumLineCount: 2
@@ -86,7 +86,7 @@ Item {
     // Size and when, quietly, under the name: "28.0 KB · 2:14 PM" today,
     // "28.0 KB · 11/9/26" before; just the item count for a folder, the
     // subtitle for a plugin's item.
-    Text {
+    FolioText {
         anchors.top: label.bottom
         anchors.topMargin: 3
         anchors.horizontalCenter: parent.horizontalCenter
@@ -102,7 +102,7 @@ Item {
             return size && date ? qsTr("%1 · %2").arg(size).arg(date) : size || date
         }
         color: theme.secondaryForeground
-        font.pixelSize: 10
+        size: 10
         horizontalAlignment: Text.AlignHCenter
         elide: Text.ElideRight
     }
@@ -324,7 +324,7 @@ Item {
                 width: badge.implicitWidth + 8
                 height: badge.implicitHeight + 2
                 color: tile.kindColor
-                Text { id: badge; anchors.centerIn: parent; text: tile.extension.slice(0, 4); font.pixelSize: 9; font.bold: true; color: theme.background }
+                FolioText { id: badge; anchors.centerIn: parent; text: tile.extension.slice(0, 4); size: 9; font.bold: true; color: theme.background }
             }
         }
     }
@@ -355,7 +355,7 @@ Item {
                     }
                 }
             }
-            Text { anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: 5; text: tile.extension; font.pixelSize: 9; color: theme.secondaryForeground }
+            FolioText { anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: 5; text: tile.extension; size: 9; color: theme.secondaryForeground }
         }
     }
 

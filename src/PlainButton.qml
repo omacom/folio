@@ -43,7 +43,7 @@ AbstractButton {
             border.color: button.destructive ? theme.red : theme.accent
         }
     }
-    contentItem: Text {
+    contentItem: FolioText {
         id: label
         text: button.text
         color: button.destructive ? theme.background : button.primary ? theme.accentForeground : theme.foreground

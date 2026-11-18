@@ -75,14 +75,14 @@ Item {
                     stroke: 1.2
                     color: theme.accent
                 }
-                Text {
+                FolioText {
                     Layout.alignment: Qt.AlignHCenter
                     text: player.metaData.stringValue(MediaMetaData.Title) || previewer.item.name || ""
                     color: theme.brightForeground
-                    font.pixelSize: 16
+                    size: 16
                     font.weight: Font.DemiBold
                 }
-                Text {
+                FolioText {
                     Layout.alignment: Qt.AlignHCenter
                     text: player.metaData.stringValue(MediaMetaData.ContributingArtist) || player.metaData.stringValue(MediaMetaData.AlbumArtist) || ""
                     visible: text.length > 0
@@ -92,7 +92,7 @@ Item {
 
             TapHandler { onTapped: media.toggle() }
 
-            Text {
+            FolioText {
                 anchors.centerIn: parent
                 width: parent.width - 96
                 horizontalAlignment: Text.AlignHCenter
@@ -122,10 +122,10 @@ Item {
                     text: media.playing ? qsTr("Pause (K)") : qsTr("Play (K)")
                     onClicked: media.toggle()
                 }
-                Text {
+                FolioText {
                     text: { translator.language; return media.clock(player.position) }
                     color: theme.foreground
-                    font.pixelSize: 12
+                    size: 12
                 }
                 Slider {
                     Layout.fillWidth: true
@@ -136,10 +136,10 @@ Item {
                     focusPolicy: Qt.NoFocus
                     onMoved: player.position = value
                 }
-                Text {
+                FolioText {
                     text: { translator.language; return media.clock(player.duration) }
                     color: theme.secondaryForeground
-                    font.pixelSize: 12
+                    size: 12
                 }
             }
         }

@@ -17,6 +17,8 @@ AbstractButton {
     Accessible.name: text
     // Its own tooltip, so it can appear without fading in or out.
     ToolTip {
+        font.family: theme.fontFamily
+        font.pixelSize: Math.round(13 * theme.textScale)
         visible: button.hovered && button.text.length > 0
         delay: 600
         text: button.text

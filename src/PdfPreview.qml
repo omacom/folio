@@ -26,7 +26,7 @@ Item {
         visible: doc.status === PdfDocument.Ready
     }
 
-    Text {
+    FolioText {
         anchors.centerIn: parent
         visible: doc.status === PdfDocument.Error
         text: qsTr("Couldn't open this PDF: %1").arg(doc.error)
@@ -42,13 +42,13 @@ Item {
         height: pageLabel.implicitHeight + 10
         radius: Math.min(4, theme.radius)
         color: theme.background
-        Text {
+        FolioText {
             id: pageLabel
             anchors.centerIn: parent
             text: qsTr("Page %1 of %2").arg((view.currentPage + 1).toLocaleString(Qt.locale(), "f", 0))
                                        .arg(doc.pageCount.toLocaleString(Qt.locale(), "f", 0))
             color: theme.secondaryForeground
-            font.pixelSize: 12
+            size: 12
         }
     }
 }

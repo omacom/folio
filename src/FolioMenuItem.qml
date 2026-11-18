@@ -41,21 +41,21 @@ MenuItem {
     contentItem: Item {
         implicitWidth: label.implicitWidth + hint.implicitWidth + 40
         implicitHeight: label.implicitHeight
-        Text {
+        FolioText {
             id: label
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             text: entry.text
             color: !entry.enabled ? theme.secondaryForeground : entry.highlighted ? theme.brightForeground : theme.foreground
         }
-        Text {
+        FolioText {
             id: hint
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             visible: !entry.subMenu
             text: Format.keys(entry.keys)
             color: theme.secondaryForeground
-            font.pixelSize: 11
+            size: 11
         }
     }
 

@@ -50,14 +50,14 @@ FolioDialog {
         ColumnLayout {
             Layout.fillWidth: true
             spacing: 2
-            Text {
+            FolioText {
                 Layout.fillWidth: true
                 visible: !!dialog.drive && dialog.drive.label.length > 0
                 text: dialog.drive ? dialog.drive.label : ""
                 color: theme.brightForeground
                 elide: Text.ElideRight
             }
-            Text {
+            FolioText {
                 Layout.fillWidth: true
                 text: dialog.drive ? dialog.drive.title : ""
                 color: dialog.drive && dialog.drive.label.length > 0 ? theme.secondaryForeground : theme.brightForeground
@@ -67,7 +67,7 @@ FolioDialog {
         // What it'll be formatted as, exFAT unless another is picked when
         // there's more than one to pick from; what it's good for is said
         // on hover.
-        Text {
+        FolioText {
             visible: dialog.choices.length === 1
             text: dialog.picked.name || ""
             color: theme.secondaryForeground
@@ -110,7 +110,7 @@ FolioDialog {
         Keys.onReturnPressed: cancelButton.forceActiveFocus()
         Keys.onEnterPressed: cancelButton.forceActiveFocus()
     }
-    Text {
+    FolioText {
         Layout.fillWidth: true
         text: qsTr("Everything on this drive will be erased. This can't be undone.")
         color: theme.red

@@ -396,7 +396,7 @@ FocusScope {
                 anchors.fill: parent
                 anchors.leftMargin: 24
                 anchors.rightMargin: 12
-                Text {
+                FolioText {
                     id: bannerText
                     Layout.fillWidth: true
                     text: backend.message || backend.folder.error || (slowWork.shown ? slowWork.working : "") || backend.notice

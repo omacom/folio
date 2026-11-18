@@ -205,7 +205,7 @@ Item {
                 }
 
                 // Where the first item would be, lined up with the names.
-                Text {
+                FolioText {
                     x: LayoutMirroring.enabled ? here.width - width - 46 : 46
                     y: 8
                     readonly property bool searching: backend.folder.loading && backend.folder.query.length > 0
@@ -248,7 +248,7 @@ Item {
                     onActivated: backend.open(path)
                 }
 
-                Text {
+                FolioText {
                     x: LayoutMirroring.enabled ? inside.width - width - 46 : 46
                     y: 8
                     visible: inside.count === 0 && !inside.model.loading
