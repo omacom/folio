@@ -404,8 +404,9 @@ void Thumbnails::remember(QImage image, const QString &path, int size, const QDa
 }
 
 // Markers say which round of thumbnailing failed: ones from before a fix
-// (round 2: files on other machines) are tried again once.
-static const QString failedRound = QStringLiteral("2");
+// (round 2: files on other machines; round 3: names holding a %, helpers
+// that never started, camera RAW) are tried again once.
+static const QString failedRound = QStringLiteral("3");
 
 void Thumbnails::rememberFailure(const QString &path, const QDateTime &modified) const {
     QImage marker(1, 1, QImage::Format_ARGB32);
