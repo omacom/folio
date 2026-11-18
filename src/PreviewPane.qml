@@ -182,7 +182,7 @@ Rectangle {
                     margin: 14
                     text: pane.info.sentence || qsTr("Reading the archive…")
                     color: theme.secondaryForeground
-                    font.pixelSize: 12
+                    size: 12
                 }
             }
 

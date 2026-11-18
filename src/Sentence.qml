@@ -1,7 +1,7 @@
 import QtQuick
 
 // A sentence in the middle of an empty view: what it waits for, that it's empty, or why not.
-Text {
+FolioText {
     // Kept clear on either side.
     property int margin: 48
 
