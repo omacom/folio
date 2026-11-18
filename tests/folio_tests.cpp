@@ -7542,11 +7542,13 @@ private slots:
         QCOMPARE(Previewer::viewerFor("application/zip", false), QString("archive"));
         QCOMPARE(Previewer::viewerFor("application/x-compressed-tar", false), QString("archive"));
         QCOMPARE(Previewer::viewerFor("application/x-xz-compressed-tar", false), QString("archive"));
-        QCOMPARE(Previewer::viewerFor("application/x-cpio", false), QString("archive"));
+        QCOMPARE(Previewer::viewerFor("application/x-lzma-compressed-tar", false), QString("archive"));
+        QCOMPARE(Previewer::viewerFor("application/x-lzip-compressed-tar", false), QString("archive"));
         QCOMPARE(Previewer::viewerFor("application/x-iso9660-image", false), QString("archive"));
         // bsdtar can't list a lone compressed file, so it stays as 0.2.0 showed it.
         QCOMPARE(Previewer::viewerFor("application/gzip", false), QString("other"));
         QCOMPARE(Previewer::viewerFor("application/zstd", false), QString("other"));
+        QCOMPARE(Previewer::viewerFor("application/x-xz", false), QString("other"));
         QCOMPARE(Previewer::viewerFor("application/x-sharedlib", false), QString("other"));
         QCOMPARE(Previewer::viewerFor("inode/directory", true), QString("folder"));
     }

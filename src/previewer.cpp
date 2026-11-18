@@ -9,7 +9,6 @@
 #include <QTimer>
 #include <QUrl>
 #include <QtConcurrent>
-#include <algorithm>
 #include <climits>
 #include <csignal>
 #include <cstdio>
@@ -52,17 +51,10 @@ QString Previewer::viewerFor(const QString &mime, bool isDir) {
 }
 
 bool Previewer::listsArchive(const QString &mime) {
-    static const QStringList types{"application/zip", "application/x-tar", "application/x-compressed-tar",
-                                   "application/x-xz-compressed-tar", "application/x-bzip2-compressed-tar",
-                                   "application/x-zstd-compressed-tar", "application/x-lz4-compressed-tar",
-                                   "application/x-7z-compressed", "application/vnd.rar", "application/x-iso9660-image",
-                                   "application/x-cpio"};
-    // By the names the system's database gives, older or newer (an ISO is application/vnd.efi.iso in newer ones).
-    const QMimeDatabase mimes;
-    const QString name = mimes.mimeTypeForName(mime).name();
-    return !name.isEmpty() && std::any_of(types.begin(), types.end(), [&](const QString &type) {
-        return mimes.mimeTypeForName(type).name() == name;
-    });
+    // Whatever Folio calls an archive (every compressed tar among them),
+    // but a lone compressed file (notes.txt.gz), which bsdtar can't list.
+    static const QStringList single{"application/gzip", "application/x-xz", "application/zstd"};
+    return FolderModel::kindForMime(mime) == "archive" && !single.contains(mime);
 }
 
 QString Previewer::readText(const QString &path, qint64 limit) {
