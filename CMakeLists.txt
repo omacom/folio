@@ -63,7 +63,11 @@ endif()
 # package does, so a packager needs no list of files of their own. Tests stay
 # out of it.
 install(TARGETS folio RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES share/folio.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+install(FILES share/folio.desktop share/folio-chooser.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+# Other apps' Open and Save dialogs: `folio chooser` is an xdg-desktop-portal
+# FileChooser backend, which D-Bus starts on demand.
+install(FILES share/folio.portal DESTINATION ${CMAKE_INSTALL_DATADIR}/xdg-desktop-portal/portals)
+install(FILES share/org.freedesktop.impl.portal.desktop.folio.service DESTINATION ${CMAKE_INSTALL_DATADIR}/dbus-1/services)
 install(FILES share/folio.svg DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
 install(FILES LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/folio)
 install(FILES README.md docs/plugins.md DESTINATION ${CMAKE_INSTALL_DOCDIR})
