@@ -1096,6 +1096,100 @@ private slots:
         QCOMPARE(names("my  notes"), QString("my  notes.txt"));
     }
 
+    void folderSearchFindsDuplicates()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("sub");
+        write(dir.filePath("a.txt"), "same");
+        write(dir.filePath("sub/b.txt"), "same");
+        // Same size, different bytes; and one alone; and empty twins.
+        write(dir.filePath("c.txt"), "diff");
+        write(dir.filePath("only.txt"), "unique file");
+        write(dir.filePath("e1"), "");
+        write(dir.filePath("e2"), "");
+        // Bigger than the 64 KB compared first, differing only at the end.
+        QByteArray big(200 * 1024, 'x');
+        write(dir.filePath("big1"), big);
+        write(dir.filePath("sub/big2"), big);
+        big.back() = 'y';
+        write(dir.filePath("big3"), big);
+        const auto found = FolderModel::search(dir.path(), "dupes:", false, "name");
+        QStringList names;
+        for (const auto &e : found)
+            names << e.name;
+        // The biggest set first, its files together.
+        QCOMPARE(names.join(", "), QString("big1, sub/big2, a.txt, sub/b.txt"));
+        QCOMPARE(found.at(0).group, found.at(1).group);
+        QVERIFY(found.at(1).group != found.at(2).group);
+        // The rest of the query still narrows what's compared.
+        QCOMPARE(FolderModel::search(dir.path(), "dupes: big", false, "name").size(), 2);
+        QVERIFY(FolderModel::search(dir.path(), "dupes: only", false, "name").isEmpty());
+    }
+
+    void searchNarrowsWhatsAlreadyFound()
+    {
+        QVERIFY(FolderModel::narrows("beac", "beach"));
+        QVERIFY(FolderModel::narrows("BEAC", "beach"));
+        QVERIFY(FolderModel::narrows("beach", "beach"));
+        QVERIFY(!FolderModel::narrows("beach", "beac"));
+        QVERIFY(!FolderModel::narrows("beach", "sea"));
+        // An extension narrows; dropping it or taking another widens.
+        QVERIFY(FolderModel::narrows("beach", "beach ext:jpg"));
+        QVERIFY(FolderModel::narrows("ext:jpg,png", "ext:jpg"));
+        QVERIFY(FolderModel::narrows("ext:jpg", "img ext:jpg"));
+        QVERIFY(!FolderModel::narrows("ext:jpg", "ext:jpg,png"));
+        QVERIFY(!FolderModel::narrows("ext:jpg", "ext:png"));
+        QVERIFY(!FolderModel::narrows("ext:jpg", "beach"));
+        // A duplicates search is made again: whether a file has a twin
+        // depends on the files kept, not just on its own name.
+        QVERIFY(!FolderModel::narrows("beach", "beach dupes:"));
+        QVERIFY(!FolderModel::narrows("dupes: beach", "dupes: beach.jpg"));
+        QVERIFY(!FolderModel::narrows("dupes:", "beach"));
+        // Plain text is matched as typed, spaces and all.
+        QVERIFY(!FolderModel::narrows("my notes", "my  notes"));
+        QVERIFY(FolderModel::narrows("my", "my  notes"));
+
+        // The model answers a longer query from what it found, and the
+        // same as a fresh search would.
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("sub");
+        write(dir.filePath("beach.jpg"), "x");
+        write(dir.filePath("beach.png"), "x");
+        write(dir.filePath("sub/beach-2.jpg"), "x");
+        write(dir.filePath("sub/beam.txt"), "x");
+        write(dir.filePath("sub/beach.d"), "x");
+        QDir(dir.filePath("sub")).mkpath("beach-folder");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        auto names = [&] {
+            QStringList out;
+            for (int row = 0; row < model.count(); ++row)
+                out << model.get(row).value("name").toString();
+            return out;
+        };
+        model.setQuery("bea");
+        QTRY_VERIFY(!model.loading());
+        QCOMPARE(model.count(), 6);
+        // Written after the search, in a folder the model doesn't watch:
+        // only a new walk would find it.
+        write(dir.filePath("sub/beach-new.jpg"), "x");
+        model.setQuery("beach");
+        QVERIFY(!model.loading());
+        QCOMPARE(model.count(), 5);
+        QVERIFY(!names().contains("sub/beach-new.jpg"));
+        model.selectOnly(model.indexOfPath(dir.filePath("beach.png")));
+        model.setQuery("beach ext:jpg");
+        QVERIFY(!model.loading());
+        QCOMPARE(names().join(", "), QString("beach.jpg, sub/beach-2.jpg"));
+        QCOMPARE(model.selectedCount(), 0);
+        // Widening looks again, and finds what was written meanwhile.
+        model.setQuery("beach");
+        QTRY_VERIFY(!model.loading());
+        QVERIFY(names().contains("sub/beach-new.jpg"));
+    }
+
     void folderSearchSkipsSymlinkedFolders()
     {
         // A link back up the tree would otherwise be walked round and round.

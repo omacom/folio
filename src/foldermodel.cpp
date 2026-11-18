@@ -4,6 +4,7 @@
 #include <QCache>
 #include <QCollator>
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QDirIterator>
 #include <QElapsedTimer>
@@ -390,10 +391,13 @@ FolderModel::Entry FolderModel::entryFor(const QFileInfo &info, const QMimeDatab
 }
 
 // What a search query asks for: a name containing some text, with one of
-// some extensions if it names them ("beach ext:jpg,png", "ext:pdf").
+// some extensions if it names them ("beach ext:jpg,png", "ext:pdf"). With
+// "dupes:" it lists only the files that have an identical twin among the
+// matches, Everything's "find duplicates".
 struct SearchFilter {
     QString text;
     QStringList extensions;
+    bool dupes = false;
 
     explicit SearchFilter(const QString &query) {
         const QString q = query.trimmed();
@@ -401,7 +405,9 @@ struct SearchFilter {
         // left once the ext: words are taken out is as it was typed.
         QStringList words;
         for (const QString &word : q.split(QLatin1Char(' '))) {
-            if (word.startsWith(QLatin1String("ext:"), Qt::CaseInsensitive)) {
+            if (word.compare(QLatin1String("dupes:"), Qt::CaseInsensitive) == 0) {
+                dupes = true;
+            } else if (word.startsWith(QLatin1String("ext:"), Qt::CaseInsensitive)) {
                 for (QString ext : word.mid(4).split(QLatin1Char(','), Qt::SkipEmptyParts)) {
                     if (ext.startsWith(QLatin1Char('.')))
                         ext.remove(0, 1);
@@ -416,12 +422,120 @@ struct SearchFilter {
     }
 
     bool matches(const QFileInfo &info) const {
-        const QString name = info.fileName();
-        if (!extensions.isEmpty() && (info.isDir() || !extensions.contains(info.suffix().toLower())))
+        // Folders, links and empty files are never each other's duplicates.
+        if (dupes && (info.isDir() || info.isSymLink() || info.size() == 0))
+            return false;
+        return matches(info.fileName(), info.isDir(), info.suffix());
+    }
+
+    bool matches(const QString &name, bool isDir, const QString &suffix) const {
+        if (!extensions.isEmpty() && (isDir || !extensions.contains(suffix.toLower())))
             return false;
         return name.contains(text, Qt::CaseInsensitive);
     }
+
+    // Whether what this matches, `other` matches too: its text holds ours,
+    // and it takes no extension we don't (or we take any).
+    bool narrowedBy(const SearchFilter &other) const {
+        // What has a twin depends on all the files compared, not just the
+        // ones kept: a duplicates search is always made again.
+        if (dupes || other.dupes)
+            return false;
+        if (!other.text.contains(text, Qt::CaseInsensitive))
+            return false;
+        if (extensions.isEmpty())
+            return true;
+        if (other.extensions.isEmpty())
+            return false;
+        return std::all_of(other.extensions.begin(), other.extensions.end(),
+                           [&](const QString &ext) { return extensions.contains(ext); });
+    }
 };
+
+// The SHA-1 of a file's first `bytes` bytes (all of it for -1); empty if it
+// can't be read.
+static QByteArray hashOf(const QString &path, qint64 bytes) {
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return {};
+    QCryptographicHash hash(QCryptographicHash::Sha1);
+    qint64 left = bytes;
+    while (left != 0) {
+        const QByteArray chunk = file.read(left < 0 ? 1 << 20 : qMin<qint64>(left, 1 << 20));
+        if (chunk.isEmpty())
+            break;
+        hash.addData(chunk);
+        if (left > 0)
+            left -= chunk.size();
+    }
+    return hash.result();
+}
+
+// The files among `files` that have another with the same bytes, in sets
+// (Entry::group) with the biggest first. Only files of the same size are
+// compared, by their first 64 KB and then, if those agree, all of them.
+static QVector<FolderModel::Entry> duplicatesAmong(const QVector<FolderModel::Entry> &files, int limit,
+                                                   const std::function<bool()> &stop) {
+    QHash<qint64, QVector<int>> bySize;
+    for (int i = 0; i < files.size(); ++i)
+        bySize[files[i].size] << i;
+    QList<qint64> sizes = bySize.keys();
+    std::sort(sizes.begin(), sizes.end(), std::greater<qint64>());
+
+    // `rows` split into the sets that share a hash of their first `bytes`.
+    const auto split = [&](const QVector<int> &rows, qint64 bytes) {
+        QHash<QByteArray, QVector<int>> sets;
+        for (int row : rows) {
+            const QByteArray hash = hashOf(files[row].path, bytes);
+            if (!hash.isEmpty())
+                sets[hash] << row;
+        }
+        QVector<QVector<int>> twins;
+        for (const QVector<int> &set : std::as_const(sets))
+            if (set.size() > 1)
+                twins << set;
+        return twins;
+    };
+
+    constexpr qint64 head = 64 * 1024;
+    QVector<FolderModel::Entry> found;
+    int group = 0;
+    for (qint64 size : std::as_const(sizes)) {
+        if (stop && stop())
+            return {};
+        const QVector<int> &same = bySize[size];
+        if (same.size() < 2)
+            continue;
+        QVector<QVector<int>> sets = split(same, size <= head ? -1 : head);
+        if (size > head) {
+            QVector<QVector<int>> whole;
+            for (const QVector<int> &set : std::as_const(sets)) {
+                if (stop && stop())
+                    return {};
+                whole += split(set, -1);
+            }
+            sets = whole;
+        }
+        for (const QVector<int> &set : std::as_const(sets)) {
+            ++group;
+            for (int row : set) {
+                if (found.size() >= limit)
+                    return found;
+                FolderModel::Entry e = files[row];
+                e.group = group;
+                found.push_back(e);
+            }
+        }
+    }
+    return found;
+}
+
+// How many matches a search of a folder shows before it stops looking.
+static constexpr int searchLimit = 1000;
+
+bool FolderModel::narrows(const QString &from, const QString &to) {
+    return SearchFilter(from).narrowedBy(SearchFilter(to));
+}
 
 QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QString &query, bool showHidden,
                                                 const QString &sort, const std::function<bool()> &stop,
@@ -450,7 +564,9 @@ QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QStri
     QMimeDatabase mimes;
     const QDir base(root);
     QStringList folders{root};
-    while (!folders.isEmpty() && entries.size() < limit) {
+    // A search for duplicates gathers every candidate and keeps the twins
+    // at the end; the limit is on what it shows.
+    while (!folders.isEmpty() && (wanted.dupes || entries.size() < limit)) {
         if (stop && stop())
             return {};
         QDirIterator it(folders.takeFirst(), filters);
@@ -458,7 +574,7 @@ QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QStri
             if (stop && stop())
                 return {};
             const QFileInfo info = it.nextFileInfo();
-            if (entries.size() < limit && wanted.matches(info)) {
+            if ((wanted.dupes || entries.size() < limit) && wanted.matches(info)) {
                 Entry e = entryFor(info, mimes);
                 e.name = base.relativeFilePath(e.path);
                 // Only what fits a file chooser's filter uses up the limit.
@@ -467,7 +583,8 @@ QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QStri
             }
             // At every entry, not just at matches: a match found early isn't
             // held back by a long stretch of folders with none.
-            tell(false);
+            if (!wanted.dupes)
+                tell(false);
             // Other filesystems (a mounted drive, another machine, /proc
             // from /) and symlinked folders aren't walked into.
             struct stat st;
@@ -476,6 +593,11 @@ QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QStri
                 && st.st_dev == top.st_dev)
                 folders << info.absoluteFilePath();
         }
+    }
+    if (wanted.dupes) {
+        entries = duplicatesAmong(entries, limit, stop);
+        if (stop && stop())
+            return {};
     }
     tell(true);
     sortEntries(entries, sort, locale);
@@ -500,6 +622,9 @@ std::function<bool(const FolderModel::Entry &, const FolderModel::Entry &)> Fold
         // Folders first in every order, as everywhere else on the desktop.
         if (a.isDir != b.isDir)
             return a.isDir;
+        // A search for duplicates keeps each set together.
+        if (a.group != b.group)
+            return a.group < b.group;
         if (sort == "modified" && a.modified != b.modified)
             return a.modified > b.modified;
         if (sort == "oldest" && a.modified != b.modified)
@@ -628,6 +753,7 @@ void FolderModel::reload() {
         return;
     }
     m_shownQuery.clear();
+    m_complete = false;
     const auto latest = m_latest;
     auto *watcher = new QFutureWatcher<std::tuple<QVector<Entry>, QString, QStringList, QHash<QString, QVector<Entry>>, QHash<QString, QString>>>(this);
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation] {
@@ -854,6 +980,28 @@ void FolderModel::searchHere(quint64 generation) {
     const bool fresh = query != m_shownQuery;
     m_shownQuery = query;
     m_staleClear.stop();
+    // What's shown is all the previous search found, and this one only asks
+    // for less of it: keep what still matches, with no walk.
+    const QString key = path + QLatin1Char('\n') + (showHidden ? "h" : "") + QLatin1Char('\n') + filter.join(QLatin1Char('\n'));
+    if (fresh && m_complete && key == m_completeKey && narrows(m_completeQuery, query)) {
+        const SearchFilter wanted(query);
+        QVector<Entry> kept;
+        for (const Entry &e : std::as_const(m_entries))
+            if (wanted.matches(QFileInfo(e.path).fileName(), e.isDir, e.extension))
+                kept.push_back(e);
+        m_completeQuery = query;
+        setError({});
+        setEntries(kept);
+        QSet<QString> still;
+        for (const Entry &e : std::as_const(m_entries))
+            if (m_selected.contains(e.path))
+                still.insert(e.path);
+        setSelected(still);
+        setLoading(false);
+        emit loaded();
+        return;
+    }
+    m_complete = false;
     if (fresh)
         clearEntries();
     setError({});
@@ -870,7 +1018,7 @@ void FolderModel::searchHere(quint64 generation) {
             emit loaded();
         }
     });
-    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, fresh, announced] {
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, fresh, announced, query, key] {
         watcher->deleteLater();
         if (generation != m_generation)
             return;
@@ -888,12 +1036,17 @@ void FolderModel::searchHere(quint64 generation) {
                     still.insert(e.path);
             setSelected(still);
         }
+        // Unless it was cut short by the limit, this is all there is to
+        // narrow by a longer query.
+        m_complete = m_entries.size() < searchLimit;
+        m_completeQuery = query;
+        m_completeKey = key;
         setLoading(false);
         emit loaded();
         countFolders(generation);
     });
     watcher->setFuture(QtConcurrent::run(&FolderModel::listingPool(), [path, query, showHidden, sort, filter, locale, latest, generation](QPromise<QVector<Entry>> &promise) {
-        search(path, query, showHidden, sort, [&] { return *latest != generation; }, 1000, locale, filter,
+        search(path, query, showHidden, sort, [&] { return *latest != generation; }, searchLimit, locale, filter,
                [&](const QVector<Entry> &found) { promise.addResult(found); });
     }));
 }

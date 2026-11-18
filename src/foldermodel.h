@@ -76,6 +76,9 @@ public:
         // How deep in the tree: 0 for the folder's own items, 1 for those of
         // a folder opened in place under them, and so on.
         int depth = 0;
+        // In a search for duplicates ("dupes:"), which set of identical
+        // files this is one of, the biggest set first; 0 otherwise.
+        int group = 0;
     };
 
     explicit FolderModel(QObject *parent = nullptr);
@@ -197,6 +200,11 @@ public:
                                  const QLocale &locale = QLocale(), const QStringList &filter = {},
                                  const std::function<void(const QVector<Entry> &)> &found = {});
 
+    // Whether every match of the search `from` is also a match of `to`, so
+    // typing on ("beac" to "beach", or adding an ext:) can narrow what's
+    // already found instead of looking again.
+    static bool narrows(const QString &from, const QString &to);
+
 signals:
     void pathChanged();
     void countChanged();
@@ -222,6 +230,12 @@ private:
     void insertFound(const QVector<Entry> &found);
     // The search whose matches are shown (or being found).
     QString m_shownQuery;
+    // Set, m_entries holds every match of m_completeQuery (not cut short by
+    // the limit) in the folder that m_completeKey names, so a search that
+    // narrows it is answered from them.
+    bool m_complete = false;
+    QString m_completeQuery;
+    QString m_completeKey;
     void setEntries(const QVector<Entry> &entries);
     void clearEntries();
     QString cacheKey() const;
