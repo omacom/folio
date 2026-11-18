@@ -69,7 +69,7 @@ ApplicationWindow {
             return
         const v = win.view
         const scrolls = v && typeof v.scroll === "function"
-            && (v.contentHeight === undefined || v.contentHeight > v.height + 1)
+            && (v.scrolls !== undefined ? v.scrolls : v.contentHeight > v.height + 1)
         if (scrolls)
             v.scroll(direction)
         else

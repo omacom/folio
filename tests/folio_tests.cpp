@@ -7738,6 +7738,58 @@ private slots:
         QCOMPARE(previewer.viewer(), QString("text"));
     }
 
+    void previewStepsPastAOnePagePdf()
+    {
+        QTemporaryDir dir;
+        for (const char *name : {"one.pdf", "two.pdf"}) {
+            QPdfWriter pdf(dir.filePath(name));
+            QPainter painter(&pdf);
+            if (QByteArray(name) == "two.pdf")
+                pdf.newPage();
+        }
+        write(dir.filePath("z.png"), "z");
+
+        Previewer previewer;
+        previewer.connectToFolio(false);
+        QSignalSpy reported(&previewer, &Previewer::reported);
+        previewer.start(dir.filePath("two.pdf"), false, "name");
+        Theme theme(dir.filePath("theme"));
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.filePath("none")});
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        engine.rootContext()->setContextProperty("previewer", &previewer);
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent pdf(&engine);
+        pdf.setData("import QtQuick.Pdf\nPdfDocument {}\n", QUrl());
+        if (pdf.isError())
+            QSKIP("Qt PDF isn't installed");
+        QQmlComponent component(&engine, QUrl("qrc:/PreviewWindow.qml"));
+        std::unique_ptr<QObject> window(component.create());
+        QVERIFY2(window, qPrintable(component.errorString()));
+        const auto pages = [&]() -> int {
+            auto *view = window->property("view").value<QObject *>();
+            for (QObject *child : view ? view->children() : QObjectList())
+                if (child->property("pageCount").isValid())
+                    return child->property("pageCount").toInt();
+            return -1;
+        };
+        const auto steps = [&] {
+            int n = 0;
+            for (const QList<QVariant> &line : reported)
+                n += line.at(0).toString().startsWith("step ");
+            return n;
+        };
+        // Pages to turn take ↑ and ↓; a single page lets them move on.
+        QTRY_COMPARE(pages(), 2);
+        QMetaObject::invokeMethod(window.get(), "upDown", Q_ARG(QVariant, 1));
+        QCOMPARE(steps(), 0);
+        previewer.show(dir.filePath("one.pdf"));
+        QTRY_COMPARE(pages(), 1);
+        QMetaObject::invokeMethod(window.get(), "upDown", Q_ARG(QVariant, 1));
+        QCOMPARE(steps(), 1);
+    }
+
     void themeFallsBack()
     {
         QTemporaryDir dir;

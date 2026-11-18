@@ -6,6 +6,9 @@ import QtQuick.Pdf
 Item {
     id: pdf
 
+    // ↑ and ↓ move between the pages, or with only one, to the next item.
+    readonly property bool scrolls: doc.pageCount > 1
+
     function fit() { view.scaleToWidth(Math.min(width - 48, 960), height) }
     function zoomBy(factor) { view.renderScale = Math.max(0.1, Math.min(10, view.renderScale * factor)) }
     function scroll(direction) { page(direction) }
