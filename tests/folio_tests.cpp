@@ -7189,17 +7189,20 @@ private slots:
                 qputenv("XDG_CONFIG_HOME", was);
             QGuiApplication::setFont(appFont);
         });
-        // A family other than what monospace means now, that fontconfig
-        // knows by that name.
+        // A real family other than what monospace means now, that fontconfig
+        // knows by that name (not a generic one like Monospace, which a
+        // machine with few fonts lists as a family of its own).
         const QString before = Theme::resolveFamily("monospace");
+        const QStringList generic{"monospace", "sans-serif", "sans", "serif", "system-ui"};
         QString other;
         for (const QString &family : QFontDatabase::families())
-            if (family != before && Theme::resolveFamily(family) == family) {
+            if (family.compare(before, Qt::CaseInsensitive) != 0 && !generic.contains(family.toLower())
+                && Theme::resolveFamily(family) == family) {
                 other = family;
                 break;
             }
         if (other.isEmpty())
-            QSKIP("only one font family is installed");
+            QSKIP("no second font family is installed");
 
         Theme theme(config.filePath("theme"));
         QSignalSpy changed(&theme, &Theme::fontChanged);

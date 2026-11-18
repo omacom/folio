@@ -154,17 +154,20 @@ Item {
             color: row.current ? theme.accent : theme.foreground
             elide: Text.ElideMiddle
         }
+        // The size and date columns grow with the text, so the system's text
+        // size doesn't push them into the name.
         FolioText {
             visible: row.showSize
-            Layout.preferredWidth: 96
+            Layout.preferredWidth: Math.round(96 * theme.textScale)
             horizontalAlignment: Text.AlignRight
             text: row.kind === "item" ? row.extension : row.isDir ? Format.count(row.itemCount) : Format.size(row.size)
             color: theme.secondaryForeground
             size: 12
+            elide: Text.ElideRight
         }
         FolioText {
             visible: row.showDate
-            Layout.preferredWidth: 96
+            Layout.preferredWidth: Math.round(96 * theme.textScale)
             Layout.leftMargin: 12
             horizontalAlignment: Text.AlignLeft
             text: {
