@@ -7728,6 +7728,14 @@ private slots:
         QCOMPARE(previewer.text().size(), 4096);
         previewer.show(dir.filePath("b.png"));
         QVERIFY(!previewer.readingText());
+
+        // A file its name gives no type might be a long text too, until
+        // what it holds has been read.
+        write(dir.filePath("NOTES"), QByteArray(4096, 'x'));
+        previewer.show(dir.filePath("NOTES"));
+        QVERIFY(previewer.readingText());
+        QTRY_VERIFY(!previewer.readingText());
+        QCOMPARE(previewer.viewer(), QString("text"));
     }
 
     void themeFallsBack()

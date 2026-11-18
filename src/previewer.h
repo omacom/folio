@@ -32,8 +32,9 @@ class Previewer : public QObject {
     Q_PROPERTY(QString viewer READ viewer NOTIFY changed)
     Q_PROPERTY(QString url READ url NOTIFY changed)
     Q_PROPERTY(QString text READ text NOTIFY changed)
-    // A text's opening part is still being read: until it's in, its length
-    // (whether ↑ and ↓ scroll it or step past it) isn't known.
+    // A text's opening part, or the type of a file its name gave none, is
+    // still being read: until it's in, whether it's a long text (whether ↑
+    // and ↓ scroll it or step past it) isn't known.
     Q_PROPERTY(bool readingText READ readingText NOTIFY changed)
     Q_PROPERTY(QString type READ type NOTIFY changed)
 

@@ -277,7 +277,8 @@ void Previewer::setIndex(int index, bool report) {
     // A file its extension could not name is named by what it holds, read with the rest and kept apart from the listing.
     const bool unnamed = e.mime == "application/octet-stream";
     if (count || text || unnamed) {
-        m_readingText = text;
+        // A file its name gave no type may turn out to be a long text.
+        m_readingText = text || unnamed;
         auto *watcher = new QFutureWatcher<QPair<FolderModel::Entry, QString>>(this);
         connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, unnamed] {
             watcher->deleteLater();
