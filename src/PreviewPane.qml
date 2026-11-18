@@ -201,6 +201,7 @@ Rectangle {
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignLeft
                 text: pane.item.name || ""
+                textFormat: Text.PlainText
                 color: theme.brightForeground
                 size: 15
                 font.weight: Font.DemiBold
@@ -235,6 +236,7 @@ Rectangle {
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignRight
                 text: pane.trashed ? pane.homeless(pane.origin.replace(/\/[^\/]*$/, "") || "/") : ""
+                textFormat: Text.PlainText
                 color: theme.foreground
                 size: 12
                 elide: Text.ElideMiddle
@@ -315,7 +317,7 @@ Rectangle {
                 text: current ? current.name : qsTr("Choose")
                 contentItem: RowLayout {
                     spacing: 8
-                    FolioText { id: appName; Layout.fillWidth: true; text: opensWith.text; elide: Text.ElideMiddle; color: theme.foreground; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    FolioText { id: appName; Layout.fillWidth: true; text: opensWith.text; textFormat: Text.PlainText; elide: Text.ElideMiddle; color: theme.foreground; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                     FolioText { id: arrow; text: "▾"; color: theme.foreground; verticalAlignment: Text.AlignVCenter }
                 }
                 // A second click closes it again.
@@ -400,7 +402,7 @@ Rectangle {
             }
             contentItem: RowLayout {
                 // A long app name ends in … rather than running past the button.
-                FolioText { Layout.leftMargin: 14; Layout.fillWidth: true; text: openButton.text; elide: Text.ElideRight; color: theme.accentForeground; font.weight: Font.DemiBold }
+                FolioText { Layout.leftMargin: 14; Layout.fillWidth: true; text: openButton.text; textFormat: Text.PlainText; elide: Text.ElideRight; color: theme.accentForeground; font.weight: Font.DemiBold }
                 FolioText { Layout.rightMargin: 14; text: "⏎"; color: theme.accentForeground }
             }
         }

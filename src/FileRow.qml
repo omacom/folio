@@ -159,6 +159,7 @@ Item {
             Layout.minimumWidth: 120
             horizontalAlignment: Text.AlignLeft
             text: row.name
+            textFormat: Text.PlainText
             color: row.cut ? theme.secondaryForeground : row.current ? theme.accent : theme.foreground
             elide: Text.ElideMiddle
         }

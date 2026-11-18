@@ -136,6 +136,7 @@ Rectangle {
                 anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
                 text: backend.path.startsWith("plugin:") ? qsTr("Search %1").arg(here) : qsTr("Search %1 and below").arg(here)
+                textFormat: Text.PlainText
                 color: theme.secondaryForeground
                 size: 12
             }
@@ -195,6 +196,7 @@ Rectangle {
                         }
                         FolioText {
                             text: crumb.modelData.name
+                            textFormat: Text.PlainText
                             color: crumb.last ? theme.brightForeground : crumbMouse.containsMouse ? theme.foreground : theme.secondaryForeground
                             size: 14
                             font.weight: crumb.last ? Font.DemiBold : Font.Normal

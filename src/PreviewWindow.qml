@@ -114,6 +114,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             horizontalAlignment: Text.AlignLeft
                             text: win.item.name || ""
+                            textFormat: Text.PlainText
                             color: theme.brightForeground
                             size: 15
                             font.weight: Font.DemiBold
@@ -460,6 +461,7 @@ ApplicationWindow {
                 FolioText {
                     Layout.alignment: Qt.AlignHCenter
                     text: win.item.extension || ""
+                    textFormat: Text.PlainText
                     color: theme.accent
                     font.weight: Font.DemiBold
                 }

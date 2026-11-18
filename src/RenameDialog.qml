@@ -49,6 +49,7 @@ FolioDialog {
         horizontalAlignment: Text.AlignLeft
         visible: dialog.problem.length > 0
         text: dialog.problem
+        textFormat: Text.PlainText
         color: theme.red
         wrapMode: Text.Wrap
     }

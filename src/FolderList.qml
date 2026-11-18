@@ -109,6 +109,7 @@ FileListView {
         text: searching ? qsTr("Searching…")
             : backend.folder.query ? qsTr("Nothing matches “%1”").arg(backend.folder.query)
             : plugins.views[backend.path] ? plugins.views[backend.path].empty : qsTr("This folder is empty")
+        textFormat: Text.PlainText
         color: theme.secondaryForeground
     }
 }

@@ -77,6 +77,7 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         width: parent.width - 28
         text: tile.name
+        textFormat: Text.PlainText
         color: tile.cut ? theme.secondaryForeground : tile.current ? theme.accent : theme.foreground
         size: 12
         horizontalAlignment: Text.AlignHCenter
@@ -332,7 +333,7 @@ Item {
                 width: badge.implicitWidth + 8
                 height: badge.implicitHeight + 2
                 color: tile.kindColor
-                FolioText { id: badge; anchors.centerIn: parent; text: tile.extension.slice(0, 4); size: 9; font.bold: true; color: theme.background }
+                FolioText { id: badge; anchors.centerIn: parent; text: tile.extension.slice(0, 4); textFormat: Text.PlainText; size: 9; font.bold: true; color: theme.background }
             }
         }
     }
@@ -363,7 +364,7 @@ Item {
                     }
                 }
             }
-            FolioText { anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: 5; text: tile.extension; size: 9; color: theme.secondaryForeground }
+            FolioText { anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: 5; text: tile.extension; textFormat: Text.PlainText; size: 9; color: theme.secondaryForeground }
         }
     }
 

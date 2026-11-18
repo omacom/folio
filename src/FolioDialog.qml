@@ -60,6 +60,7 @@ FocusScope {
             FolioText {
                 Layout.fillWidth: true
                 text: dialog.title
+                textFormat: Text.PlainText
                 wrapMode: Text.Wrap
                 color: theme.brightForeground
                 size: 16

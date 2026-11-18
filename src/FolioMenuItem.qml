@@ -47,6 +47,7 @@ MenuItem {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             text: entry.text
+            textFormat: Text.PlainText
             color: !entry.enabled ? theme.secondaryForeground : entry.highlighted ? theme.brightForeground : theme.foreground
         }
         FolioText {

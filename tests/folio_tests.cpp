@@ -1077,6 +1077,53 @@ private slots:
         QTRY_VERIFY(QFileInfo::exists(home.filePath("parcel.txt")));
     }
 
+    // A name that looks like markup is drawn as written, in the list and
+    // the grid alike, not as rich text that's bold and without its tags.
+    void namesDrawAsPlainText()
+    {
+        QTemporaryDir home;
+        const QString name = "<b>bold.txt";
+        write(home.filePath(name), "x");
+        Backend backend(home.path());
+        backend.navigate(home.path());
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        Translator translator(home.filePath("language"), home.path());
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("plugins", QVariantMap{{"views", QVariantMap{}}});
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QTRY_COMPARE(backend.folder()->rowCount(), 1);
+        for (const QString &view : QStringList{"FolderList", "FolderGrid"}) {
+            QQmlComponent component(&engine);
+            component.setData(QString(R"(
+                import QtQuick
+                Window {
+                    width: 900; height: 480; visible: true
+                    %1 { anchors.fill: parent }
+                }
+            )").arg(view).toUtf8(), QUrl::fromLocalFile(sourceFolder() + "/PlainNamesTest.qml"));
+            std::unique_ptr<QObject> root(component.create());
+            QVERIFY2(root, qPrintable(component.errorString()));
+            QList<QQuickItem *> labels;
+            std::function<void(QQuickItem *)> walk = [&](QQuickItem *item) {
+                if (item->property("text").toString() == name && item->property("textFormat").isValid())
+                    labels << item;
+                for (auto *child : item->childItems())
+                    walk(child);
+            };
+            QTRY_VERIFY2((labels.clear(), walk(qobject_cast<QQuickWindow *>(root.get())->contentItem()), !labels.isEmpty()),
+                         qPrintable(view));
+            for (QQuickItem *label : labels)
+                QCOMPARE(label->property("textFormat").toInt(), int(Qt::PlainText));
+        }
+    }
+
     // A place picked in the sidebar is the first column shown, with the
     // folders above it scrolled out of sight to the left; going up shows
     // them again.
@@ -7671,6 +7718,41 @@ private slots:
             QCOMPARE(previewer.viewer(), QString("other"));
         }
         QCOMPARE(previewer.item().value("mime").toString(), QString("application/zip"));
+    }
+
+    // A file with no preview is named, and its extension shown, as written,
+    // however much they look like markup.
+    void previewWindowDrawsNamesAsPlainText()
+    {
+        QTemporaryDir dir;
+        write(dir.filePath("x.<b>ty"), QByteArray("abc\0def", 7));
+        Theme theme(dir.filePath("theme"));
+        Translator translator(dir.filePath("language"), dir.path());
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.filePath("none")});
+        Previewer previewer;
+        previewer.start(dir.filePath("x.<b>ty"), false, "name");
+        QQmlApplicationEngine engine;
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("previewer", &previewer);
+        engine.load(QUrl("qrc:/PreviewWindow.qml"));
+        QVERIFY(!engine.rootObjects().isEmpty());
+        auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first());
+        QTRY_COMPARE(previewer.viewer(), QString("other"));
+        const auto formatOf = [&](const QString &text) {
+            int format = -1;
+            std::function<void(QQuickItem *)> walk = [&](QQuickItem *item) {
+                if (item->property("text").toString() == text && item->property("textFormat").isValid())
+                    format = item->property("textFormat").toInt();
+                for (auto *child : item->childItems())
+                    walk(child);
+            };
+            walk(window->contentItem());
+            return format;
+        };
+        QTRY_COMPARE(formatOf("x.<b>ty"), int(Qt::PlainText));
+        QTRY_COMPARE(formatOf("<B>TY"), int(Qt::PlainText));
     }
 
     void previewerShowsOnlyWhatLaysOutQuickly()

@@ -78,6 +78,7 @@ Item {
                 FolioText {
                     Layout.alignment: Qt.AlignHCenter
                     text: player.metaData.stringValue(MediaMetaData.Title) || previewer.item.name || ""
+                    textFormat: Text.PlainText
                     color: theme.brightForeground
                     size: 16
                     font.weight: Font.DemiBold
