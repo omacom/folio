@@ -400,8 +400,10 @@ struct SearchFilter {
             regex = QRegularExpression(q.mid(3).trimmed(), QRegularExpression::CaseInsensitiveOption);
             return;
         }
+        // Split keeping the empty words between repeated spaces, so the text
+        // left once the ext: words are taken out is as it was typed.
         QStringList words;
-        for (const QString &word : q.split(QLatin1Char(' '), Qt::SkipEmptyParts)) {
+        for (const QString &word : q.split(QLatin1Char(' '))) {
             if (word.startsWith(QLatin1String("ext:"), Qt::CaseInsensitive)) {
                 for (QString ext : word.mid(4).split(QLatin1Char(','), Qt::SkipEmptyParts)) {
                     if (ext.startsWith(QLatin1Char('.')))
@@ -413,7 +415,7 @@ struct SearchFilter {
                 words << word;
             }
         }
-        text = words.join(QLatin1Char(' '));
+        text = words.join(QLatin1Char(' ')).trimmed();
     }
 
     bool matches(const QFileInfo &info) const {

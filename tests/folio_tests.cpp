@@ -1091,6 +1091,10 @@ private slots:
         QCOMPARE(names("re:^IMG_\\d+"), QString("IMG_001.JPG, IMG_002.png"));
         QCOMPARE(names("re:(jpg|png)$"), QString("IMG_001.JPG, IMG_002.png, Photos/IMG_x.jpg"));
         QVERIFY(names("re:(").isEmpty());
+        // Plain text is matched as typed, spaces and all.
+        write(dir.filePath("my  notes.txt"), "x");
+        write(dir.filePath("my notes.txt"), "x");
+        QCOMPARE(names("my  notes"), QString("my  notes.txt"));
     }
 
     void folderSearchSkipsSymlinkedFolders()
