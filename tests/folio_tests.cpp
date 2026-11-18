@@ -7357,6 +7357,14 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(cursor(), home.filePath("files/alpha/z.txt"), 3000);
         QCOMPARE(folder->get(folder->indexOfPath(home.filePath("files/alpha/z.txt"))).value("selected").toBool(), true);
         QCOMPARE(folder->selectedCount(), 1);
+
+        // The preview stepping to a file in the opened folder moves the
+        // cursor to its row, so ↑ and ↓ step from there; one outside the
+        // folder shown leaves it be.
+        backend.previewSaid(home.filePath("files/alpha/b.txt"));
+        QTRY_COMPARE(cursor(), home.filePath("files/alpha/b.txt"));
+        backend.previewSaid(home.filePath("elsewhere/x.txt"));
+        QCOMPARE(cursor(), home.filePath("files/alpha/b.txt"));
     }
 
     // Right-click selects the item under the pointer in a scrolled view too,

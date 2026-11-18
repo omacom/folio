@@ -233,6 +233,11 @@ FocusScope {
     Connections {
         target: backend
         function onSelectRequested(name) { if (view.item) view.item.select(backend.folder.indexOf(name), false) }
+        function onSelectPathRequested(path) {
+            const row = backend.folder.indexOfPath(path)
+            if (view.item && row >= 0)
+                view.item.select(row, false)
+        }
         // Followed now, not later as a re-read is: the preview waits for the
         // new item before its next arrow.
         function onStepRequested(direction) { if (view.item) { view.item.stepRow(direction); pane.follow() } }

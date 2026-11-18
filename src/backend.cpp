@@ -41,22 +41,8 @@ Backend::Backend(const QString &home, QObject *parent)
     });
     // The preview reports each file it steps to, and the grid follows.
     connect(&m_preview, &QProcess::readyReadStandardOutput, this, [this] {
-        while (m_preview.canReadLine()) {
-            const QString shown = QString::fromUtf8(m_preview.readLine()).trimmed();
-            if (shown.startsWith("step ")) {
-                // The view moves and sends its new item right away (or
-                // nothing, at the first or last row); "stepped" after it
-                // lets the preview take the arrows that came meanwhile.
-                emit stepRequested(shown.mid(5).toInt() < 0 ? -1 : 1);
-                if (previewing())
-                    m_preview.write("stepped\n");
-                continue;
-            }
-            m_previewed = shown;
-            const QFileInfo info(shown);
-            if (info.absolutePath() == path())
-                emit selectRequested(info.fileName());
-        }
+        while (m_preview.canReadLine())
+            previewSaid(QString::fromUtf8(m_preview.readLine()).trimmed());
     });
     connect(&m_preview, &QProcess::stateChanged, this, &Backend::previewingChanged);
     connect(&m_preview, &QProcess::finished, this, [this](int, QProcess::ExitStatus status) {
@@ -728,4 +714,23 @@ void Backend::setBusy(const QString &busy) {
         return;
     m_busy = busy;
     emit busyChanged();
+}
+
+void Backend::previewSaid(const QString &shown) {
+    if (shown.startsWith("step ")) {
+        // The view moves and sends its new item right away (or nothing, at
+        // the first or last row); "stepped" after it lets the preview take
+        // the arrows that came meanwhile.
+        emit stepRequested(shown.mid(5).toInt() < 0 ? -1 : 1);
+        if (previewing())
+            m_preview.write("stepped\n");
+        return;
+    }
+    m_previewed = shown;
+    // Any file in the folder shown or below it: one in a folder opened in
+    // place (the list's tree) is a row too, and the cursor goes to it, so
+    // ↑ and ↓ step from there.
+    const QString here = path().endsWith('/') ? path() : path() + '/';
+    if (shown.startsWith(here))
+        emit selectPathRequested(shown);
 }

@@ -112,6 +112,9 @@ public:
     // Space: opens the large preview of a file in its own process, or closes
     // it when it's already open.
     Q_INVOKABLE void togglePreview(const QString &path);
+    // A line from the preview: the file it moved to, or "step -1"/"step 1"
+    // asking for the row above or below.
+    void previewSaid(const QString &line);
     // Ctrl+N: another window, on the folder this one shows.
     Q_INVOKABLE void newWindow();
     // In a file chooser, opening a file picks it (chosen) rather than opening
@@ -150,6 +153,9 @@ signals:
     void newWindowRequested(const QString &path);
     void chosen(const QString &path);
     void selectRequested(const QString &name);
+    // The preview moved to `path`, in the folder shown or a folder opened in
+    // place in it: the cursor goes to its row.
+    void selectPathRequested(const QString &path);
     // The preview's ↑ or ↓ on a file it can't scroll: move one row in the
     // folder view, whose layout only this window knows.
     void stepRequested(int direction);
