@@ -7193,7 +7193,11 @@ private slots:
         // knows by that name (not a generic one like Monospace, which a
         // machine with few fonts lists as a family of its own).
         const QString before = Theme::resolveFamily("monospace");
-        const QStringList generic{"monospace", "sans-serif", "sans", "serif", "system-ui"};
+        // A machine without fonts (CI's container) resolves monospace to
+        // nothing real, and has none to switch to.
+        if (before.compare("monospace", Qt::CaseInsensitive) == 0)
+            QSKIP("fontconfig knows no real fonts here");
+        const QStringList generic{"monospace", "sans-serif", "sans serif", "sans", "serif", "system-ui"};
         QString other;
         for (const QString &family : QFontDatabase::families())
             if (family.compare(before, Qt::CaseInsensitive) != 0 && !generic.contains(family.toLower())
