@@ -14,7 +14,6 @@
 #include <QFileInfo>
 #include <QFutureWatcher>
 #include <QMimeDatabase>
-#include <QRegularExpression>
 #include <QtConcurrent>
 #include <algorithm>
 #include <tuple>
@@ -384,22 +383,14 @@ FolderModel::Entry FolderModel::entryFor(const QFileInfo &info, const QMimeDatab
     return e;
 }
 
-// What a search query asks for: a name containing some text, or with one of
-// some extensions ("beach ext:jpg,png", "ext:pdf"), or matching a regular
-// expression ("re:^IMG_\\d+"). An invalid expression matches nothing.
+// What a search query asks for: a name containing some text, with one of
+// some extensions if it names them ("beach ext:jpg,png", "ext:pdf").
 struct SearchFilter {
     QString text;
     QStringList extensions;
-    QRegularExpression regex;
-    bool useRegex = false;
 
     explicit SearchFilter(const QString &query) {
         const QString q = query.trimmed();
-        if (q.startsWith(QLatin1String("re:"), Qt::CaseInsensitive)) {
-            useRegex = true;
-            regex = QRegularExpression(q.mid(3), QRegularExpression::CaseInsensitiveOption);
-            return;
-        }
         // Split keeping the empty words between repeated spaces, so the text
         // left once the ext: words are taken out is as it was typed.
         QStringList words;
@@ -420,8 +411,6 @@ struct SearchFilter {
 
     bool matches(const QFileInfo &info) const {
         const QString name = info.fileName();
-        if (useRegex)
-            return regex.isValid() && regex.match(name).hasMatch();
         if (!extensions.isEmpty() && (info.isDir() || !extensions.contains(info.suffix().toLower())))
             return false;
         return name.contains(text, Qt::CaseInsensitive);

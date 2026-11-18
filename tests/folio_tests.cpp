@@ -1071,7 +1071,7 @@ private slots:
                  qPrintable(QString("told at %1 of %2").arg(lookedWhenTold).arg(looks)));
     }
 
-    void folderSearchFiltersByExtensionAndRegex()
+    void folderSearchFiltersByExtension()
     {
         QTemporaryDir dir;
         QDir(dir.path()).mkpath("Photos/ext.d");
@@ -1088,15 +1088,10 @@ private slots:
         QCOMPARE(names("ext:jpg"), QString("IMG_001.JPG, Photos/IMG_x.jpg"));
         QCOMPARE(names("ext:.PNG,txt"), QString("IMG_002.png, Photos/notes.txt"));
         QCOMPARE(names("img ext:jpg"), QString("IMG_001.JPG, Photos/IMG_x.jpg"));
-        QCOMPARE(names("re:^IMG_\\d+"), QString("IMG_001.JPG, IMG_002.png"));
-        QCOMPARE(names("re:(jpg|png)$"), QString("IMG_001.JPG, IMG_002.png, Photos/IMG_x.jpg"));
-        QVERIFY(names("re:(").isEmpty());
         // Plain text is matched as typed, spaces and all.
         write(dir.filePath("my  notes.txt"), "x");
         write(dir.filePath("my notes.txt"), "x");
         QCOMPARE(names("my  notes"), QString("my  notes.txt"));
-        // A pattern keeps its spaces, a leading one too.
-        QCOMPARE(names("re: notes\\.txt$"), QString("my  notes.txt, my notes.txt"));
     }
 
     void folderSearchSkipsSymlinkedFolders()

@@ -185,9 +185,9 @@ public:
     static bool fits(const QStringList &filter, const Entry &entry);
     // Everything under `root` whose name contains `query` (ignoring case),
     // named by its path from `root`. `ext:jpg,png` keeps only files with
-    // those extensions (alone or beside some text), and `re:<pattern>`
-    // matches names against a regular expression instead. Stops at `limit` matches, at other
-    // filesystems and at symlinks, and as soon as `stop` returns true.
+    // those extensions (alone or beside some text). Stops at `limit`
+    // matches, at other filesystems and at symlinks, and as soon as `stop`
+    // returns true.
     // `found`, when given, gets the matches as they're found, a batch at a
     // time (every tenth of a second at most), in no order.
     static QVector<Entry> search(const QString &root, const QString &query, bool showHidden, const QString &sort,
