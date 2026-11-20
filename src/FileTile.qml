@@ -177,10 +177,12 @@ Item {
             height: 92
             preferredRendererType: Shape.CurveRenderer
             ShapePath {
-                fillColor: tile.current || folderDrop.containsDrag ? Qt.tint(theme.lighterBackground, Qt.alpha(theme.accent, 0.3))
-                    : hover.hovered ? Qt.tint(theme.lighterBackground, Qt.alpha(theme.foreground, 0.06))
-                    : theme.lighterBackground
-                strokeColor: tile.current || folderDrop.containsDrag ? theme.accent : "transparent"
+                // The card keeps the theme's lighter background when that
+                // already reads; otherwise folderFill lifts it off the pane.
+                fillColor: tile.current || folderDrop.containsDrag ? Qt.tint(theme.folderFill, Qt.alpha(theme.accent, 0.3))
+                    : hover.hovered ? Qt.tint(theme.folderFill, Qt.alpha(theme.foreground, 0.06))
+                    : theme.folderFill
+                strokeColor: tile.current || folderDrop.containsDrag ? theme.accentMark : "transparent"
                 strokeWidth: folderDrop.containsDrag ? 2.5 : 1.5
                 joinStyle: tile.iconRadius > 0 ? ShapePath.RoundJoin : ShapePath.MiterJoin
                 PathSvg { path: tile.folderPath(tile.iconRadius) }
@@ -266,7 +268,7 @@ Item {
                 height: parent.shown.height + 6
                 color: "transparent"
                 border.width: tile.current ? 2 : 1
-                border.color: tile.current ? theme.accent : Qt.alpha(theme.foreground, 0.2)
+                border.color: tile.current ? theme.accentMark : Qt.alpha(theme.foreground, 0.2)
                 radius: tile.iconRadius > 0 ? tile.iconRadius + 3 : 0
             }
         }
@@ -324,7 +326,17 @@ Item {
                 width: badge.implicitWidth + 8
                 height: badge.implicitHeight + 2
                 color: tile.kindColor
-                FolioText { id: badge; anchors.centerIn: parent; text: tile.extension.slice(0, 4); size: 9; font.bold: true; color: theme.background }
+                FolioText {
+                    id: badge
+                    anchors.centerIn: parent
+                    text: tile.extension.slice(0, 4)
+                    size: 9
+                    font.bold: true
+                    color: {
+                        theme.background // Re-read when the theme changes, not only the kind color.
+                        return theme.inkOn(tile.kindColor)
+                    }
+                }
             }
         }
     }

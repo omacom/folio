@@ -48,6 +48,54 @@ QColor mix(const QColor &a, const QColor &b, double t) {
                             a.blueF() * (1 - t) + b.blueF() * t);
 }
 
+double ratio(const QColor &a, const QColor &b) {
+    const double x = luminance(a), y = luminance(b);
+    return (std::max(x, y) + .05) / (std::min(x, y) + .05);
+}
+
+// WCAG's minimum contrast for text. Marks and frames need less, and a card's
+// surface less still: floors for the inks and fills a file manager draws.
+constexpr double textFloor = 4.5;
+constexpr double markFloor = 3;
+constexpr double folderFloor = 1.4;
+// The ground luminance where black and white read equally.
+constexpr double midLuminance = .179;
+// Bisection steps in ensureRatio, finer than one eight-bit level.
+constexpr int bisectionSteps = 18;
+// One eight-bit channel's range, so the rounding repair can never step further.
+constexpr int channelRange = 255;
+
+// The ink when it already reads at need, else the least mix toward black or
+// white that still does once rounded to eight-bit channels. A theme whose
+// color reads keeps its own; only the pale, washed-out ones are nudged.
+QColor ensureRatio(const QColor &ink, const QColor &ground, double need) {
+    if (ratio(ink, ground) >= need)
+        return ink;
+    const QColor toward = luminance(ground) > midLuminance ? QColor(Qt::black) : QColor(Qt::white);
+    double low = 0, high = 1;
+    QColor best = toward;
+    for (int i = 0; i < bisectionSteps; ++i) {
+        const double middle = (low + high) / 2;
+        const QColor candidate = mix(ink, toward, middle);
+        if (ratio(candidate, ground) >= need) {
+            best = candidate;
+            high = middle;
+        } else {
+            low = middle;
+        }
+    }
+    best = QColor(best.red(), best.green(), best.blue());
+    const int step = toward == QColor(Qt::white) ? 1 : -1;
+    for (int i = 0; i < channelRange && ratio(best, ground) < need; ++i) {
+        const QColor next(qBound(0, best.red() + step, channelRange), qBound(0, best.green() + step, channelRange),
+                          qBound(0, best.blue() + step, channelRange));
+        if (next == best)
+            break;
+        best = next;
+    }
+    return best;
+}
+
 struct Palette {
     QHash<QString, QColor> colors;
     bool light = false;
@@ -189,10 +237,39 @@ QColor Theme::accentForeground() const {
 }
 
 // Themes' own dim foregrounds are often too faint for small text, so derive a
-// secondary color by mixing the foreground toward the background, keeping
-// roughly a 4.5:1 contrast for metadata and labels.
+// secondary color by mixing the foreground toward the background, then raise
+// it just enough to keep 4.5:1 on every ground file items draw on. A theme
+// whose mix already reads keeps it.
 QColor Theme::secondaryForeground() const {
-    return mix(background(), foreground(), 0.68);
+    constexpr double share = 0.68;
+    QColor ink = mix(background(), foreground(), share);
+    for (const QColor &ground : {background(), lighterBackground(), darkBackground()})
+        ink = ensureRatio(ink, ground, textFloor);
+    return ink;
+}
+
+// The accent as a thin frame or outline (a folder's or file's mark), raised to
+// 3:1 on the panes a file item can sit on. Fills and tints keep the accent.
+QColor Theme::accentMark() const {
+    QColor mark = accent();
+    for (const QColor &ground : {background(), lighterBackground(), darkBackground()})
+        mark = ensureRatio(mark, ground, markFloor);
+    return mark;
+}
+
+// A folder card's fill: the lighter background raised to folderFloor so the
+// card stands off the pane on themes where the two nearly match.
+QColor Theme::folderFill() const {
+    return ensureRatio(lighterBackground(), background(), folderFloor);
+}
+
+// Words on a palette fill (a file's badge): the background where it reads,
+// else whichever of it and the foreground reads better, raised to textFloor.
+QColor Theme::inkOn(const QColor &fill) const {
+    const QColor bg = background(), fg = foreground();
+    if (ratio(bg, fill) >= textFloor)
+        return bg;
+    return ensureRatio(ratio(bg, fill) >= ratio(fg, fill) ? bg : fg, fill, textFloor);
 }
 
 void Theme::reload() {

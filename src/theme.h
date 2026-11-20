@@ -29,6 +29,11 @@ class Theme : public QObject {
     Q_PROPERTY(QColor orange READ orange NOTIFY changed)
     Q_PROPERTY(bool light READ light NOTIFY changed)
     Q_PROPERTY(int radius READ radius NOTIFY changed)
+    // Contrast floors derived from the palette: marks for thin frames and
+    // outlines, folderFill for a card standing off the pane. Fills and tints
+    // keep the theme's own colors.
+    Q_PROPERTY(QColor accentMark READ accentMark NOTIFY changed)
+    Q_PROPERTY(QColor folderFill READ folderFill NOTIFY changed)
     // The system's fixed-width font (Omarchy's pick of font), by its real
     // family, and how much bigger or smaller than Omarchy's default size the
     // system's text is: Folio's sizes are drawn for that default, and scale
@@ -60,6 +65,10 @@ public:
     QColor orange() const { return color("orange"); }
     bool light() const { return m_light; }
     int radius() const { return m_radius; }
+    QColor accentMark() const;
+    QColor folderFill() const;
+    // An ink that reads on a palette fill, for a file's badge.
+    Q_INVOKABLE QColor inkOn(const QColor &fill) const;
     QString fontFamily() const { return m_fontFamily; }
     qreal textScale() const { return m_textScale; }
 
