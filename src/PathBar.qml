@@ -226,14 +226,9 @@ Rectangle {
             text: qsTr("Keyboard shortcuts")
             Accessible.name: text
             onClicked: bar.helpRequested()
-            ToolTip {
-                font.family: theme.fontFamily
-                font.pixelSize: Math.round(13 * theme.textScale)
+            FolioToolTip {
                 visible: help.hovered
-                delay: 600
                 text: help.text
-                enter: null
-                exit: null
             }
             contentItem: Item {
                 Rectangle {

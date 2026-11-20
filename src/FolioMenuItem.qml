@@ -12,9 +12,10 @@ MenuItem {
     // Said while it's highlighted, by the pointer or the arrow keys, for an
     // entry that needs a word more than its label.
     property string tip
-    ToolTip.visible: tip.length > 0 && highlighted
-    ToolTip.delay: 600
-    ToolTip.text: tip
+    FolioToolTip {
+        visible: entry.tip.length > 0 && entry.highlighted
+        text: entry.tip
+    }
     // Hidden entries take no room, and the arrow keys pass over them: Menu
     // skips only entries that are disabled or out of the tab chain, so
     // Return would otherwise run one nobody can see.

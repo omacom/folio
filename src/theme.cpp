@@ -57,7 +57,7 @@ double ratio(const QColor &a, const QColor &b) {
 // surface less still: floors for the inks and fills a file manager draws.
 constexpr double textFloor = 4.5;
 constexpr double markFloor = 3;
-constexpr double folderFloor = 1.4;
+constexpr double surfaceFloor = 1.4;
 // The ground luminance where black and white read equally.
 constexpr double midLuminance = .179;
 // Bisection steps in ensureRatio, finer than one eight-bit level.
@@ -257,10 +257,24 @@ QColor Theme::accentMark() const {
     return mark;
 }
 
-// A folder card's fill: the lighter background raised to folderFloor so the
+// A folder card's fill: the lighter background raised to surfaceFloor so the
 // card stands off the pane on themes where the two nearly match.
 QColor Theme::folderFill() const {
-    return ensureRatio(lighterBackground(), background(), folderFloor);
+    return ensureRatio(lighterBackground(), background(), surfaceFloor);
+}
+
+// A tooltip is a small surface over the pane. Take the theme's own step away
+// from it - darker in light themes, lighter in dark ones - and lift it just
+// enough to read as a card. Material's ToolTip forces its own dark gray, which
+// leaves a light theme's text unreadable on it.
+QColor Theme::tooltipBackground() const {
+    const QColor base = light() ? darkBackground() : lighterBackground();
+    return ensureRatio(base, background(), surfaceFloor);
+}
+
+// Tooltip words: the theme's foreground, raised to textFloor on that surface.
+QColor Theme::tooltipForeground() const {
+    return ensureRatio(foreground(), tooltipBackground(), textFloor);
 }
 
 // Words on a palette fill (a file's badge): the background where it reads,

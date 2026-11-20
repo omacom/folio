@@ -4,6 +4,7 @@
         <file>FolderPane.qml</file>
         <file>Glyph.qml</file>
         <file>IconButton.qml</file>
+        <file>FolioToolTip.qml</file>
         <file>FileTile.qml</file>
         <file>FileRow.qml</file>
         <file>FolderGrid.qml</file>

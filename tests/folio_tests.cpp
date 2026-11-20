@@ -7921,6 +7921,40 @@ private slots:
             QVERIFY(contrast(theme.secondaryForeground(), ground) >= 4.5);
     }
 
+    // A hover message is a small surface over the pane. It steps away from
+    // the pane in the theme's own direction (darker when light, lighter when
+    // dark), stays distinct, and writes its words in a readable ink.
+    void themePaintsTooltipsFromThePalette()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("theme");
+        write(dir.filePath("theme/colors.toml"),
+              "mode = \"light\"\nbackground = \"#faf4ed\"\ndark_background = \"#ede7e1\"\nlighter_background = \"#f2e9e1\"\nforeground = \"#575279\"\n");
+        Theme light(dir.path());
+        // The theme's darker surface, lifted to stand off the pane, not the
+        // lighter one used for cards.
+        QVERIFY(light.tooltipBackground() != light.lighterBackground());
+        QVERIFY(light.tooltipBackground().lightnessF() < light.background().lightnessF());
+        QVERIFY(contrast(light.tooltipBackground(), light.background()) >= 1.4);
+        QVERIFY(contrast(light.tooltipForeground(), light.tooltipBackground()) >= 4.5);
+
+        write(dir.filePath("theme/colors.toml"),
+              "background = \"#1a1b26\"\ndark_background = \"#13141c\"\nlighter_background = \"#24283b\"\nforeground = \"#a9b1d6\"\n");
+        Theme dark(dir.path());
+        QVERIFY(dark.tooltipBackground() != dark.darkBackground());
+        QVERIFY(dark.tooltipBackground().lightnessF() > dark.background().lightnessF());
+        QVERIFY(contrast(dark.tooltipBackground(), dark.background()) >= 1.4);
+        QVERIFY(contrast(dark.tooltipForeground(), dark.tooltipBackground()) >= 4.5);
+
+        // A theme whose darker/lighter color is missing still gets a surface
+        // that stands off the pane rather than Material's fixed gray.
+        write(dir.filePath("theme/colors.toml"),
+              "background = \"#16161a\"\nforeground = \"#c8c8d0\"\n");
+        Theme plain(dir.path());
+        QVERIFY(contrast(plain.tooltipBackground(), plain.background()) >= 1.4);
+        QVERIFY(contrast(plain.tooltipForeground(), plain.tooltipBackground()) >= 4.5);
+    }
+
     // A file's badge writes its extension on the kind color: its ink has to
     // read there whether the theme is light or dark.
     void themePicksInkForBadges()

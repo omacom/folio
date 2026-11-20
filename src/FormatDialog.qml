@@ -72,17 +72,19 @@ FolioDialog {
             text: dialog.picked.name || ""
             color: theme.secondaryForeground
             HoverHandler { id: fsHover }
-            ToolTip.visible: fsHover.hovered
-            ToolTip.delay: 600
-            ToolTip.text: dialog.picked.detail || ""
+            FolioToolTip {
+                visible: fsHover.hovered && (dialog.picked.detail || "").length > 0
+                text: dialog.picked.detail || ""
+            }
         }
         PlainButton {
             id: fsButton
             visible: dialog.choices.length > 1
             text: (dialog.picked.name || "") + "  ▾"
-            ToolTip.visible: hovered
-            ToolTip.delay: 600
-            ToolTip.text: dialog.picked.detail || ""
+            FolioToolTip {
+                visible: fsButton.hovered && (dialog.picked.detail || "").length > 0
+                text: dialog.picked.detail || ""
+            }
             onClicked: fsMenu.popup(fsButton, 0, fsButton.height + 4)
             FolioMenu {
                 id: fsMenu
