@@ -4314,6 +4314,22 @@ private slots:
         QVERIFY(!open.busy());
     }
 
+    void aHostOffersItsSharedFolders()
+    {
+        // smb://nas lists its shares to pick from, by name, leaving out
+        // the hidden and the administrative ones (C$, IPC$).
+        const auto shares = Mounter::offered({{"media", "smb://nas/media/"},
+                                              {"IPC$", "smb://nas/IPC$/"},
+                                              {"Backups", "smb://nas/backups/"},
+                                              {"secret", "smb://nas/secret/", true},
+                                              {"C$", "smb://nas/C$/"}});
+        QCOMPARE(shares.size(), 2);
+        QCOMPARE(shares[0].name, QString("Backups"));
+        QCOMPARE(shares[0].uri, QString("smb://nas/backups/"));
+        QCOMPARE(shares[1].name, QString("media"));
+        QVERIFY(Mounter::offered({{"ADMIN$", "smb://nas/ADMIN$/"}}).isEmpty());
+    }
+
     void trashFollowsXdgDataHome()
     {
         // g_file_trash puts things in $XDG_DATA_HOME/Trash, wherever that

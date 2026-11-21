@@ -33,6 +33,9 @@ Backend::Backend(const QString &home, QObject *parent)
             m_plugins->mountsChanged();
         arrive(folder);
     });
+    // A share opens at its own top, not at a home folder inside it, as a
+    // bare server does.
+    connect(&m_mounter, &Mounter::sharePicked, this, [this] { m_mountBare = false; });
     connect(&m_mounter, &Mounter::failed, this, [this](const QString &error) {
         setBusy({});
         // An empty error is the user cancelling the sign-in: nothing to report.

@@ -9,8 +9,11 @@ AbstractButton {
     property bool destructive: false
     readonly property bool filled: primary || destructive
     readonly property color fill: destructive ? theme.red : theme.accent
+    // How a label wider than the button is shortened.
+    property alias elide: label.elide
 
     implicitWidth: Math.max(88, label.implicitWidth + 32)
+    horizontalPadding: 16
     implicitHeight: 36
     hoverEnabled: true
     Accessible.name: text

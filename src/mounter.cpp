@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QPointer>
 #include <QUrl>
+#include <algorithm>
 #include <unistd.h>
 
 // GIO's headers use `signals` as a struct member, which Qt defines as a
@@ -69,8 +70,9 @@ struct MounterCallbacks {
                 if (local.startsWith(Mounter::root() + "/"))
                     Mounter::known()[self->m_url] = local;
                 self->finish();
+                // A host's share browser has no folder; its shares do.
                 if (local.isEmpty())
-                    emit self->failed(QObject::tr("GVfs gave no local folder for the mount"));
+                    self->browse(G_FILE(source));
                 else
                     emit self->mounted(local);
             } else {
@@ -83,12 +85,84 @@ struct MounterCallbacks {
         if (error)
             g_error_free(error);
     }
+
+    // What a mount with no folder holds, read a batch at a time, so a slow
+    // server never holds up the window.
+    struct Listing {
+        QPointer<Mounter> mounter;
+        QList<Mounter::Share> shares;
+        QString error;
+    };
+
+    static void enumerated(GObject *source, GAsyncResult *result, gpointer data) {
+        auto *listing = static_cast<Listing *>(data);
+        GError *error = nullptr;
+        GFileEnumerator *enumerator = g_file_enumerate_children_finish(G_FILE(source), result, &error);
+        if (error) {
+            listing->error = QString::fromUtf8(error->message);
+            g_error_free(error);
+        }
+        if (!enumerator || !listing->mounter) {
+            done(listing);
+            if (enumerator)
+                g_object_unref(enumerator);
+            return;
+        }
+        g_file_enumerator_next_files_async(enumerator, 100, G_PRIORITY_DEFAULT, nullptr, MounterCallbacks::read,
+                                           listing);
+    }
+
+    static void read(GObject *source, GAsyncResult *result, gpointer data) {
+        auto *listing = static_cast<Listing *>(data);
+        auto *enumerator = G_FILE_ENUMERATOR(source);
+        GError *error = nullptr;
+        GList *infos = g_file_enumerator_next_files_finish(enumerator, result, &error);
+        // A server gone partway through isn't the end of its list: a list
+        // cut short would be offered as all it shares.
+        if (error) {
+            listing->error = QString::fromUtf8(error->message);
+            g_error_free(error);
+        }
+        for (GList *at = infos; at; at = at->next) {
+            auto *info = G_FILE_INFO(at->data);
+            // Only what opens elsewhere: GVfs's browser lists each share
+            // as a shortcut to its own address.
+            const char *target = g_file_info_get_attribute_string(info, G_FILE_ATTRIBUTE_STANDARD_TARGET_URI);
+            if (target && *target) {
+                const char *name = g_file_info_get_display_name(info);
+                listing->shares.append({QString::fromUtf8(name ? name : g_file_info_get_name(info)),
+                                        QString::fromUtf8(target), bool(g_file_info_get_is_hidden(info))});
+            }
+        }
+        const bool more = infos && listing->mounter && listing->error.isEmpty();
+        g_list_free_full(infos, g_object_unref);
+        if (more) {
+            g_file_enumerator_next_files_async(enumerator, 100, G_PRIORITY_DEFAULT, nullptr, MounterCallbacks::read,
+                                               listing);
+            return;
+        }
+        g_object_unref(enumerator);
+        done(listing);
+    }
+
+    static void done(Listing *listing) {
+        if (Mounter *self = listing->mounter.data()) {
+            self->m_listing = false;
+            if (listing->error.isEmpty())
+                self->offer(Mounter::offered(listing->shares));
+            else
+                emit self->failed(listing->error);
+        }
+        delete listing;
+    }
 };
 
 Mounter::Mounter(QObject *parent) : QObject(parent) {}
 
 Mounter::~Mounter() {
-    // A prompt nobody will answer any more would keep GVfs waiting.
+    // A prompt nobody will answer any more would keep GVfs waiting. A
+    // list of shares keeps nothing waiting, and its window is going.
+    m_picking = false;
     cancel();
     if (m_operation)
         g_signal_handlers_disconnect_by_data(m_operation, this);
@@ -154,6 +228,46 @@ void Mounter::mount(const QString &uri, bool verified) {
     g_object_unref(file);
 }
 
+QList<Mounter::Share> Mounter::offered(QList<Share> shares) {
+    shares.removeIf([](const Share &share) { return share.hidden || share.name.endsWith('$'); });
+    std::sort(shares.begin(), shares.end(), [](const Share &a, const Share &b) {
+        return QString::localeAwareCompare(a.name, b.name) < 0;
+    });
+    return shares;
+}
+
+void Mounter::browse(GFile *location) {
+    m_listing = true;
+    const char *attributes = G_FILE_ATTRIBUTE_STANDARD_NAME "," G_FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME
+                             "," G_FILE_ATTRIBUTE_STANDARD_TARGET_URI "," G_FILE_ATTRIBUTE_STANDARD_IS_HIDDEN;
+    g_file_enumerate_children_async(location, attributes, G_FILE_QUERY_INFO_NONE, G_PRIORITY_DEFAULT, nullptr,
+                                    MounterCallbacks::enumerated, new MounterCallbacks::Listing{this, {}, {}});
+}
+
+void Mounter::offer(const QList<Share> &shares) {
+    if (shares.isEmpty()) {
+        emit failed(tr("it shares no folders"));
+        return;
+    }
+    // One share is the one to open; there's nothing to pick.
+    if (shares.size() == 1) {
+        mountShare(shares.first().uri);
+        return;
+    }
+    m_picking = true;
+    m_prompt = tr("Choose a shared folder to open.");
+    for (const Share &share : shares) {
+        m_choices << share.name;
+        m_shareUris << share.uri;
+    }
+    setAsking(true);
+}
+
+void Mounter::mountShare(const QString &uri) {
+    emit sharePicked(uri);
+    mount(uri, m_verified);
+}
+
 void Mounter::providePassword(const QString &user, const QString &password) {
     if (!m_operation || !m_asking)
         return;
@@ -166,7 +280,15 @@ void Mounter::providePassword(const QString &user, const QString &password) {
 }
 
 void Mounter::choose(int choice) {
-    if (!m_operation || !m_asking || choice < 0 || choice >= m_choices.size())
+    if (!m_asking || choice < 0 || choice >= m_choices.size())
+        return;
+    if (m_picking) {
+        const QString uri = m_shareUris.value(choice);
+        setAsking(false);
+        mountShare(uri);
+        return;
+    }
+    if (!m_operation)
         return;
     setAsking(false);
     g_mount_operation_set_choice(m_operation, choice);
@@ -174,6 +296,12 @@ void Mounter::choose(int choice) {
 }
 
 void Mounter::cancel() {
+    if (m_picking) {
+        setAsking(false);
+        // Said as a cancelled sign-in is: with nothing to report.
+        emit failed({});
+        return;
+    }
     if (!m_operation || !m_asking)
         return;
     setAsking(false);
@@ -185,6 +313,8 @@ void Mounter::setAsking(bool asking) {
     if (!asking) {
         m_prompt.clear();
         m_choices.clear();
+        m_shareUris.clear();
+        m_picking = false;
     }
     emit askingChanged();
 }
