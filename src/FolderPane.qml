@@ -99,7 +99,9 @@ FocusScope {
     Binding { target: backend.folder; property: "filter"; value: chooser ? chooser.patterns : [] }
     function deleteSelected() {
         const paths = pane.selectedPaths()
-        if (pane.inTrash)
+        // On a USB stick or SD card too: a trash there is a hidden folder
+        // that fills the drive, and other computers don't empty it.
+        if (pane.inTrash || fileOps.onRemovable(paths))
             confirmDelete(paths)
         else
             fileOps.trash(paths)

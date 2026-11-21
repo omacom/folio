@@ -134,6 +134,12 @@ public:
     // The trash, per the freedesktop Trash spec: each item in Trash/files
     // has a note in Trash/info saying where it came from.
     Q_INVOKABLE bool inTrash(const QString &path) const;
+    // Whether each of `paths` is on a drive plugged in (a USB stick, an SD
+    // card), where Delete deletes for good after asking, rather than
+    // leaving a hidden trash folder on the drive that other computers don't
+    // empty. A selection with anything on the computer's own drives goes
+    // to the trash, all of it.
+    Q_INVOKABLE bool onRemovable(const QStringList &paths) const;
     // Where a trashed item came from, or empty if its note is missing.
     Q_INVOKABLE static QString originalPath(const QString &trashedPath);
     // When it was trashed, from its note.
