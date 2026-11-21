@@ -44,12 +44,6 @@
     "many": "%Ln елементів буде видалено назавжди. Цю дію не можна скасувати.",
     "other": "%Ln елемента буде видалено назавжди. Цю дію не можна скасувати."
   },
-  "%Ln more": {
-    "one": "Ще %Ln",
-    "few": "Ще %Ln",
-    "many": "Ще %Ln",
-    "other": "Ще %Ln"
-  },
   "A folder here is already called %1.": "Тека тут уже називається %1.",
   "A folder, or a server's address like sftp://host/": "Тека або адреса сервера, наприклад sftp://host/",
   "A name can't contain \"/\".": "Назва не може містити «/».",
@@ -57,18 +51,6 @@
   "Add or remove one": "Додати або прибрати один елемент",
   "Add the exported folder, as in nfs://%1/export.": "Додайте експортовану теку, наприклад nfs://%1/export.",
   "Archive": "Архів",
-  "At least %Ln items": {
-    "one": "Щонайменше %Ln елемент",
-    "few": "Щонайменше %Ln елементи",
-    "many": "Щонайменше %Ln елементів",
-    "other": "Щонайменше %Ln елемента"
-  },
-  "At least %Ln more": {
-    "one": "Щонайменше ще %Ln",
-    "few": "Щонайменше ще %Ln",
-    "many": "Щонайменше ще %Ln",
-    "other": "Щонайменше ще %Ln"
-  },
   "Back / ahead 5 seconds": "Назад / уперед на 5 секунд",
   "Back / forward": "Назад / вперед",
   "Bigger, smaller or normal tiles and rows": "Більші, менші або звичайні плитки та рядки",
@@ -145,6 +127,7 @@
   "Couldn't extract %1: it's damaged, or isn't an archive Folio can read.": "Не вдалося розпакувати %1: його пошкоджено або це не архів, який Folio може прочитати.",
   "Couldn't extract %1: it's protected by a password.": "Не вдалося розпакувати %1: його захищено паролем.",
   "Couldn't format %1. %2": "Не вдалося відформатувати %1. %2",
+  "Couldn't list this archive.": "Не вдалося показати вміст цього архіву.",
   "Couldn't make %1 executable.": "Не вдалося зробити %1 виконуваним.",
   "Couldn't make %1 not executable.": "Не вдалося зробити %1 невиконуваним.",
   "Couldn't make %1 the default app for %2: %3": "Не вдалося зробити %1 типовою програмою для %2: %3",
@@ -155,7 +138,6 @@
   "Couldn't open this PDF: %1": "Не вдалося відкрити цей PDF: %1",
   "Couldn't play this file: %1": "Не вдалося відтворити цей файл: %1",
   "Couldn't read %1.": "Не вдалося прочитати %1.",
-  "Couldn't read this archive.": "Не вдалося прочитати цей архів.",
   "Couldn't read this picture.": "Не вдалося прочитати це зображення.",
   "Couldn't recreate %1.": "Не вдалося створити %1 повторно.",
   "Couldn't remove %1.": "Не вдалося видалити %1.",
@@ -205,7 +187,6 @@
     "many": "Смітник спорожнено: видалено %Ln елементів.",
     "other": "Смітник спорожнено: видалено %Ln елемента."
   },
-  "Empty": "Порожньо",
   "Empty Trash": "Спорожнити смітник",
   "Empty Trash…": "Спорожнити смітник…",
   "Empty the trash?": "Спорожнити смітник?",
@@ -273,8 +254,6 @@
   "Keyboard shortcuts": "Комбінації клавіш",
   "Kind": "Тип",
   "Leave the password out of the address; enter it when asked to sign in.": "Не вказуйте пароль в адресі; введіть його, коли попросять увійти.",
-  "Listing archives needs bsdtar, from the libarchive package.": "Для перегляду вмісту архівів потрібен bsdtar із пакета libarchive.",
-  "Listing this archive took too long.": "Перегляд вмісту цього архіву тривав надто довго.",
   "Make Executable": "Зробити виконуваним",
   "Make Not Executable": "Зробити невиконуваним",
   "Making a preview…": "Створення попереднього перегляду…",
@@ -358,7 +337,6 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "Для попереднього перегляду PDF потрібен Qt PDF із пакета qt6-webengine.",
   "Previous (%1)": "Назад (%1)",
   "Previous / next file": "Попередній / наступний файл",
-  "Reading the archive…": "Читання архіву…",
   "Recents": "Недавні",
   "Redid compressing into %1.": "Повторно стиснуто у %1.",
   "Redid copying %Ln items.": {
@@ -488,7 +466,6 @@
   "The drive is gone.": "Диска більше немає.",
   "The drive stopped taking data (%1).": "Диск перестав приймати дані (%1).",
   "The drive was changed or removed.": "Диск змінено або вилучено.",
-  "The names in this archive are encrypted.": "Назви в цьому архіві зашифровано.",
   "The preview closed unexpectedly on %1.": "Попередній перегляд %1 несподівано закрився.",
   "There's nothing in %1 to extract.": "У %1 немає нічого для розпакування.",
   "There's nothing to redo.": "Нічого повторювати.",

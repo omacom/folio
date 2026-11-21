@@ -42,11 +42,6 @@
     "many": "%Ln itens serão excluídos permanentemente. Isso não pode ser desfeito.",
     "other": "%Ln itens serão excluídos permanentemente. Isso não pode ser desfeito."
   },
-  "%Ln more": {
-    "one": "Mais %Ln",
-    "many": "Mais %Ln",
-    "other": "Mais %Ln"
-  },
   "A folder here is already called %1.": "Uma pasta aqui já se chama %1.",
   "A folder, or a server's address like sftp://host/": "Uma pasta, ou o endereço de um servidor, como sftp://host/",
   "A name can't contain \"/\".": "Um nome não pode conter \"/\".",
@@ -54,16 +49,6 @@
   "Add or remove one": "Adicionar ou remover um",
   "Add the exported folder, as in nfs://%1/export.": "Adicione a pasta exportada, como em nfs://%1/export.",
   "Archive": "Compactar",
-  "At least %Ln items": {
-    "one": "Pelo menos %Ln item",
-    "many": "Pelo menos %Ln itens",
-    "other": "Pelo menos %Ln itens"
-  },
-  "At least %Ln more": {
-    "one": "Pelo menos mais %Ln",
-    "many": "Pelo menos mais %Ln",
-    "other": "Pelo menos mais %Ln"
-  },
   "Back / ahead 5 seconds": "Voltar / avançar 5 segundos",
   "Back / forward": "Voltar / avançar",
   "Bigger, smaller or normal tiles and rows": "Blocos e linhas maiores, menores ou normais",
@@ -136,6 +121,7 @@
   "Couldn't extract %1: it's damaged, or isn't an archive Folio can read.": "Não foi possível extrair %1: está danificado ou não é um arquivo compactado que o Folio consegue ler.",
   "Couldn't extract %1: it's protected by a password.": "Não foi possível extrair %1: está protegido por senha.",
   "Couldn't format %1. %2": "Não foi possível formatar %1. %2",
+  "Couldn't list this archive.": "Não foi possível listar este arquivo compactado.",
   "Couldn't make %1 executable.": "Não foi possível tornar %1 executável.",
   "Couldn't make %1 not executable.": "Não foi possível tornar %1 não executável.",
   "Couldn't make %1 the default app for %2: %3": "Não foi possível definir %1 como app padrão para %2: %3",
@@ -146,7 +132,6 @@
   "Couldn't open this PDF: %1": "Não foi possível abrir este PDF: %1",
   "Couldn't play this file: %1": "Não foi possível reproduzir este arquivo: %1",
   "Couldn't read %1.": "Não foi possível ler %1.",
-  "Couldn't read this archive.": "Não foi possível ler este arquivo compactado.",
   "Couldn't read this picture.": "Não foi possível ler esta imagem.",
   "Couldn't recreate %1.": "Não foi possível recriar %1.",
   "Couldn't remove %1.": "Não foi possível remover %1.",
@@ -192,7 +177,6 @@
     "many": "Lixeira esvaziada: %Ln itens excluídos.",
     "other": "Lixeira esvaziada: %Ln itens excluídos."
   },
-  "Empty": "Vazio",
   "Empty Trash": "Esvaziar lixeira",
   "Empty Trash…": "Esvaziar lixeira…",
   "Empty the trash?": "Esvaziar a lixeira?",
@@ -255,8 +239,6 @@
   "Keyboard shortcuts": "Atalhos de teclado",
   "Kind": "Tipo",
   "Leave the password out of the address; enter it when asked to sign in.": "Não inclua a senha no endereço; digite-a quando solicitado ao entrar.",
-  "Listing archives needs bsdtar, from the libarchive package.": "Para listar arquivos compactados, é necessário o bsdtar, do pacote libarchive.",
-  "Listing this archive took too long.": "A listagem deste arquivo compactado demorou demais.",
   "Make Executable": "Tornar executável",
   "Make Not Executable": "Tornar não executável",
   "Making a preview…": "Gerando pré-visualização…",
@@ -336,7 +318,6 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "A pré-visualização de PDFs precisa do Qt PDF, do pacote qt6-webengine.",
   "Previous (%1)": "Anterior (%1)",
   "Previous / next file": "Arquivo anterior / próximo",
-  "Reading the archive…": "Lendo o arquivo compactado…",
   "Recents": "Recentes",
   "Redid compressing into %1.": "Refez a compactação para %1.",
   "Redid copying %Ln items.": {
@@ -455,7 +436,6 @@
   "The drive is gone.": "A unidade desapareceu.",
   "The drive stopped taking data (%1).": "A unidade parou de receber dados (%1).",
   "The drive was changed or removed.": "A unidade foi alterada ou removida.",
-  "The names in this archive are encrypted.": "Os nomes neste arquivo compactado estão criptografados.",
   "The preview closed unexpectedly on %1.": "A pré-visualização fechou inesperadamente ao exibir %1.",
   "There's nothing in %1 to extract.": "Não há nada em %1 para extrair.",
   "There's nothing to redo.": "Não há nada para refazer.",

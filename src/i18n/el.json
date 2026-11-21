@@ -40,10 +40,6 @@
     "one": "Ένα στοιχείο θα διαγραφεί οριστικά. Αυτό δεν μπορεί να αναιρεθεί.",
     "other": "%Ln στοιχεία θα διαγραφούν οριστικά. Αυτό δεν μπορεί να αναιρεθεί."
   },
-  "%Ln more": {
-    "one": "ένα ακόμη",
-    "other": "%Ln ακόμη"
-  },
   "A folder here is already called %1.": "Ένας φάκελος εδώ ονομάζεται ήδη %1.",
   "A folder, or a server's address like sftp://host/": "Ένας φάκελος ή μια διεύθυνση διακομιστή, όπως sftp://host/",
   "A name can't contain \"/\".": "Το όνομα δεν μπορεί να περιέχει το «/».",
@@ -51,14 +47,6 @@
   "Add or remove one": "Προσθήκη ή αφαίρεση ενός",
   "Add the exported folder, as in nfs://%1/export.": "Προσθέστε τον εξαγόμενο φάκελο, όπως στο nfs://%1/export.",
   "Archive": "Αρχειοθέτηση",
-  "At least %Ln items": {
-    "one": "Τουλάχιστον ένα στοιχείο",
-    "other": "Τουλάχιστον %Ln στοιχεία"
-  },
-  "At least %Ln more": {
-    "one": "Τουλάχιστον ένα ακόμη",
-    "other": "Τουλάχιστον %Ln ακόμη"
-  },
   "Back / ahead 5 seconds": "Πίσω / μπροστά 5 δευτερόλεπτα",
   "Back / forward": "Πίσω / μπροστά",
   "Bigger, smaller or normal tiles and rows": "Μεγαλύτερα, μικρότερα ή κανονικά πλακίδια και γραμμές",
@@ -127,6 +115,7 @@
   "Couldn't extract %1: it's damaged, or isn't an archive Folio can read.": "Δεν ήταν δυνατή η εξαγωγή του %1: είναι κατεστραμμένο ή δεν είναι αρχείο που μπορεί να διαβάσει το Folio.",
   "Couldn't extract %1: it's protected by a password.": "Δεν ήταν δυνατή η εξαγωγή του %1: προστατεύεται με κωδικό πρόσβασης.",
   "Couldn't format %1. %2": "Δεν ήταν δυνατή η μορφοποίηση του %1. %2",
+  "Couldn't list this archive.": "Δεν ήταν δυνατή η εμφάνιση των περιεχομένων αυτού του αρχείου αρχειοθέτησης.",
   "Couldn't make %1 executable.": "Δεν ήταν δυνατή η ρύθμιση του %1 ως εκτελέσιμου.",
   "Couldn't make %1 not executable.": "Δεν ήταν δυνατή η αφαίρεση της ιδιότητας εκτελέσιμου από το %1.",
   "Couldn't make %1 the default app for %2: %3": "Δεν ήταν δυνατό να οριστεί το %1 ως προεπιλεγμένη εφαρμογή για το %2: %3",
@@ -137,7 +126,6 @@
   "Couldn't open this PDF: %1": "Δεν ήταν δυνατό το άνοιγμα αυτού του PDF: %1",
   "Couldn't play this file: %1": "Δεν ήταν δυνατή η αναπαραγωγή αυτού του αρχείου: %1",
   "Couldn't read %1.": "Δεν ήταν δυνατή η ανάγνωση του %1.",
-  "Couldn't read this archive.": "Δεν ήταν δυνατή η ανάγνωση αυτού του αρχείου.",
   "Couldn't read this picture.": "Δεν ήταν δυνατή η ανάγνωση αυτής της εικόνας.",
   "Couldn't recreate %1.": "Δεν ήταν δυνατή η αναδημιουργία του %1.",
   "Couldn't remove %1.": "Δεν ήταν δυνατή η αφαίρεση του %1.",
@@ -179,7 +167,6 @@
     "one": "Τα απορρίμματα άδειασαν: διαγράφηκε ένα στοιχείο.",
     "other": "Τα απορρίμματα άδειασαν: διαγράφηκαν %Ln στοιχεία."
   },
-  "Empty": "Κενό",
   "Empty Trash": "Άδειασμα απορριμμάτων",
   "Empty Trash…": "Άδειασμα απορριμμάτων…",
   "Empty the trash?": "Άδειασμα των απορριμμάτων;",
@@ -237,8 +224,6 @@
   "Keyboard shortcuts": "Συντομεύσεις πληκτρολογίου",
   "Kind": "Είδος",
   "Leave the password out of the address; enter it when asked to sign in.": "Μην συμπεριλάβετε τον κωδικό πρόσβασης στη διεύθυνση· εισαγάγετέ τον όταν σας ζητηθεί να συνδεθείτε.",
-  "Listing archives needs bsdtar, from the libarchive package.": "Η προβολή αρχείων απαιτεί το bsdtar, από το πακέτο libarchive.",
-  "Listing this archive took too long.": "Η προβολή αυτού του αρχείου διήρκεσε πολύ.",
   "Make Executable": "Ορισμός ως εκτελέσιμο",
   "Make Not Executable": "Αφαίρεση εκτελεσιμότητας",
   "Making a preview…": "Δημιουργία προεπισκόπησης…",
@@ -314,7 +299,6 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "Η προεπισκόπηση PDF απαιτεί το Qt PDF, από το πακέτο qt6-webengine.",
   "Previous (%1)": "Προηγούμενο (%1)",
   "Previous / next file": "Προηγούμενο / επόμενο αρχείο",
-  "Reading the archive…": "Ανάγνωση του αρχείου…",
   "Recents": "Πρόσφατα",
   "Redid compressing into %1.": "Επαναλήφθηκε η συμπίεση σε %1.",
   "Redid copying %Ln items.": {
@@ -422,7 +406,6 @@
   "The drive is gone.": "Η μονάδα δίσκου δεν υπάρχει πια.",
   "The drive stopped taking data (%1).": "Η μονάδα δίσκου σταμάτησε να δέχεται δεδομένα (%1).",
   "The drive was changed or removed.": "Η μονάδα δίσκου άλλαξε ή αφαιρέθηκε.",
-  "The names in this archive are encrypted.": "Τα ονόματα σε αυτό το αρχείο είναι κρυπτογραφημένα.",
   "The preview closed unexpectedly on %1.": "Η προεπισκόπηση του %1 έκλεισε απροσδόκητα.",
   "There's nothing in %1 to extract.": "Δεν υπάρχει τίποτα στο %1 για εξαγωγή.",
   "There's nothing to redo.": "Δεν υπάρχει τίποτα για επανάληψη.",

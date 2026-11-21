@@ -40,10 +40,6 @@
     "one": "%Ln item wordt permanent verwijderd. Dit kan niet ongedaan worden gemaakt.",
     "other": "%Ln items worden permanent verwijderd. Dit kan niet ongedaan worden gemaakt."
   },
-  "%Ln more": {
-    "one": "%Ln meer",
-    "other": "%Ln meer"
-  },
   "A folder here is already called %1.": "Er is hier al een map met de naam %1.",
   "A folder, or a server's address like sftp://host/": "Een map, of een serveradres zoals sftp://host/",
   "A name can't contain \"/\".": "Een naam mag geen \"/\" bevatten.",
@@ -51,14 +47,6 @@
   "Add or remove one": "Eén item toevoegen of verwijderen",
   "Add the exported folder, as in nfs://%1/export.": "Voeg de geëxporteerde map toe, zoals in nfs://%1/export.",
   "Archive": "Archiveren",
-  "At least %Ln items": {
-    "one": "Minstens %Ln item",
-    "other": "Minstens %Ln items"
-  },
-  "At least %Ln more": {
-    "one": "Minstens %Ln meer",
-    "other": "Minstens %Ln meer"
-  },
   "Back / ahead 5 seconds": "5 seconden terug / vooruit",
   "Back / forward": "Terug / vooruit",
   "Bigger, smaller or normal tiles and rows": "Grotere, kleinere of normale tegels en rijen",
@@ -127,6 +115,7 @@
   "Couldn't extract %1: it's damaged, or isn't an archive Folio can read.": "%1 kon niet worden uitgepakt: het is beschadigd of geen archief dat Folio kan lezen.",
   "Couldn't extract %1: it's protected by a password.": "%1 kon niet worden uitgepakt: het is beveiligd met een wachtwoord.",
   "Couldn't format %1. %2": "%1 kon niet worden geformatteerd. %2",
+  "Couldn't list this archive.": "Kon de inhoud van dit archief niet weergeven.",
   "Couldn't make %1 executable.": "Kon %1 niet uitvoerbaar maken.",
   "Couldn't make %1 not executable.": "Kon %1 niet niet-uitvoerbaar maken.",
   "Couldn't make %1 the default app for %2: %3": "%1 kon niet worden ingesteld als standaardtoepassing voor %2: %3",
@@ -137,7 +126,6 @@
   "Couldn't open this PDF: %1": "Deze PDF kon niet worden geopend: %1",
   "Couldn't play this file: %1": "Dit bestand kon niet worden afgespeeld: %1",
   "Couldn't read %1.": "%1 kon niet worden gelezen.",
-  "Couldn't read this archive.": "Kon dit archief niet lezen.",
   "Couldn't read this picture.": "Deze afbeelding kon niet worden gelezen.",
   "Couldn't recreate %1.": "%1 kon niet opnieuw worden aangemaakt.",
   "Couldn't remove %1.": "%1 kon niet worden verwijderd.",
@@ -179,7 +167,6 @@
     "one": "Prullenbak geleegd: %Ln item verwijderd.",
     "other": "Prullenbak geleegd: %Ln items verwijderd."
   },
-  "Empty": "Leeg",
   "Empty Trash": "Prullenbak legen",
   "Empty Trash…": "Prullenbak legen…",
   "Empty the trash?": "Prullenbak legen?",
@@ -237,8 +224,6 @@
   "Keyboard shortcuts": "Sneltoetsen",
   "Kind": "Soort",
   "Leave the password out of the address; enter it when asked to sign in.": "Laat het wachtwoord weg uit het adres; voer het in wanneer u wordt gevraagd in te loggen.",
-  "Listing archives needs bsdtar, from the libarchive package.": "Voor het weergeven van archieven is bsdtar nodig, uit het libarchive-pakket.",
-  "Listing this archive took too long.": "Het weergeven van dit archief duurde te lang.",
   "Make Executable": "Uitvoerbaar maken",
   "Make Not Executable": "Niet uitvoerbaar maken",
   "Making a preview…": "Voorbeeld maken…",
@@ -314,7 +299,6 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "Voorbeeld van pdf's weergeven vereist Qt PDF uit het qt6-webengine-pakket.",
   "Previous (%1)": "Vorige (%1)",
   "Previous / next file": "Vorige / volgende bestand",
-  "Reading the archive…": "Archief lezen…",
   "Recents": "Recent",
   "Redid compressing into %1.": "Opnieuw gecomprimeerd naar %1.",
   "Redid copying %Ln items.": {
@@ -422,7 +406,6 @@
   "The drive is gone.": "De schijf is verdwenen.",
   "The drive stopped taking data (%1).": "De schijf accepteert geen gegevens meer (%1).",
   "The drive was changed or removed.": "De schijf is gewijzigd of verwijderd.",
-  "The names in this archive are encrypted.": "De namen in dit archief zijn versleuteld.",
   "The preview closed unexpectedly on %1.": "Het voorbeeld van %1 is onverwacht gesloten.",
   "There's nothing in %1 to extract.": "Er is niets in %1 om uit te pakken.",
   "There's nothing to redo.": "Er is niets om opnieuw uit te voeren.",

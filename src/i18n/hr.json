@@ -42,11 +42,6 @@
     "few": "%Ln stavke će se trajno izbrisati. Ovo se ne može poništiti.",
     "other": "%Ln stavki će se trajno izbrisati. Ovo se ne može poništiti."
   },
-  "%Ln more": {
-    "one": "još %Ln",
-    "few": "još %Ln",
-    "other": "još %Ln"
-  },
   "A folder here is already called %1.": "Mapa se ovdje već zove %1.",
   "A folder, or a server's address like sftp://host/": "Mapa ili adresa poslužitelja, npr. sftp://host/",
   "A name can't contain \"/\".": "Naziv ne može sadržavati \"/\".",
@@ -54,16 +49,6 @@
   "Add or remove one": "Dodaj ili ukloni jednu stavku",
   "Add the exported folder, as in nfs://%1/export.": "Dodaj izvezenu mapu, kao u nfs://%1/export.",
   "Archive": "Arhiviraj",
-  "At least %Ln items": {
-    "one": "Najmanje %Ln stavka",
-    "few": "Najmanje %Ln stavke",
-    "other": "Najmanje %Ln stavki"
-  },
-  "At least %Ln more": {
-    "one": "Najmanje još %Ln",
-    "few": "Najmanje još %Ln",
-    "other": "Najmanje još %Ln"
-  },
   "Back / ahead 5 seconds": "Natrag / naprijed 5 sekundi",
   "Back / forward": "Natrag / naprijed",
   "Bigger, smaller or normal tiles and rows": "Veće, manje ili uobičajene pločice i redovi",
@@ -136,6 +121,7 @@
   "Couldn't extract %1: it's damaged, or isn't an archive Folio can read.": "Nije moguće izdvojiti %1: arhiva je oštećena ili je Folio ne može pročitati.",
   "Couldn't extract %1: it's protected by a password.": "Nije moguće izdvojiti %1: arhiva je zaštićena lozinkom.",
   "Couldn't format %1. %2": "Nije moguće formatirati %1. %2",
+  "Couldn't list this archive.": "Nije bilo moguće prikazati sadržaj ove arhive.",
   "Couldn't make %1 executable.": "Nije bilo moguće učiniti %1 izvršnom.",
   "Couldn't make %1 not executable.": "Nije bilo moguće učiniti %1 neizvršnom.",
   "Couldn't make %1 the default app for %2: %3": "Nije moguće postaviti %1 kao zadanu aplikaciju za %2: %3",
@@ -146,7 +132,6 @@
   "Couldn't open this PDF: %1": "Nije moguće otvoriti ovaj PDF: %1",
   "Couldn't play this file: %1": "Nije moguće reproducirati ovu datoteku: %1",
   "Couldn't read %1.": "Nije moguće pročitati %1.",
-  "Couldn't read this archive.": "Nije bilo moguće pročitati ovu arhivu.",
   "Couldn't read this picture.": "Nije moguće pročitati ovu sliku.",
   "Couldn't recreate %1.": "Nije moguće ponovno stvoriti %1.",
   "Couldn't remove %1.": "Nije moguće ukloniti %1.",
@@ -192,7 +177,6 @@
     "few": "Smeće je ispražnjeno: izbrisane su %Ln stavke.",
     "other": "Smeće je ispražnjeno: izbrisano je %Ln stavki."
   },
-  "Empty": "Prazno",
   "Empty Trash": "Isprazni smeće",
   "Empty Trash…": "Isprazni smeće…",
   "Empty the trash?": "Isprazniti smeće?",
@@ -255,8 +239,6 @@
   "Keyboard shortcuts": "Tipkovnički prečaci",
   "Kind": "Vrsta",
   "Leave the password out of the address; enter it when asked to sign in.": "Izostavi lozinku iz adrese; unesi je kad se zatraži prijava.",
-  "Listing archives needs bsdtar, from the libarchive package.": "Za prikaz arhiva potreban je bsdtar iz paketa libarchive.",
-  "Listing this archive took too long.": "Prikaz ove arhive trajao je predugo.",
   "Make Executable": "Učini izvršnom",
   "Make Not Executable": "Učini neizvršnom",
   "Making a preview…": "Stvaranje pretpregleda…",
@@ -336,7 +318,6 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "Za pretpregled PDF-ova potreban je Qt PDF iz paketa qt6-webengine.",
   "Previous (%1)": "Prethodno (%1)",
   "Previous / next file": "Prethodna / sljedeća datoteka",
-  "Reading the archive…": "Čitanje arhive…",
   "Recents": "Nedavno",
   "Redid compressing into %1.": "Ponovljeno sažimanje u %1.",
   "Redid copying %Ln items.": {
@@ -455,7 +436,6 @@
   "The drive is gone.": "Pogon je nestao.",
   "The drive stopped taking data (%1).": "Pogon je prestao primati podatke (%1).",
   "The drive was changed or removed.": "Pogon je promijenjen ili uklonjen.",
-  "The names in this archive are encrypted.": "Nazivi u ovoj arhivi su šifrirani.",
   "The preview closed unexpectedly on %1.": "Pretpregled za %1 neočekivano se zatvorio.",
   "There's nothing in %1 to extract.": "U %1 nema ničega za izdvajanje.",
   "There's nothing to redo.": "Nema ničega za ponoviti.",

@@ -48,14 +48,6 @@
     "many": "سيتم حذف %Ln عنصرًا نهائيًا. لا يمكن التراجع عن ذلك.",
     "other": "سيتم حذف %Ln عنصر نهائيًا. لا يمكن التراجع عن ذلك."
   },
-  "%Ln more": {
-    "zero": "لا عناصر إضافية",
-    "one": "عنصر إضافي واحد",
-    "two": "عنصران إضافيان",
-    "few": "%Ln عناصر إضافية",
-    "many": "%Ln عنصرًا إضافيًا",
-    "other": "%Ln عنصر إضافي"
-  },
   "A folder here is already called %1.": "يوجد هنا مجلد باسم %1 بالفعل.",
   "A folder, or a server's address like sftp://host/": "مجلد، أو عنوان خادم مثل sftp://host/",
   "A name can't contain \"/\".": "لا يمكن أن يحتوي الاسم على \"/\".",
@@ -63,22 +55,6 @@
   "Add or remove one": "إضافة عنصر أو إزالته",
   "Add the exported folder, as in nfs://%1/export.": "أضف المجلد المُصدَّر، كما في nfs://%1/export.",
   "Archive": "أرشيف",
-  "At least %Ln items": {
-    "zero": "على الأقل لا عناصر",
-    "one": "على الأقل عنصر واحد",
-    "two": "على الأقل عنصران",
-    "few": "على الأقل %Ln عناصر",
-    "many": "على الأقل %Ln عنصرًا",
-    "other": "على الأقل %Ln عنصر"
-  },
-  "At least %Ln more": {
-    "zero": "على الأقل لا عناصر إضافية",
-    "one": "على الأقل عنصر إضافي واحد",
-    "two": "على الأقل عنصران إضافيان",
-    "few": "على الأقل %Ln عناصر إضافية",
-    "many": "على الأقل %Ln عنصرًا إضافيًا",
-    "other": "على الأقل %Ln عنصر إضافي"
-  },
   "Back / ahead 5 seconds": "رجوع / تقديم 5 ثوانٍ",
   "Back / forward": "رجوع / تقدم",
   "Bigger, smaller or normal tiles and rows": "بلاطات وصفوف أكبر أو أصغر أو بالحجم العادي",
@@ -163,6 +139,7 @@
   "Couldn't extract %1: it's damaged, or isn't an archive Folio can read.": "تعذّر استخراج %1: إنه تالف، أو ليس أرشيفًا يمكن لـ Folio قراءته.",
   "Couldn't extract %1: it's protected by a password.": "تعذّر استخراج %1: إنه محمي بكلمة مرور.",
   "Couldn't format %1. %2": "تعذّرت تهيئة %1. %2",
+  "Couldn't list this archive.": "تعذّر سرد هذا الأرشيف.",
   "Couldn't make %1 executable.": "تعذّر جعل %1 قابلًا للتنفيذ.",
   "Couldn't make %1 not executable.": "تعذّر جعل %1 غير قابل للتنفيذ.",
   "Couldn't make %1 the default app for %2: %3": "تعذّر تعيين %1 كتطبيق افتراضي لـ %2: %3",
@@ -173,7 +150,6 @@
   "Couldn't open this PDF: %1": "تعذّر فتح ملف PDF هذا: %1",
   "Couldn't play this file: %1": "تعذّر تشغيل هذا الملف: %1",
   "Couldn't read %1.": "تعذّرت قراءة %1.",
-  "Couldn't read this archive.": "تعذّر قراءة هذا الأرشيف.",
   "Couldn't read this picture.": "تعذّرت قراءة هذه الصورة.",
   "Couldn't recreate %1.": "تعذّر إعادة إنشاء %1.",
   "Couldn't remove %1.": "تعذّرت إزالة %1.",
@@ -231,7 +207,6 @@
     "many": "أُفرغت المهملات: حُذف %Ln عنصرًا.",
     "other": "أُفرغت المهملات: حُذف %Ln عنصر."
   },
-  "Empty": "فارغ",
   "Empty Trash": "إفراغ المهملات",
   "Empty Trash…": "إفراغ المهملات…",
   "Empty the trash?": "إفراغ المهملات؟",
@@ -309,8 +284,6 @@
   "Keyboard shortcuts": "اختصارات لوحة المفاتيح",
   "Kind": "النوع",
   "Leave the password out of the address; enter it when asked to sign in.": "لا تُدخل كلمة المرور في العنوان؛ أدخلها عند مطالبتك بتسجيل الدخول.",
-  "Listing archives needs bsdtar, from the libarchive package.": "يتطلب سرد الأرشيفات bsdtar، من حزمة libarchive.",
-  "Listing this archive took too long.": "استغرق سرد هذا الأرشيف وقتًا طويلاً جدًا.",
   "Make Executable": "جعله قابلًا للتنفيذ",
   "Make Not Executable": "جعله غير قابل للتنفيذ",
   "Making a preview…": "جارٍ إنشاء معاينة…",
@@ -402,7 +375,6 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "تتطلب معاينة ملفات PDF‏ Qt PDF، من حزمة qt6-webengine.",
   "Previous (%1)": "السابق (%1)",
   "Previous / next file": "الملف السابق / التالي",
-  "Reading the archive…": "جارٍ قراءة الأرشيف…",
   "Recents": "الأخيرة",
   "Redid compressing into %1.": "أُعيد الضغط إلى %1.",
   "Redid copying %Ln items.": {
@@ -554,7 +526,6 @@
   "The drive is gone.": "لم يعد القرص موجودًا.",
   "The drive stopped taking data (%1).": "توقّف القرص عن استقبال البيانات (%1).",
   "The drive was changed or removed.": "تم تغيير القرص أو إزالته.",
-  "The names in this archive are encrypted.": "الأسماء في هذا الأرشيف مشفرة.",
   "The preview closed unexpectedly on %1.": "أُغلقت المعاينة بشكل غير متوقع عند %1.",
   "There's nothing in %1 to extract.": "لا يوجد في %1 ما يمكن استخراجه.",
   "There's nothing to redo.": "لا يوجد ما يمكن إعادته.",

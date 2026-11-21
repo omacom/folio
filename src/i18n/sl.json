@@ -44,12 +44,6 @@
     "few": "%Ln elementi bodo trajno izbrisani. Tega ni mogoče razveljaviti.",
     "other": "%Ln elementov bo trajno izbrisanih. Tega ni mogoče razveljaviti."
   },
-  "%Ln more": {
-    "one": "%Ln več",
-    "two": "%Ln več",
-    "few": "%Ln več",
-    "other": "%Ln več"
-  },
   "A folder here is already called %1.": "Mapa tukaj se že imenuje %1.",
   "A folder, or a server's address like sftp://host/": "Mapa ali naslov strežnika, na primer sftp://host/",
   "A name can't contain \"/\".": "Ime ne sme vsebovati »/«.",
@@ -57,18 +51,6 @@
   "Add or remove one": "Dodaj ali odstrani enega",
   "Add the exported folder, as in nfs://%1/export.": "Dodaj izvoženo mapo, na primer nfs://%1/export.",
   "Archive": "Arhiviraj",
-  "At least %Ln items": {
-    "one": "Vsaj %Ln element",
-    "two": "Vsaj %Ln elementa",
-    "few": "Vsaj %Ln elementi",
-    "other": "Vsaj %Ln elementov"
-  },
-  "At least %Ln more": {
-    "one": "Vsaj %Ln več",
-    "two": "Vsaj %Ln več",
-    "few": "Vsaj %Ln več",
-    "other": "Vsaj %Ln več"
-  },
   "Back / ahead 5 seconds": "Nazaj / naprej 5 sekund",
   "Back / forward": "Nazaj / naprej",
   "Bigger, smaller or normal tiles and rows": "Večje, manjše ali običajne ploščice in vrstice",
@@ -145,6 +127,7 @@
   "Couldn't extract %1: it's damaged, or isn't an archive Folio can read.": "%1 ni bilo mogoče razpakirati: poškodovan je ali ni arhiv, ki ga Folio zna prebrati.",
   "Couldn't extract %1: it's protected by a password.": "%1 ni bilo mogoče razpakirati: zaščiten je z geslom.",
   "Couldn't format %1. %2": "%1 ni bilo mogoče formatirati. %2",
+  "Couldn't list this archive.": "Tega arhiva ni bilo mogoče izpisati.",
   "Couldn't make %1 executable.": "%1 ni bilo mogoče narediti izvedljivo.",
   "Couldn't make %1 not executable.": "%1 ni bilo mogoče narediti neizvedljivo.",
   "Couldn't make %1 the default app for %2: %3": "%1 ni bilo mogoče nastaviti kot privzeti program za %2: %3",
@@ -155,7 +138,6 @@
   "Couldn't open this PDF: %1": "Tega PDF-ja ni bilo mogoče odpreti: %1",
   "Couldn't play this file: %1": "Te datoteke ni bilo mogoče predvajati: %1",
   "Couldn't read %1.": "%1 ni bilo mogoče prebrati.",
-  "Couldn't read this archive.": "Tega arhiva ni bilo mogoče prebrati.",
   "Couldn't read this picture.": "Te slike ni bilo mogoče prebrati.",
   "Couldn't recreate %1.": "%1 ni bilo mogoče znova ustvariti.",
   "Couldn't remove %1.": "%1 ni bilo mogoče odstraniti.",
@@ -205,7 +187,6 @@
     "few": "Smeti so izpraznjene: izbrisani %Ln elementi.",
     "other": "Smeti so izpraznjene: izbrisanih %Ln elementov."
   },
-  "Empty": "Prazno",
   "Empty Trash": "Izprazni smeti",
   "Empty Trash…": "Izprazni smeti…",
   "Empty the trash?": "Izprazni smeti?",
@@ -273,8 +254,6 @@
   "Keyboard shortcuts": "Tipkovne bližnjice",
   "Kind": "Vrsta",
   "Leave the password out of the address; enter it when asked to sign in.": "Gesla ne vključi v naslov; vnesi ga ob pozivu za prijavo.",
-  "Listing archives needs bsdtar, from the libarchive package.": "Za prikaz arhivov je potreben bsdtar iz paketa libarchive.",
-  "Listing this archive took too long.": "Prikaz tega arhiva je trajal predolgo.",
   "Make Executable": "Naredi izvedljivo",
   "Make Not Executable": "Naredi neizvedljivo",
   "Making a preview…": "Ustvarjanje predogleda…",
@@ -358,7 +337,6 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "Za predogled datotek PDF je potreben Qt PDF iz paketa qt6-webengine.",
   "Previous (%1)": "Nazaj (%1)",
   "Previous / next file": "Prejšnja / naslednja datoteka",
-  "Reading the archive…": "Branje arhiva…",
   "Recents": "Nedavne",
   "Redid compressing into %1.": "Ponovljeno stiskanje v %1.",
   "Redid copying %Ln items.": {
@@ -488,7 +466,6 @@
   "The drive is gone.": "Pogona ni več.",
   "The drive stopped taking data (%1).": "Pogon je prenehal sprejemati podatke (%1).",
   "The drive was changed or removed.": "Pogon je bil spremenjen ali odstranjen.",
-  "The names in this archive are encrypted.": "Imena v tem arhivu so šifrirana.",
   "The preview closed unexpectedly on %1.": "Predogled za %1 se je nepričakovano zaprl.",
   "There's nothing in %1 to extract.": "V %1 ni ničesar za razpakiranje.",
   "There's nothing to redo.": "Ni ničesar za ponovitev.",

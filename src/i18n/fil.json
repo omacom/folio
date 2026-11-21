@@ -40,10 +40,6 @@
     "one": "Isang item ang permanenteng mabubura. Hindi na ito maibabalik.",
     "other": "%Ln item ang permanenteng mabubura. Hindi na ito maibabalik."
   },
-  "%Ln more": {
-    "one": "isa pa",
-    "other": "%Ln pa"
-  },
   "A folder here is already called %1.": "Mayroon nang folder dito na %1 ang pangalan.",
   "A folder, or a server's address like sftp://host/": "Isang folder, o address ng server tulad ng sftp://host/",
   "A name can't contain \"/\".": "Hindi maaaring maglaman ng \"/\" ang isang pangalan.",
@@ -51,14 +47,6 @@
   "Add or remove one": "Magdagdag o mag-alis ng isa",
   "Add the exported folder, as in nfs://%1/export.": "Idagdag ang exported na folder, gaya ng nfs://%1/export.",
   "Archive": "I-archive",
-  "At least %Ln items": {
-    "one": "Hindi bababa sa isang item",
-    "other": "Hindi bababa sa %Ln item"
-  },
-  "At least %Ln more": {
-    "one": "Hindi bababa sa isa pa",
-    "other": "Hindi bababa sa %Ln pa"
-  },
   "Back / ahead 5 seconds": "Paatras / paabante ng 5 segundo",
   "Back / forward": "Bumalik / sumulong",
   "Bigger, smaller or normal tiles and rows": "Mas malaki, mas maliit o normal na tiles at rows",
@@ -127,6 +115,7 @@
   "Couldn't extract %1: it's damaged, or isn't an archive Folio can read.": "Hindi ma-extract ang %1: sira ito, o hindi ito archive na mababasa ng Folio.",
   "Couldn't extract %1: it's protected by a password.": "Hindi ma-extract ang %1: protektado ito ng password.",
   "Couldn't format %1. %2": "Hindi ma-format ang %1. %2",
+  "Couldn't list this archive.": "Hindi mailista ang archive na ito.",
   "Couldn't make %1 executable.": "Hindi nagawang gawing executable ang %1.",
   "Couldn't make %1 not executable.": "Hindi nagawang gawing hindi executable ang %1.",
   "Couldn't make %1 the default app for %2: %3": "Hindi maitakda ang %1 bilang default na app para sa %2: %3",
@@ -137,7 +126,6 @@
   "Couldn't open this PDF: %1": "Hindi mabuksan ang PDF na ito: %1",
   "Couldn't play this file: %1": "Hindi ma-play ang file na ito: %1",
   "Couldn't read %1.": "Hindi mabasa ang %1.",
-  "Couldn't read this archive.": "Hindi mabasa ang archive na ito.",
   "Couldn't read this picture.": "Hindi mabasa ang larawang ito.",
   "Couldn't recreate %1.": "Hindi malikha ulit ang %1.",
   "Couldn't remove %1.": "Hindi matanggal ang %1.",
@@ -179,7 +167,6 @@
     "one": "Inubos ang Basurahan: isang item ang nabura.",
     "other": "Inubos ang Basurahan: %Ln item ang nabura."
   },
-  "Empty": "Walang laman",
   "Empty Trash": "Ubusin ang Basurahan",
   "Empty Trash…": "Ubusin ang Basurahan…",
   "Empty the trash?": "Ubusin ang Basurahan?",
@@ -237,8 +224,6 @@
   "Keyboard shortcuts": "Mga shortcut sa keyboard",
   "Kind": "Uri",
   "Leave the password out of the address; enter it when asked to sign in.": "Huwag isama ang password sa address; ipasok ito kapag hinilingang mag-sign in.",
-  "Listing archives needs bsdtar, from the libarchive package.": "Kailangan ng bsdtar mula sa libarchive package para ilista ang mga archive.",
-  "Listing this archive took too long.": "Masyadong matagal ang paglista ng archive na ito.",
   "Make Executable": "Gawing Executable",
   "Make Not Executable": "Gawing Hindi Executable",
   "Making a preview…": "Gumagawa ng preview…",
@@ -314,7 +299,6 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "Kailangan ang Qt PDF, mula sa paketeng qt6-webengine, para mag-preview ng mga PDF.",
   "Previous (%1)": "Nakaraan (%1)",
   "Previous / next file": "Nakaraan / susunod na file",
-  "Reading the archive…": "Binabasa ang archive…",
   "Recents": "Mga kamakailan",
   "Redid compressing into %1.": "Inulit ang pag-compress sa %1.",
   "Redid copying %Ln items.": {
@@ -422,7 +406,6 @@
   "The drive is gone.": "Wala na ang drive.",
   "The drive stopped taking data (%1).": "Tumigil ang drive sa pagtanggap ng data (%1).",
   "The drive was changed or removed.": "Nabago o naalis ang drive.",
-  "The names in this archive are encrypted.": "Naka-encrypt ang mga pangalan sa archive na ito.",
   "The preview closed unexpectedly on %1.": "Hindi inaasahang nagsara ang preview sa %1.",
   "There's nothing in %1 to extract.": "Walang ma-extract sa %1.",
   "There's nothing to redo.": "Walang uulitin.",

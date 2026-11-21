@@ -40,10 +40,6 @@
     "one": "%Ln අයිතමයක් ස්ථිරවම මකා දමනු ලැබේ. මෙය ආපසු හැරවිය නොහැක.",
     "other": "%Ln අයිතම ස්ථිරවම මකා දමනු ලැබේ. මෙය ආපසු හැරවිය නොහැක."
   },
-  "%Ln more": {
-    "one": "තවත් එකක්",
-    "other": "තවත් %Ln ක්"
-  },
   "A folder here is already called %1.": "මෙහි දැනටමත් %1 නමැති ෆෝල්ඩරයක් ඇත.",
   "A folder, or a server's address like sftp://host/": "ෆෝල්ඩරයක්, හෝ sftp://host/ වැනි සේවාදායක ලිපිනයක්",
   "A name can't contain \"/\".": "නාමයක \"/\" අඩංගු විය නොහැක.",
@@ -51,14 +47,6 @@
   "Add or remove one": "එකක් එක් කරන්න හෝ ඉවත් කරන්න",
   "Add the exported folder, as in nfs://%1/export.": "nfs://%1/export ලෙස අපනයන කළ ෆෝල්ඩරය ද එක් කරන්න.",
   "Archive": "සංරක්ෂණය කරන්න",
-  "At least %Ln items": {
-    "one": "අවම වශයෙන් %Ln අයිතමයක්",
-    "other": "අවම වශයෙන් %Ln අයිතම"
-  },
-  "At least %Ln more": {
-    "one": "අවම වශයෙන් තවත් එකක්",
-    "other": "අවම වශයෙන් තවත් %Ln ක්"
-  },
   "Back / ahead 5 seconds": "තත්පර 5ක් ආපස්සට / ඉදිරියට",
   "Back / forward": "ආපසු / ඉදිරියට",
   "Bigger, smaller or normal tiles and rows": "විශාල, කුඩා හෝ සාමාන්‍ය ටයිල් සහ පේළි",
@@ -127,6 +115,7 @@
   "Couldn't extract %1: it's damaged, or isn't an archive Folio can read.": "%1 උපුටා ගත නොහැකි විය: එය හානි වී ඇත, නැතහොත් Folio ට කියවිය හැකි සංරක්ෂණයක් නොවේ.",
   "Couldn't extract %1: it's protected by a password.": "%1 උපුටා ගත නොහැකි විය: එය මුරපදයකින් ආරක්ෂිතයි.",
   "Couldn't format %1. %2": "%1 ආකෘතිකරණය කළ නොහැකි විය. %2",
+  "Couldn't list this archive.": "මෙම සංරක්ෂණය ලැයිස්තුගත කළ නොහැකි විය.",
   "Couldn't make %1 executable.": "%1 ක්‍රියාත්මක කළ හැකි ලෙස සෑදිය නොහැකි විය.",
   "Couldn't make %1 not executable.": "%1 ක්‍රියාත්මක කළ නොහැකි ලෙස සෑදිය නොහැකි විය.",
   "Couldn't make %1 the default app for %2: %3": "%2 සඳහා %1 පෙරනිමි යෙදුම කළ නොහැකි විය: %3",
@@ -137,7 +126,6 @@
   "Couldn't open this PDF: %1": "මෙම PDF එක විවෘත කළ නොහැකි විය: %1",
   "Couldn't play this file: %1": "මෙම ගොනුව වාදනය කළ නොහැකි විය: %1",
   "Couldn't read %1.": "%1 කියවිය නොහැකි විය.",
-  "Couldn't read this archive.": "මෙම සංරක්ෂණය කියවිය නොහැකි විය.",
   "Couldn't read this picture.": "මෙම පින්තූරය කියවිය නොහැකි විය.",
   "Couldn't recreate %1.": "%1 නැවත සෑදිය නොහැකි විය.",
   "Couldn't remove %1.": "%1 ඉවත් කළ නොහැකි විය.",
@@ -179,7 +167,6 @@
     "one": "කුණු බඳුන හිස් කළා: %Ln අයිතමයක් මකා දමන ලදි.",
     "other": "කුණු බඳුන හිස් කළා: %Ln අයිතම මකා දමන ලදි."
   },
-  "Empty": "හිස්",
   "Empty Trash": "කුණු බඳුන හිස් කරන්න",
   "Empty Trash…": "කුණු බඳුන හිස් කරන්න…",
   "Empty the trash?": "කුණු බඳුන හිස් කරන්නද?",
@@ -237,8 +224,6 @@
   "Keyboard shortcuts": "යතුරුපුවරු කෙටිමං",
   "Kind": "වර්ගය",
   "Leave the password out of the address; enter it when asked to sign in.": "ලිපිනයට මුරපදය එක් නොකරන්න; පිවිසීමට ඉල්ලූ විට එය ඇතුළත් කරන්න.",
-  "Listing archives needs bsdtar, from the libarchive package.": "සංරක්ෂණ ලැයිස්තු කිරීමට bsdtar අවශ්‍ය වේ, එය libarchive පැකේජයේ ඇත.",
-  "Listing this archive took too long.": "මෙම සංරක්ෂණය ලැයිස්තු කිරීමට වැඩි වේලාවක් ගත විය.",
   "Make Executable": "ක්‍රියාත්මක කළ හැකි කරන්න",
   "Make Not Executable": "ක්‍රියාත්මක කළ නොහැකි කරන්න",
   "Making a preview…": "පෙරදසුන සාදමින්…",
@@ -314,7 +299,6 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "PDF පෙරදසුන් කිරීමට qt6-webengine පැකේජයේ Qt PDF අවශ්‍යයි.",
   "Previous (%1)": "පෙර (%1)",
   "Previous / next file": "පෙර / ඊළඟ ගොනුව",
-  "Reading the archive…": "සංරක්ෂණය කියවමින්…",
   "Recents": "මෑත ගොනු",
   "Redid compressing into %1.": "%1 වෙත සම්පීඩනය නැවත කළා.",
   "Redid copying %Ln items.": {
@@ -422,7 +406,6 @@
   "The drive is gone.": "ධාවකය නැති වී ඇත.",
   "The drive stopped taking data (%1).": "ධාවකය දත්ත ලබා ගැනීම නැවැත්වීය (%1).",
   "The drive was changed or removed.": "ධාවකය වෙනස් කර හෝ ඉවත් කර ඇත.",
-  "The names in this archive are encrypted.": "මෙම සංරක්ෂණයේ ඇති නම් ගුප්තකේතනය කර ඇත.",
   "The preview closed unexpectedly on %1.": "%1 හි පෙරදසුන අනපේක්ෂිතව වැසී ගියේය.",
   "There's nothing in %1 to extract.": "%1 හි උපුටා ගැනීමට කිසිවක් නැත.",
   "There's nothing to redo.": "නැවත කිරීමට කිසිවක් නැත.",

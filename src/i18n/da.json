@@ -40,10 +40,6 @@
     "one": "%Ln element slettes permanent. Dette kan ikke fortrydes.",
     "other": "%Ln elementer slettes permanent. Dette kan ikke fortrydes."
   },
-  "%Ln more": {
-    "one": "%Ln mere",
-    "other": "%Ln mere"
-  },
   "A folder here is already called %1.": "En mappe her hedder allerede %1.",
   "A folder, or a server's address like sftp://host/": "En mappe eller en serveradresse som sftp://host/",
   "A name can't contain \"/\".": "Et navn kan ikke indeholde \"/\".",
@@ -51,14 +47,6 @@
   "Add or remove one": "Tilføj eller fjern ét",
   "Add the exported folder, as in nfs://%1/export.": "Tilføj den eksporterede mappe, som i nfs://%1/export.",
   "Archive": "Arkivér",
-  "At least %Ln items": {
-    "one": "Mindst %Ln element",
-    "other": "Mindst %Ln elementer"
-  },
-  "At least %Ln more": {
-    "one": "Mindst %Ln mere",
-    "other": "Mindst %Ln mere"
-  },
   "Back / ahead 5 seconds": "Tilbage / frem 5 sekunder",
   "Back / forward": "Tilbage / frem",
   "Bigger, smaller or normal tiles and rows": "Større, mindre eller normale fliser og rækker",
@@ -127,6 +115,7 @@
   "Couldn't extract %1: it's damaged, or isn't an archive Folio can read.": "Kunne ikke udpakke %1: det er beskadiget eller er ikke et arkiv, Folio kan læse.",
   "Couldn't extract %1: it's protected by a password.": "Kunne ikke udpakke %1: det er beskyttet af en adgangskode.",
   "Couldn't format %1. %2": "Kunne ikke formatere %1. %2",
+  "Couldn't list this archive.": "Kunne ikke vise indholdet af dette arkiv.",
   "Couldn't make %1 executable.": "Kunne ikke gøre %1 eksekverbar.",
   "Couldn't make %1 not executable.": "Kunne ikke gøre %1 ikke-eksekverbar.",
   "Couldn't make %1 the default app for %2: %3": "Kunne ikke gøre %1 til standardprogram for %2: %3",
@@ -137,7 +126,6 @@
   "Couldn't open this PDF: %1": "Kunne ikke åbne denne PDF: %1",
   "Couldn't play this file: %1": "Kunne ikke afspille denne fil: %1",
   "Couldn't read %1.": "Kunne ikke læse %1.",
-  "Couldn't read this archive.": "Kunne ikke læse dette arkiv.",
   "Couldn't read this picture.": "Kunne ikke læse dette billede.",
   "Couldn't recreate %1.": "Kunne ikke genskabe %1.",
   "Couldn't remove %1.": "Kunne ikke fjerne %1.",
@@ -179,7 +167,6 @@
     "one": "Tømte papirkurven: %Ln element slettet.",
     "other": "Tømte papirkurven: %Ln elementer slettet."
   },
-  "Empty": "Tom",
   "Empty Trash": "Tøm papirkurv",
   "Empty Trash…": "Tøm papirkurv…",
   "Empty the trash?": "Tøm papirkurven?",
@@ -237,8 +224,6 @@
   "Keyboard shortcuts": "Tastaturgenveje",
   "Kind": "Type",
   "Leave the password out of the address; enter it when asked to sign in.": "Udelad adgangskoden i adressen; indtast den, når du bliver bedt om at logge ind.",
-  "Listing archives needs bsdtar, from the libarchive package.": "Visning af arkiver kræver bsdtar fra libarchive-pakken.",
-  "Listing this archive took too long.": "Visning af dette arkiv tog for lang tid.",
   "Make Executable": "Gør eksekverbar",
   "Make Not Executable": "Gør ikke-eksekverbar",
   "Making a preview…": "Opretter forhåndsvisning…",
@@ -314,7 +299,6 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "Forhåndsvisning af PDF'er kræver Qt PDF fra pakken qt6-webengine.",
   "Previous (%1)": "Forrige (%1)",
   "Previous / next file": "Forrige / næste fil",
-  "Reading the archive…": "Læser arkivet…",
   "Recents": "Seneste",
   "Redid compressing into %1.": "Gentog komprimering til %1.",
   "Redid copying %Ln items.": {
@@ -422,7 +406,6 @@
   "The drive is gone.": "Drevet er væk.",
   "The drive stopped taking data (%1).": "Drevet holdt op med at modtage data (%1).",
   "The drive was changed or removed.": "Drevet blev ændret eller fjernet.",
-  "The names in this archive are encrypted.": "Navnene i dette arkiv er krypterede.",
   "The preview closed unexpectedly on %1.": "Forhåndsvisningen lukkede uventet på %1.",
   "There's nothing in %1 to extract.": "Der er intet i %1 at pakke ud.",
   "There's nothing to redo.": "Der er intet at gentage.",

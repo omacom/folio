@@ -40,10 +40,6 @@
     "one": "ایک آئٹم مستقل طور پر حذف کر دیا جائے گا۔ یہ عمل واپس نہیں ہو سکتا۔",
     "other": "%Ln آئٹمز مستقل طور پر حذف کر دیے جائیں گے۔ یہ عمل واپس نہیں ہو سکتا۔"
   },
-  "%Ln more": {
-    "one": "ایک اور",
-    "other": "%Ln مزید"
-  },
   "A folder here is already called %1.": "یہاں ایک فولڈر کا نام پہلے سے %1 ہے۔",
   "A folder, or a server's address like sftp://host/": "کوئی فولڈر، یا سرور کا پتہ جیسے sftp://host/",
   "A name can't contain \"/\".": "نام میں \"/\" شامل نہیں ہو سکتا۔",
@@ -51,14 +47,6 @@
   "Add or remove one": "ایک شامل یا ہٹائیں",
   "Add the exported folder, as in nfs://%1/export.": "برآمد شدہ فولڈر شامل کریں، جیسے nfs://%1/export۔",
   "Archive": "آرکائیو",
-  "At least %Ln items": {
-    "one": "کم از کم ایک آئٹم",
-    "other": "کم از کم %Ln آئٹمز"
-  },
-  "At least %Ln more": {
-    "one": "کم از کم ایک اور",
-    "other": "کم از کم %Ln مزید"
-  },
   "Back / ahead 5 seconds": "5 سیکنڈ پیچھے / آگے",
   "Back / forward": "پیچھے / آگے",
   "Bigger, smaller or normal tiles and rows": "بڑے، چھوٹے یا عام سائز کے ٹائلز اور قطاریں",
@@ -127,6 +115,7 @@
   "Couldn't extract %1: it's damaged, or isn't an archive Folio can read.": "%1 نکالا نہیں جا سکا: یہ خراب ہے، یا ایسا آرکائیو نہیں ہے جسے Folio پڑھ سکے۔",
   "Couldn't extract %1: it's protected by a password.": "%1 نکالا نہیں جا سکا: یہ پاس ورڈ سے محفوظ ہے۔",
   "Couldn't format %1. %2": "%1 فارمیٹ نہیں کیا جا سکا۔ %2",
+  "Couldn't list this archive.": "اس آرکائیو کی فہرست نہیں بن سکی۔",
   "Couldn't make %1 executable.": "%1 کو قابلِ اجرا نہیں بنایا جا سکا۔",
   "Couldn't make %1 not executable.": "%1 کو غیر قابلِ اجرا نہیں بنایا جا سکا۔",
   "Couldn't make %1 the default app for %2: %3": "%1 کو %2 کے لیے طے شدہ ایپ نہیں بنایا جا سکا: %3",
@@ -137,7 +126,6 @@
   "Couldn't open this PDF: %1": "یہ PDF نہیں کھل سکی: %1",
   "Couldn't play this file: %1": "یہ فائل چلائی نہیں جا سکی: %1",
   "Couldn't read %1.": "%1 کو پڑھا نہیں جا سکا۔",
-  "Couldn't read this archive.": "اس آرکائیو کو پڑھا نہیں جا سکا۔",
   "Couldn't read this picture.": "یہ تصویر نہیں پڑھی جا سکی۔",
   "Couldn't recreate %1.": "%1 دوبارہ نہیں بنایا جا سکا۔",
   "Couldn't remove %1.": "%1 ہٹایا نہیں جا سکا۔",
@@ -179,7 +167,6 @@
     "one": "ردی کی ٹوکری خالی کر دی گئی: ایک آئٹم حذف ہو گیا۔",
     "other": "ردی کی ٹوکری خالی کر دی گئی: %Ln آئٹمز حذف ہو گئے۔"
   },
-  "Empty": "خالی",
   "Empty Trash": "ردی کی ٹوکری خالی کریں",
   "Empty Trash…": "ردی کی ٹوکری خالی کریں…",
   "Empty the trash?": "ردی کی ٹوکری خالی کریں؟",
@@ -237,8 +224,6 @@
   "Keyboard shortcuts": "کی بورڈ شارٹ کٹس",
   "Kind": "قسم",
   "Leave the password out of the address; enter it when asked to sign in.": "پتے میں پاس ورڈ شامل نہ کریں؛ سائن ان کا کہا جائے تو اسے درج کریں۔",
-  "Listing archives needs bsdtar, from the libarchive package.": "آرکائیوز کی فہرست دکھانے کے لیے bsdtar درکار ہے، جو libarchive پیکج میں ملتا ہے۔",
-  "Listing this archive took too long.": "اس آرکائیو کی فہرست بنانے میں بہت زیادہ وقت لگا۔",
   "Make Executable": "قابلِ اجرا بنائیں",
   "Make Not Executable": "قابلِ اجرا ختم کریں",
   "Making a preview…": "پیش منظر بنایا جا رہا ہے…",
@@ -314,7 +299,6 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "PDFs کا پیش منظر دکھانے کے لیے Qt PDF درکار ہے، جو qt6-webengine پیکیج سے ملتا ہے۔",
   "Previous (%1)": "پچھلا (%1)",
   "Previous / next file": "پچھلی / اگلی فائل",
-  "Reading the archive…": "آرکائیو پڑھا جا رہا ہے…",
   "Recents": "حالیہ",
   "Redid compressing into %1.": "%1 میں دوبارہ کمپریس کیا گیا۔",
   "Redid copying %Ln items.": {
@@ -422,7 +406,6 @@
   "The drive is gone.": "ڈرائیو موجود نہیں رہی۔",
   "The drive stopped taking data (%1).": "ڈرائیو نے ڈیٹا لینا بند کر دیا (%1)۔",
   "The drive was changed or removed.": "ڈرائیو تبدیل یا ہٹا دی گئی ہے۔",
-  "The names in this archive are encrypted.": "اس آرکائیو میں نام خفیہ کردہ ہیں۔",
   "The preview closed unexpectedly on %1.": "%1 پر پیش منظر غیر متوقع طور پر بند ہو گیا۔",
   "There's nothing in %1 to extract.": "%1 میں نکالنے کے لیے کچھ نہیں ہے۔",
   "There's nothing to redo.": "دوبارہ کرنے کے لیے کچھ نہیں ہے۔",

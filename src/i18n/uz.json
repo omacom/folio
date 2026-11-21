@@ -40,10 +40,6 @@
     "one": "%Ln ta element butunlay oʻchiriladi. Buni bekor qilib boʻlmaydi.",
     "other": "%Ln ta element butunlay oʻchiriladi. Buni bekor qilib boʻlmaydi."
   },
-  "%Ln more": {
-    "one": "Yana %Ln ta",
-    "other": "Yana %Ln ta"
-  },
   "A folder here is already called %1.": "Bu yerda allaqachon %1 nomli papka mavjud.",
   "A folder, or a server's address like sftp://host/": "Papka yoki sftp://host/ kabi server manzili",
   "A name can't contain \"/\".": "Nomda \"/\" belgisi boʻlishi mumkin emas.",
@@ -51,14 +47,6 @@
   "Add or remove one": "Bittasini qoʻshish yoki olib tashlash",
   "Add the exported folder, as in nfs://%1/export.": "Eksport qilingan papkani qoʻshing, masalan nfs://%1/export.",
   "Archive": "Arxivlash",
-  "At least %Ln items": {
-    "one": "Kamida %Ln ta element",
-    "other": "Kamida %Ln ta element"
-  },
-  "At least %Ln more": {
-    "one": "Kamida yana %Ln ta",
-    "other": "Kamida yana %Ln ta"
-  },
   "Back / ahead 5 seconds": "5 soniya orqaga / oldinga",
   "Back / forward": "Orqaga / oldinga",
   "Bigger, smaller or normal tiles and rows": "Kattaroq, kichikroq yoki odatiy plitkalar va qatorlar",
@@ -127,6 +115,7 @@
   "Couldn't extract %1: it's damaged, or isn't an archive Folio can read.": "%1ni yoyib boʻlmadi: u shikastlangan yoki Folio oʻqiy oladigan arxiv emas.",
   "Couldn't extract %1: it's protected by a password.": "%1ni yoyib boʻlmadi: u parol bilan himoyalangan.",
   "Couldn't format %1. %2": "%1ni formatlab boʻlmadi. %2",
+  "Couldn't list this archive.": "Bu arxivni roʻyxatlab boʻlmadi.",
   "Couldn't make %1 executable.": "%1ni bajariluvchi qilib boʻlmadi.",
   "Couldn't make %1 not executable.": "%1ni bajariluvchi emas qilib boʻlmadi.",
   "Couldn't make %1 the default app for %2: %3": "%1ni %2 uchun standart dastur qilib boʻlmadi: %3",
@@ -137,7 +126,6 @@
   "Couldn't open this PDF: %1": "Bu PDFni ochib boʻlmadi: %1",
   "Couldn't play this file: %1": "Bu faylni ijro etib boʻlmadi: %1",
   "Couldn't read %1.": "%1ni oʻqib boʻlmadi.",
-  "Couldn't read this archive.": "Bu arxivni oʻqib boʻlmadi.",
   "Couldn't read this picture.": "Bu rasmni oʻqib boʻlmadi.",
   "Couldn't recreate %1.": "%1ni qayta yaratib boʻlmadi.",
   "Couldn't remove %1.": "%1ni olib tashlab boʻlmadi.",
@@ -179,7 +167,6 @@
     "one": "Chiqindi qutisi boʻshatildi: %Ln ta element oʻchirildi.",
     "other": "Chiqindi qutisi boʻshatildi: %Ln ta element oʻchirildi."
   },
-  "Empty": "Boʻsh",
   "Empty Trash": "Chiqindi qutisini boʻshatish",
   "Empty Trash…": "Chiqindi qutisini boʻshatish…",
   "Empty the trash?": "Chiqindi qutisi boʻshatilsinmi?",
@@ -237,8 +224,6 @@
   "Keyboard shortcuts": "Klaviatura yorliqlari",
   "Kind": "Turi",
   "Leave the password out of the address; enter it when asked to sign in.": "Parolni manzilga kiritmang; kirish soʻralganda kiriting.",
-  "Listing archives needs bsdtar, from the libarchive package.": "Arxivlarni roʻyxatlash uchun libarchive paketidagi bsdtar kerak.",
-  "Listing this archive took too long.": "Bu arxivni roʻyxatlash juda uzoq davom etdi.",
   "Make Executable": "Bajariluvchi qilish",
   "Make Not Executable": "Bajariluvchi emas qilish",
   "Making a preview…": "Oldindan koʻrish tayyorlanmoqda…",
@@ -314,7 +299,6 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "PDF fayllarni oldindan koʻrish uchun qt6-webengine paketidagi Qt PDF kerak.",
   "Previous (%1)": "Oldingi (%1)",
   "Previous / next file": "Oldingi / keyingi fayl",
-  "Reading the archive…": "Arxiv oʻqilmoqda…",
   "Recents": "Yaqindagilar",
   "Redid compressing into %1.": "%1ga siqish qayta bajarildi.",
   "Redid copying %Ln items.": {
@@ -422,7 +406,6 @@
   "The drive is gone.": "Disk yoʻqoldi.",
   "The drive stopped taking data (%1).": "Disk maʼlumot qabul qilishni toʻxtatdi (%1).",
   "The drive was changed or removed.": "Disk almashtirilgan yoki olib tashlangan.",
-  "The names in this archive are encrypted.": "Bu arxivdagi nomlar shifrlangan.",
   "The preview closed unexpectedly on %1.": "Oldindan koʻrish %1da kutilmaganda yopildi.",
   "There's nothing in %1 to extract.": "%1da yoyish uchun hech narsa yoʻq.",
   "There's nothing to redo.": "Qayta bajarish uchun hech narsa yoʻq.",

@@ -40,10 +40,6 @@
     "one": "%Ln elem véglegesen törlődik. Ez nem vonható vissza.",
     "other": "%Ln elem véglegesen törlődik. Ez nem vonható vissza."
   },
-  "%Ln more": {
-    "one": "%Ln további",
-    "other": "%Ln további"
-  },
   "A folder here is already called %1.": "Itt már van %1 nevű mappa.",
   "A folder, or a server's address like sftp://host/": "Mappa vagy kiszolgálócím, például sftp://host/",
   "A name can't contain \"/\".": "A név nem tartalmazhat „/” jelet.",
@@ -51,14 +47,6 @@
   "Add or remove one": "Egy elem hozzáadása vagy eltávolítása",
   "Add the exported folder, as in nfs://%1/export.": "Az exportált mappát is adja meg, például nfs://%1/export formában.",
   "Archive": "Archiválás",
-  "At least %Ln items": {
-    "one": "Legalább %Ln elem",
-    "other": "Legalább %Ln elem"
-  },
-  "At least %Ln more": {
-    "one": "Legalább %Ln további",
-    "other": "Legalább %Ln további"
-  },
   "Back / ahead 5 seconds": "5 másodperc vissza / előre",
   "Back / forward": "Vissza / előre",
   "Bigger, smaller or normal tiles and rows": "Nagyobb, kisebb vagy normál méretű csempék és sorok",
@@ -127,6 +115,7 @@
   "Couldn't extract %1: it's damaged, or isn't an archive Folio can read.": "%1 nem bontható ki: sérült, vagy nem a Folio által beolvasható archívum.",
   "Couldn't extract %1: it's protected by a password.": "%1 nem bontható ki: jelszóval védett.",
   "Couldn't format %1. %2": "%1 nem formázható. %2",
+  "Couldn't list this archive.": "Nem sikerült listázni ezt az archívumot.",
   "Couldn't make %1 executable.": "Nem sikerült futtathatóvá tenni: %1.",
   "Couldn't make %1 not executable.": "Nem sikerült visszavonni %1 futtathatóságát.",
   "Couldn't make %1 the default app for %2: %3": "%1 nem állítható be alapértelmezett alkalmazásként ehhez: %2: %3",
@@ -137,7 +126,6 @@
   "Couldn't open this PDF: %1": "Ez a PDF nem nyitható meg: %1",
   "Couldn't play this file: %1": "Ez a fájl nem játszható le: %1",
   "Couldn't read %1.": "%1 nem olvasható be.",
-  "Couldn't read this archive.": "Nem sikerült beolvasni ezt az archívumot.",
   "Couldn't read this picture.": "Ez a kép nem olvasható be.",
   "Couldn't recreate %1.": "%1 nem hozható létre újra.",
   "Couldn't remove %1.": "%1 nem távolítható el.",
@@ -179,7 +167,6 @@
     "one": "A Kuka kiürítve: %Ln elem törölve.",
     "other": "A Kuka kiürítve: %Ln elem törölve."
   },
-  "Empty": "Üres",
   "Empty Trash": "Kuka ürítése",
   "Empty Trash…": "Kuka ürítése…",
   "Empty the trash?": "Kiüríti a Kukát?",
@@ -237,8 +224,6 @@
   "Keyboard shortcuts": "Billentyűparancsok",
   "Kind": "Típus",
   "Leave the password out of the address; enter it when asked to sign in.": "Hagyja ki a jelszót a címből; adja meg, amikor a bejelentkezéskor kéri.",
-  "Listing archives needs bsdtar, from the libarchive package.": "Az archívumok listázásához bsdtar szükséges a libarchive csomagból.",
-  "Listing this archive took too long.": "Ennek az archívumnak a listázása túl sokáig tartott.",
   "Make Executable": "Futtathatóvá tétel",
   "Make Not Executable": "Futtathatóság visszavonása",
   "Making a preview…": "Előnézet készítése…",
@@ -314,7 +299,6 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "A PDF-ek előnézetéhez Qt PDF szükséges a qt6-webengine csomagból.",
   "Previous (%1)": "Előző (%1)",
   "Previous / next file": "Előző / következő fájl",
-  "Reading the archive…": "Az archívum beolvasása…",
   "Recents": "Legutóbbiak",
   "Redid compressing into %1.": "Újra tömörítve ide: %1.",
   "Redid copying %Ln items.": {
@@ -422,7 +406,6 @@
   "The drive is gone.": "A meghajtó eltűnt.",
   "The drive stopped taking data (%1).": "A meghajtó már nem fogad adatot (%1).",
   "The drive was changed or removed.": "A meghajtót kicserélték vagy eltávolították.",
-  "The names in this archive are encrypted.": "Ebben az archívumban a nevek titkosítottak.",
   "The preview closed unexpectedly on %1.": "%1 előnézete váratlanul bezárult.",
   "There's nothing in %1 to extract.": "%1-ben nincs semmi kibontani való.",
   "There's nothing to redo.": "Nincs mit újra végrehajtani.",
