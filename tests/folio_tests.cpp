@@ -8754,6 +8754,15 @@ private slots:
         previewer.start(dir.filePath("project.zip"), false, "name");
         QCOMPARE(previewer.viewer(), QString("archive"));
         QTRY_COMPARE(previewer.text(), names);
+
+        // Past 500 names the rest aren't read.
+        QDir(dir.path()).mkpath("many");
+        for (int i = 0; i < 600; ++i)
+            write(dir.filePath(QString("many/%1.txt").arg(i)), "x");
+        QCOMPARE(QProcess::execute("bsdtar", {"-cf", dir.filePath("many.tar"), "-C", dir.filePath("many"), "."}), 0);
+        const QStringList shown = Previewer::archiveNames(dir.filePath("many.tar")).split('\n');
+        QCOMPARE(shown.size(), 501);
+        QCOMPARE(shown.last(), QString("…"));
     }
 
     void archivesThatCantBeListedSaySo()

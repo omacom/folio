@@ -514,13 +514,34 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
     // Reading the file waits on its disk, which for a slow mount would hold
     // up moving through files, so it happens off the UI thread.
     auto *watcher = new QFutureWatcher<QVariantMap>(this);
-    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, details]() mutable {
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, details, path, mime]() mutable {
         watcher->deleteLater();
         if (generation != *m_describing)
             return; // The selection moved on while this was read.
         details.insert(watcher->result());
         m_details = details;
         emit detailsChanged();
+        // An archive's names, by the type read from what it holds when its
+        // name gave none. bsdtar can take seconds, so listings take a
+        // thread of their own, and the rest of what's read never waits on one.
+        if (!Previewer::listsArchive(details.value("mime", mime).toString()))
+            return;
+        static QThreadPool *const listing = [] {
+            auto *pool = new QThreadPool;
+            pool->setMaxThreadCount(1);
+            return pool;
+        }();
+        auto *names = new QFutureWatcher<QString>(this);
+        connect(names, &QFutureWatcherBase::finished, this, [this, names, generation] {
+            names->deleteLater();
+            if (generation != *m_describing)
+                return;
+            m_details.insert("text", names->result());
+            emit detailsChanged();
+        });
+        names->setFuture(QtConcurrent::run(listing, [path, latest = m_describing, generation] {
+            return *latest == generation ? Previewer::archiveNames(path) : QString();
+        }));
     });
     // Stepping through files faster than they're read queues readings; the
     // ones overtaken before they start are skipped rather than left to tie
@@ -556,9 +577,6 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
             read.insert("path", path);
             read.insert("mime", FolderModel::typeByContent(path, mime));
         }
-        // An archive's names, by the type read from what it holds when its name gave none.
-        if (Previewer::listsArchive(read.value("mime", mime).toString()))
-            read.insert("text", Previewer::archiveNames(path));
         if (kind == "image") {
             QImageReader reader(path);
             reader.setAutoTransform(true);

@@ -1,6 +1,7 @@
 #include "previewer.h"
 
 #include "fileops.h"
+#include <QDeadlineTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QFutureWatcher>
@@ -65,24 +66,38 @@ QString Previewer::archiveNames(const QString &path, int shown) {
     bsdtar.setStandardInputFile(QProcess::nullDevice());
     // An absolute path is never read as an option, or as "-" for stdin.
     bsdtar.start("bsdtar", {"-tf", QFileInfo(path).absoluteFilePath()});
+    // Read as it comes, and stopped once there's enough to show: a huge
+    // listing is never held whole, nor waited out.
+    const QDeadlineTimer deadline(5000);
     QStringList names;
-    if (bsdtar.waitForFinished(5000) && bsdtar.exitStatus() == QProcess::NormalExit && bsdtar.exitCode() == 0) {
-        for (QString name : QString::fromUtf8(bsdtar.readAllStandardOutput()).split('\n', Qt::SkipEmptyParts)) {
-            // The "./" a tar made with `-C folder .` starts with, or an ISO's ".", is the archive itself.
-            if (name.startsWith("./"))
-                name.remove(0, 2);
-            if (name.isEmpty() || name == ".")
-                continue;
-            if (names.size() == shown) {
-                names << "…";
-                break;
-            }
-            names << name;
+    qint64 bytes = 0;
+    bool full = false, done = false;
+    const auto take = [&](const QByteArray &line) {
+        QString name = QString::fromUtf8(line).chopped(line.endsWith('\n'));
+        // The "./" a tar made with `-C folder .` starts with, or an ISO's ".", is the archive itself.
+        if (name.startsWith("./"))
+            name.remove(0, 2);
+        if (name.isEmpty() || name == ".")
+            return;
+        full = names.size() == shown || (bytes += line.size()) > 256 * 1024;
+        names << (full ? QString("…") : name);
+    };
+    while (!full && !done) {
+        while (!full && bsdtar.canReadLine())
+            take(bsdtar.readLine());
+        if (bsdtar.state() == QProcess::NotRunning) {
+            take(bsdtar.readAll());
+            done = true;
+        } else if (deadline.hasExpired()) {
+            break;
+        } else {
+            bsdtar.waitForReadyRead(int(deadline.remainingTime()));
         }
     }
+    const bool listed = full || (done && bsdtar.exitStatus() == QProcess::NormalExit && bsdtar.exitCode() == 0);
     bsdtar.kill();
     bsdtar.waitForFinished(1000);
-    return names.isEmpty() ? tr("Couldn't list this archive.") : names.join('\n');
+    return listed && !names.isEmpty() ? names.join('\n') : tr("Couldn't list this archive.");
 }
 
 QString Previewer::readText(const QString &path, qint64 limit) {
