@@ -8833,6 +8833,41 @@ private slots:
         QCOMPARE(steps(), 1);
     }
 
+    void cutItemsFadeTheirPictures()
+    {
+        // A cut folder's card and a cut file's picture fade, in the grid and the list, until pasted.
+        QTemporaryDir home;
+        QVERIFY(QDir(home.path()).mkpath("nightly"));
+        const QString folder = home.filePath("nightly");
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        const QVariantMap item{{"index", 0}, {"name", "nightly"}, {"path", folder}, {"isDir", true}, {"kind", "folder"},
+                               {"mime", "inode/directory"}, {"extension", QString()}, {"itemCount", 0}, {"icon", QString()},
+                               {"size", 0}, {"modified", QDateTime::currentDateTime()}, {"selected", false},
+                               {"depth", 0}, {"expanded", false}};
+        for (const QString &view : {QString("FileTile"), QString("FileRow")}) {
+            QQmlComponent component(&engine);
+            component.setData(("import QtQuick\n" + view + " { width: 168; height: 192 }\n").toUtf8(),
+                              QUrl::fromLocalFile(sourceFolder() + "/CutFadeTest.qml"));
+            QVariantMap properties = item;
+            if (view == "FileTile")
+                properties.remove("depth"), properties.remove("expanded");
+            std::unique_ptr<QObject> shown(component.createWithInitialProperties(properties));
+            QVERIFY2(shown, qPrintable(component.errorString()));
+            QObject *picture = shown->findChild<QObject *>("picture");
+            QVERIFY(picture);
+            QCOMPARE(picture->property("opacity").toReal(), 1.0);
+            fileOps.cut({folder});
+            QTRY_COMPARE(picture->property("opacity").toReal(), 0.4);
+            fileOps.copy({folder});
+            QTRY_COMPARE(picture->property("opacity").toReal(), 1.0);
+        }
+    }
+
     void tileMakesItsPlayMarkOnlyForAVideoWithAFrame()
     {
         // The play mark is made for a video whose frame is shown, and no other tile carries its items.

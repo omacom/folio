@@ -115,6 +115,8 @@ Item {
         }
 
         Item {
+            objectName: "picture"
+            opacity: row.cut ? 0.4 : 1
             implicitWidth: row.picture
             implicitHeight: row.picture
             Image {

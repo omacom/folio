@@ -26,7 +26,8 @@ Item {
     required property bool selected
 
     property bool current: false
-    // Cut and not yet pasted: drawn in the colour of a disabled menu entry.
+    // Cut and not yet pasted: its picture faded and its name in the colour of
+    // a disabled menu entry.
     readonly property bool cut: fileOps.cutCount > 0 && fileOps.isCut(path)
 
     signal clicked(int modifiers)
@@ -49,6 +50,8 @@ Item {
     // the box around it takes the scaled size for the layout.
     Item {
         id: artBox
+        objectName: "picture"
+        opacity: tile.cut ? 0.4 : 1
         width: 128 * tile.zoom
         height: 92 * tile.zoom
         anchors.top: parent.top
