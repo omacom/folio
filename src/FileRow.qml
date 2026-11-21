@@ -96,7 +96,9 @@ Item {
             visible: row.tree
             Layout.rightMargin: -8
             implicitWidth: 18
-            implicitHeight: 32
+            // No taller than the row: at the smallest size a row is 24 tall,
+            // and a 32 tall cell would hold everything in the row 4 too low.
+            implicitHeight: Math.min(32, row.height)
             Glyph {
                 visible: row.isDir
                 anchors.centerIn: parent
@@ -119,34 +121,49 @@ Item {
             opacity: row.cut ? 0.4 : 1
             implicitWidth: row.picture
             implicitHeight: row.picture
-            Image {
-                id: thumb
-                anchors.fill: parent
-                layer.enabled: theme.radius > 0 && status === Image.Ready
-                layer.effect: MultiEffect {
-                    maskEnabled: true
-                    maskSource: rowMask
-                    maskThresholdMin: 0.5
-                    maskSpreadAtMin: 1
+            // As tall as the row, so that the glyph is centered in the row
+            // itself: a layout rounds where it puts a box that is smaller than
+            // its cell, and a half pixel rounded twice leaves it a pixel low.
+            Layout.fillHeight: true
+            // The thumbnail's square, kept on whole pixels so that it stays
+            // sharp: where the row leaves a half pixel over, it falls below.
+            Item {
+                id: frame
+                width: row.picture
+                height: row.picture
+                y: Math.floor((parent.height - height) / 2)
+                Image {
+                    id: thumb
+                    anchors.fill: parent
+                    layer.enabled: theme.radius > 0 && status === Image.Ready
+                    layer.effect: MultiEffect {
+                        maskEnabled: true
+                        maskSource: rowMask
+                        maskThresholdMin: 0.5
+                        maskSpreadAtMin: 1
+                    }
+                    asynchronous: true
+                    // Pictures fill the square; a page (a PDF's) shows whole.
+                    fillMode: row.kind === "image" || row.kind === "video" ? Image.PreserveAspectCrop : Image.PreserveAspectFit
+                    // A small picture of any file there's one of, as the tiles
+                    // have; a text's opening lines would be unreadable this
+                    // small, and folders and plugins' items keep their glyph.
+                    source: row.isDir || row.kind === "item" || row.kind === "text" ? "" : Format.thumb(row.path, row.mime, 128, row.modified)
+                    visible: status === Image.Ready
                 }
-                asynchronous: true
-                // Pictures fill the square; a page (a PDF's) shows whole.
-                fillMode: row.kind === "image" || row.kind === "video" ? Image.PreserveAspectCrop : Image.PreserveAspectFit
-                // A small picture of any file there's one of, as the tiles
-                // have; a text's opening lines would be unreadable this
-                // small, and folders and plugins' items keep their glyph.
-                source: row.isDir || row.kind === "item" || row.kind === "text" ? "" : Format.thumb(row.path, row.mime, 128, row.modified)
-                visible: status === Image.Ready
+                Rectangle {
+                    id: rowMask
+                    anchors.fill: parent
+                    radius: Math.min(4, theme.radius)
+                    visible: false
+                    layer.enabled: true
+                }
             }
-            Rectangle {
-                id: rowMask
-                anchors.fill: parent
-                radius: Math.min(4, theme.radius)
-                visible: false
-                layer.enabled: true
-            }
+            // Centered by arithmetic, not anchors.centerIn, which rounds a
+            // half pixel (a 12 glyph in a 15 box) away from the middle.
             Glyph {
-                anchors.centerIn: parent
+                x: (parent.width - width) / 2
+                y: (parent.height - height) / 2
                 visible: !thumb.visible
                 name: row.glyph
                 size: Math.round(16 * row.zoom)
