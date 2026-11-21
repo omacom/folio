@@ -10,6 +10,7 @@
 #include <QQuickStyle>
 #include <QUrl>
 #include <cstdio>
+#include <memory>
 
 #include "chooser.h"
 #include "dragpicture.h"
@@ -47,6 +48,9 @@ static void setUp(QGuiApplication &app) {
     app.setOrganizationName("folio");
     app.setWindowIcon(QIcon::fromTheme("folio"));
     QQuickStyle::setStyle("Material");
+    // Creatable too: the column view lists each folder on the way here.
+    qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+    qmlRegisterType<DragPicture>("Folio", 1, 0, "DragPicture");
 }
 
 // `folio preview [--hidden] [--sort name|kind|modified|oldest|size] [--follow] FILE`:
@@ -111,6 +115,34 @@ static int preview(QGuiApplication &app) {
     return app.exec();
 }
 
+// Folio's shared UI and backend state, built lazily by `folio chooser` on
+// its first dialog so D-Bus activation at login stays fast.
+struct Session {
+    Translator translator;
+    Theme theme;
+    Places places;
+    Thumbnails thumbnails;
+    Plugins plugins;
+    QQmlEngine engine;
+    Windows windows;
+
+    Session() : plugins(translator.language()), windows(&engine, &plugins) {
+        // Installed before anything is translated, and every qsTr() binding is
+        // re-evaluated when the Omarchy language changes.
+        QCoreApplication::installTranslator(&translator);
+        theme.followSystemFont();
+        // Plugins' text follows the language too.
+        QObject::connect(&translator, &Translator::changed, &plugins, [this] { plugins.setLanguage(translator.language()); });
+        QObject::connect(&translator, &Translator::changed, &engine, &QQmlEngine::retranslate);
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        engine.addImageProvider("plugin-icon", new PluginIconProvider);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("places", &places);
+        engine.rootContext()->setContextProperty("plugins", &plugins);
+    }
+};
+
 int main(int argc, char *argv[]) {
     // `folio chooser`: other apps' Open and Save dialogs. xdg-desktop-portal
     // waits for it as the portal starts, so it mustn't wait on the portal,
@@ -128,45 +160,29 @@ int main(int argc, char *argv[]) {
     // their own, so a window rule can float them.
     app.setDesktopFileName(chooser ? "folio-chooser" : "folio");
 
-    // Installed before anything is translated, and every qsTr() binding is
-    // re-evaluated when the Omarchy language changes.
-    Translator translator;
-    app.installTranslator(&translator);
+    std::unique_ptr<Session> session;
+    const auto ensureSession = [&]() -> Windows * {
+        if (!session)
+            session = std::make_unique<Session>();
+        return &session->windows;
+    };
 
-    Theme theme;
-    theme.followSystemFont();
-    Places places;
-    Thumbnails thumbnails;
-    // Plugins' text follows the language too.
-    Plugins plugins(translator.language());
-    QObject::connect(&translator, &Translator::changed, &plugins, [&] { plugins.setLanguage(translator.language()); });
-
-    QQmlEngine engine;
-    QObject::connect(&translator, &Translator::changed, &engine, &QQmlEngine::retranslate);
-    engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
-    engine.addImageProvider("plugin-icon", new PluginIconProvider);
-    // Creatable too: the column view lists each folder on the way here.
-    qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
-    qmlRegisterType<DragPicture>("Folio", 1, 0, "DragPicture");
-    engine.rootContext()->setContextProperty("translator", &translator);
-    engine.rootContext()->setContextProperty("theme", &theme);
-    engine.rootContext()->setContextProperty("places", &places);
-    engine.rootContext()->setContextProperty("plugins", &plugins);
-
-    Windows windows(&engine, &plugins);
     if (chooser) {
         // Its windows come and go with its dialogs; it quits a minute after
         // the last one instead (see Chooser).
         app.setQuitOnLastWindowClosed(false);
-        if (!Chooser::registerOn(&windows))
+        QObject portal;
+        if (!Chooser::registerOn(&portal, ensureSession))
             return 1;
-    } else {
-        QString select;
-        const QString start = startPath(app.arguments(), &select);
-        if (!windows.open(start, select))
-            return 1;
-        FileManager1::registerOn(&windows);
+        return app.exec();
     }
+
+    Windows *windows = ensureSession();
+    QString select;
+    const QString start = startPath(app.arguments(), &select);
+    if (!windows->open(start, select))
+        return 1;
+    FileManager1::registerOn(windows);
 
     return app.exec();
 }
