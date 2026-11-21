@@ -40,6 +40,10 @@
     "one": "%Ln Element wird endgültig gelöscht. Das kann nicht rückgängig gemacht werden.",
     "other": "%Ln Elemente werden endgültig gelöscht. Das kann nicht rückgängig gemacht werden."
   },
+  "%Ln more": {
+    "one": "%Ln weiteres",
+    "other": "%Ln weitere"
+  },
   "A folder here is already called %1.": "Ein Ordner namens %1 existiert hier bereits.",
   "A folder, or a server's address like sftp://host/": "Ein Ordner oder eine Serveradresse wie sftp://host/",
   "A name can't contain \"/\".": "Ein Name darf kein \"/\" enthalten.",
@@ -47,6 +51,14 @@
   "Add or remove one": "Eines hinzufügen oder entfernen",
   "Add the exported folder, as in nfs://%1/export.": "Fügen Sie den exportierten Ordner hinzu, wie in nfs://%1/export.",
   "Archive": "Archivieren",
+  "At least %Ln items": {
+    "one": "Mindestens %Ln Element",
+    "other": "Mindestens %Ln Elemente"
+  },
+  "At least %Ln more": {
+    "one": "Mindestens %Ln weiteres",
+    "other": "Mindestens %Ln weitere"
+  },
   "Back / ahead 5 seconds": "5 Sekunden zurück / vor",
   "Back / forward": "Zurück / Vorwärts",
   "Bigger, smaller or normal tiles and rows": "Größere, kleinere oder normale Kacheln und Zeilen",
@@ -125,6 +137,7 @@
   "Couldn't open this PDF: %1": "Dieses PDF konnte nicht geöffnet werden: %1",
   "Couldn't play this file: %1": "Diese Datei konnte nicht wiedergegeben werden: %1",
   "Couldn't read %1.": "%1 konnte nicht gelesen werden.",
+  "Couldn't read this archive.": "Dieses Archiv konnte nicht gelesen werden.",
   "Couldn't read this picture.": "Dieses Bild konnte nicht gelesen werden.",
   "Couldn't recreate %1.": "%1 konnte nicht neu erstellt werden.",
   "Couldn't remove %1.": "%1 konnte nicht entfernt werden.",
@@ -166,6 +179,7 @@
     "one": "Papierkorb geleert: %Ln Element gelöscht.",
     "other": "Papierkorb geleert: %Ln Elemente gelöscht."
   },
+  "Empty": "Leer",
   "Empty Trash": "Papierkorb leeren",
   "Empty Trash…": "Papierkorb leeren…",
   "Empty the trash?": "Papierkorb leeren?",
@@ -223,6 +237,8 @@
   "Keyboard shortcuts": "Tastaturkürzel",
   "Kind": "Art",
   "Leave the password out of the address; enter it when asked to sign in.": "Lassen Sie das Passwort in der Adresse weg; geben Sie es ein, wenn Sie zur Anmeldung aufgefordert werden.",
+  "Listing archives needs bsdtar, from the libarchive package.": "Zum Auflisten von Archiven wird bsdtar aus dem libarchive-Paket benötigt.",
+  "Listing this archive took too long.": "Das Auflisten dieses Archivs hat zu lange gedauert.",
   "Make Executable": "Ausführbar machen",
   "Make Not Executable": "Ausführbarkeit entfernen",
   "Making a preview…": "Vorschau wird erstellt…",
@@ -298,6 +314,7 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "Für die PDF-Vorschau wird Qt PDF aus dem Paket qt6-webengine benötigt.",
   "Previous (%1)": "Zurück (%1)",
   "Previous / next file": "Vorherige / nächste Datei",
+  "Reading the archive…": "Archiv wird gelesen…",
   "Recents": "Zuletzt verwendet",
   "Redid compressing into %1.": "Erneut in %1 komprimiert.",
   "Redid copying %Ln items.": {
@@ -405,6 +422,7 @@
   "The drive is gone.": "Das Laufwerk ist nicht mehr vorhanden.",
   "The drive stopped taking data (%1).": "Das Laufwerk nimmt keine Daten mehr an (%1).",
   "The drive was changed or removed.": "Das Laufwerk wurde gewechselt oder entfernt.",
+  "The names in this archive are encrypted.": "Die Namen in diesem Archiv sind verschlüsselt.",
   "The preview closed unexpectedly on %1.": "Die Vorschau wurde bei %1 unerwartet geschlossen.",
   "There's nothing in %1 to extract.": "In %1 gibt es nichts zu entpacken.",
   "There's nothing to redo.": "Es gibt nichts zum Wiederholen.",

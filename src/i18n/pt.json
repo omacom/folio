@@ -42,6 +42,11 @@
     "many": "%Ln itens serão eliminados definitivamente. Esta ação não pode ser anulada.",
     "other": "%Ln itens serão eliminados definitivamente. Esta ação não pode ser anulada."
   },
+  "%Ln more": {
+    "one": "Mais %Ln",
+    "many": "Mais %Ln",
+    "other": "Mais %Ln"
+  },
   "A folder here is already called %1.": "Já existe aqui uma pasta chamada %1.",
   "A folder, or a server's address like sftp://host/": "Uma pasta ou o endereço de um servidor, como sftp://host/",
   "A name can't contain \"/\".": "Um nome não pode conter \"/\".",
@@ -49,6 +54,16 @@
   "Add or remove one": "Adicionar ou remover um",
   "Add the exported folder, as in nfs://%1/export.": "Adicione a pasta exportada, como em nfs://%1/export.",
   "Archive": "Arquivo",
+  "At least %Ln items": {
+    "one": "Pelo menos %Ln item",
+    "many": "Pelo menos %Ln itens",
+    "other": "Pelo menos %Ln itens"
+  },
+  "At least %Ln more": {
+    "one": "Pelo menos mais %Ln",
+    "many": "Pelo menos mais %Ln",
+    "other": "Pelo menos mais %Ln"
+  },
   "Back / ahead 5 seconds": "Recuar / avançar 5 segundos",
   "Back / forward": "Voltar / avançar",
   "Bigger, smaller or normal tiles and rows": "Mosaicos e linhas maiores, menores ou normais",
@@ -131,6 +146,7 @@
   "Couldn't open this PDF: %1": "Não foi possível abrir este PDF: %1",
   "Couldn't play this file: %1": "Não foi possível reproduzir este ficheiro: %1",
   "Couldn't read %1.": "Não foi possível ler %1.",
+  "Couldn't read this archive.": "Não foi possível ler este arquivo.",
   "Couldn't read this picture.": "Não foi possível ler esta imagem.",
   "Couldn't recreate %1.": "Não foi possível recriar %1.",
   "Couldn't remove %1.": "Não foi possível remover %1.",
@@ -176,6 +192,7 @@
     "many": "Lixo esvaziado: %Ln itens eliminados.",
     "other": "Lixo esvaziado: %Ln itens eliminados."
   },
+  "Empty": "Vazio",
   "Empty Trash": "Esvaziar o lixo",
   "Empty Trash…": "Esvaziar o lixo…",
   "Empty the trash?": "Esvaziar o lixo?",
@@ -238,6 +255,8 @@
   "Keyboard shortcuts": "Atalhos de teclado",
   "Kind": "Tipo",
   "Leave the password out of the address; enter it when asked to sign in.": "Não inclua a palavra-passe no endereço; introduza-a quando lhe for pedido para iniciar sessão.",
+  "Listing archives needs bsdtar, from the libarchive package.": "Para listar arquivos é necessário o bsdtar, do pacote libarchive.",
+  "Listing this archive took too long.": "A listagem deste arquivo demorou demasiado tempo.",
   "Make Executable": "Tornar executável",
   "Make Not Executable": "Tornar não executável",
   "Making a preview…": "A criar pré-visualização…",
@@ -317,6 +336,7 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "Para pré-visualizar PDFs é necessário o Qt PDF, do pacote qt6-webengine.",
   "Previous (%1)": "Anterior (%1)",
   "Previous / next file": "Ficheiro anterior / seguinte",
+  "Reading the archive…": "A ler o arquivo…",
   "Recents": "Recentes",
   "Redid compressing into %1.": "Refeita a compressão para %1.",
   "Redid copying %Ln items.": {
@@ -435,6 +455,7 @@
   "The drive is gone.": "A unidade desapareceu.",
   "The drive stopped taking data (%1).": "A unidade deixou de aceitar dados (%1).",
   "The drive was changed or removed.": "A unidade foi alterada ou removida.",
+  "The names in this archive are encrypted.": "Os nomes neste arquivo estão encriptados.",
   "The preview closed unexpectedly on %1.": "A pré-visualização encerrou inesperadamente em %1.",
   "There's nothing in %1 to extract.": "Não há nada em %1 para extrair.",
   "There's nothing to redo.": "Não há nada para refazer.",

@@ -42,6 +42,11 @@
     "few": "%Ln elemente vor fi șterse definitiv. Acțiunea nu poate fi anulată.",
     "other": "%Ln de elemente vor fi șterse definitiv. Acțiunea nu poate fi anulată."
   },
+  "%Ln more": {
+    "one": "Încă unul",
+    "few": "Încă %Ln",
+    "other": "Încă %Ln"
+  },
   "A folder here is already called %1.": "Există deja aici un dosar cu numele %1.",
   "A folder, or a server's address like sftp://host/": "Un dosar sau adresa unui server, ca sftp://host/",
   "A name can't contain \"/\".": "Un nume nu poate conține „/”.",
@@ -49,6 +54,16 @@
   "Add or remove one": "Adaugă sau elimină unul",
   "Add the exported folder, as in nfs://%1/export.": "Adaugă dosarul exportat, ca în nfs://%1/export.",
   "Archive": "Arhivează",
+  "At least %Ln items": {
+    "one": "Cel puțin un element",
+    "few": "Cel puțin %Ln elemente",
+    "other": "Cel puțin %Ln de elemente"
+  },
+  "At least %Ln more": {
+    "one": "Cel puțin încă unul",
+    "few": "Cel puțin încă %Ln",
+    "other": "Cel puțin încă %Ln"
+  },
   "Back / ahead 5 seconds": "Înapoi / înainte cu 5 secunde",
   "Back / forward": "Înapoi / înainte",
   "Bigger, smaller or normal tiles and rows": "Dale și rânduri mai mari, mai mici sau normale",
@@ -131,6 +146,7 @@
   "Couldn't open this PDF: %1": "Acest PDF nu a putut fi deschis: %1",
   "Couldn't play this file: %1": "Acest fișier nu a putut fi redat: %1",
   "Couldn't read %1.": "%1 nu a putut fi citit.",
+  "Couldn't read this archive.": "Nu s-a putut citi această arhivă.",
   "Couldn't read this picture.": "Această imagine nu a putut fi citită.",
   "Couldn't recreate %1.": "%1 nu a putut fi recreat.",
   "Couldn't remove %1.": "%1 nu a putut fi eliminat.",
@@ -176,6 +192,7 @@
     "few": "Coș de gunoi golit: %Ln elemente șterse.",
     "other": "Coș de gunoi golit: %Ln de elemente șterse."
   },
+  "Empty": "Gol",
   "Empty Trash": "Golește coșul de gunoi",
   "Empty Trash…": "Golește coșul de gunoi…",
   "Empty the trash?": "Golești coșul de gunoi?",
@@ -238,6 +255,8 @@
   "Keyboard shortcuts": "Scurtături de tastatură",
   "Kind": "Tip",
   "Leave the password out of the address; enter it when asked to sign in.": "Nu include parola în adresă; introdu-o când ți se cere să te autentifici.",
+  "Listing archives needs bsdtar, from the libarchive package.": "Listarea arhivelor necesită bsdtar, din pachetul libarchive.",
+  "Listing this archive took too long.": "Listarea acestei arhive a durat prea mult.",
   "Make Executable": "Fă executabil",
   "Make Not Executable": "Fă neexecutabil",
   "Making a preview…": "Se creează previzualizarea…",
@@ -317,6 +336,7 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "Previzualizarea fișierelor PDF necesită Qt PDF, din pachetul qt6-webengine.",
   "Previous (%1)": "Anteriorul (%1)",
   "Previous / next file": "Fișier anterior / următor",
+  "Reading the archive…": "Se citește arhiva…",
   "Recents": "Recente",
   "Redid compressing into %1.": "S-a refăcut comprimarea în %1.",
   "Redid copying %Ln items.": {
@@ -435,6 +455,7 @@
   "The drive is gone.": "Unitatea a dispărut.",
   "The drive stopped taking data (%1).": "Unitatea a încetat să accepte date (%1).",
   "The drive was changed or removed.": "Unitatea a fost schimbată sau eliminată.",
+  "The names in this archive are encrypted.": "Numele din această arhivă sunt criptate.",
   "The preview closed unexpectedly on %1.": "Previzualizarea lui %1 s-a închis neașteptat.",
   "There's nothing in %1 to extract.": "Nu există nimic de extras din %1.",
   "There's nothing to redo.": "Nu există nimic de refăcut.",

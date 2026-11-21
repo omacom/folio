@@ -42,6 +42,11 @@
     "many": "%Ln elements s'eliminaran definitivament. Aquesta acció no es pot desfer.",
     "other": "%Ln elements s'eliminaran definitivament. Aquesta acció no es pot desfer."
   },
+  "%Ln more": {
+    "one": "un més",
+    "many": "%Ln més",
+    "other": "%Ln més"
+  },
   "A folder here is already called %1.": "Aquí ja hi ha una carpeta anomenada %1.",
   "A folder, or a server's address like sftp://host/": "Una carpeta o l'adreça d'un servidor, com ara sftp://host/",
   "A name can't contain \"/\".": "Un nom no pot contenir \"/\".",
@@ -49,6 +54,16 @@
   "Add or remove one": "Afegeix o elimina un element",
   "Add the exported folder, as in nfs://%1/export.": "Afegeix la carpeta exportada, com ara nfs://%1/export.",
   "Archive": "Arxiu",
+  "At least %Ln items": {
+    "one": "Almenys un element",
+    "many": "Almenys %Ln elements",
+    "other": "Almenys %Ln elements"
+  },
+  "At least %Ln more": {
+    "one": "Almenys un més",
+    "many": "Almenys %Ln més",
+    "other": "Almenys %Ln més"
+  },
   "Back / ahead 5 seconds": "Enrere / endavant 5 segons",
   "Back / forward": "Enrere / endavant",
   "Bigger, smaller or normal tiles and rows": "Mosaics i files més grans, més petits o normals",
@@ -131,6 +146,7 @@
   "Couldn't open this PDF: %1": "No s'ha pogut obrir aquest PDF: %1",
   "Couldn't play this file: %1": "No s'ha pogut reproduir aquest fitxer: %1",
   "Couldn't read %1.": "No s'ha pogut llegir %1.",
+  "Couldn't read this archive.": "No s'ha pogut llegir aquest arxiu.",
   "Couldn't read this picture.": "No s'ha pogut llegir aquesta imatge.",
   "Couldn't recreate %1.": "No s'ha pogut recrear %1.",
   "Couldn't remove %1.": "No s'ha pogut eliminar %1.",
@@ -176,6 +192,7 @@
     "many": "S'ha buidat la paperera: s'han eliminat %Ln elements.",
     "other": "S'ha buidat la paperera: s'han eliminat %Ln elements."
   },
+  "Empty": "Buit",
   "Empty Trash": "Buida la paperera",
   "Empty Trash…": "Buida la paperera…",
   "Empty the trash?": "Buida la paperera?",
@@ -238,6 +255,8 @@
   "Keyboard shortcuts": "Dreceres de teclat",
   "Kind": "Tipus",
   "Leave the password out of the address; enter it when asked to sign in.": "No incloguis la contrasenya a l'adreça; introdueix-la quan se't demani iniciar sessió.",
+  "Listing archives needs bsdtar, from the libarchive package.": "Per llistar arxius cal bsdtar, del paquet libarchive.",
+  "Listing this archive took too long.": "Llistar aquest arxiu ha trigat massa.",
   "Make Executable": "Fes executable",
   "Make Not Executable": "Fes no executable",
   "Making a preview…": "S'està creant una vista prèvia…",
@@ -317,6 +336,7 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "Per previsualitzar els PDF cal Qt PDF, del paquet qt6-webengine.",
   "Previous (%1)": "Anterior (%1)",
   "Previous / next file": "Fitxer anterior / següent",
+  "Reading the archive…": "S'està llegint l'arxiu…",
   "Recents": "Recents",
   "Redid compressing into %1.": "S'ha tornat a comprimir a %1.",
   "Redid copying %Ln items.": {
@@ -435,6 +455,7 @@
   "The drive is gone.": "La unitat ja no hi és.",
   "The drive stopped taking data (%1).": "La unitat ha deixat d'acceptar dades (%1).",
   "The drive was changed or removed.": "La unitat s'ha canviat o s'ha retirat.",
+  "The names in this archive are encrypted.": "Els noms d'aquest arxiu estan xifrats.",
   "The preview closed unexpectedly on %1.": "La vista prèvia de %1 s'ha tancat inesperadament.",
   "There's nothing in %1 to extract.": "A %1 no hi ha res per extreure.",
   "There's nothing to redo.": "No hi ha res per refer.",

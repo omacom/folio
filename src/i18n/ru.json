@@ -44,6 +44,12 @@
     "many": "%Ln объектов будет безвозвратно удалено. Это действие нельзя отменить.",
     "other": "%Ln объекта будет безвозвратно удалено. Это действие нельзя отменить."
   },
+  "%Ln more": {
+    "one": "Ещё %Ln",
+    "few": "Ещё %Ln",
+    "many": "Ещё %Ln",
+    "other": "Ещё %Ln"
+  },
   "A folder here is already called %1.": "Здесь уже есть папка с именем %1.",
   "A folder, or a server's address like sftp://host/": "Папка или адрес сервера, например sftp://host/",
   "A name can't contain \"/\".": "Имя не может содержать символ «/».",
@@ -51,6 +57,18 @@
   "Add or remove one": "Добавить или убрать один объект",
   "Add the exported folder, as in nfs://%1/export.": "Добавьте экспортированную папку, например nfs://%1/export.",
   "Archive": "Архив",
+  "At least %Ln items": {
+    "one": "Не менее %Ln объекта",
+    "few": "Не менее %Ln объектов",
+    "many": "Не менее %Ln объектов",
+    "other": "Не менее %Ln объекта"
+  },
+  "At least %Ln more": {
+    "one": "Ещё не менее %Ln",
+    "few": "Ещё не менее %Ln",
+    "many": "Ещё не менее %Ln",
+    "other": "Ещё не менее %Ln"
+  },
   "Back / ahead 5 seconds": "Назад / вперёд на 5 секунд",
   "Back / forward": "Назад / вперёд",
   "Bigger, smaller or normal tiles and rows": "Плитки и строки крупнее, мельче или обычного размера",
@@ -137,6 +155,7 @@
   "Couldn't open this PDF: %1": "Не удалось открыть этот PDF: %1",
   "Couldn't play this file: %1": "Не удалось воспроизвести этот файл: %1",
   "Couldn't read %1.": "Не удалось прочитать %1.",
+  "Couldn't read this archive.": "Не удалось прочитать этот архив.",
   "Couldn't read this picture.": "Не удалось прочитать это изображение.",
   "Couldn't recreate %1.": "Не удалось воссоздать %1.",
   "Couldn't remove %1.": "Не удалось удалить %1.",
@@ -186,6 +205,7 @@
     "many": "Корзина очищена: удалено %Ln объектов.",
     "other": "Корзина очищена: удалено %Ln объекта."
   },
+  "Empty": "Пусто",
   "Empty Trash": "Очистить корзину",
   "Empty Trash…": "Очистить корзину…",
   "Empty the trash?": "Очистить корзину?",
@@ -253,6 +273,8 @@
   "Keyboard shortcuts": "Комбинации клавиш",
   "Kind": "Тип",
   "Leave the password out of the address; enter it when asked to sign in.": "Не указывайте пароль в адресе; введите его при запросе на вход.",
+  "Listing archives needs bsdtar, from the libarchive package.": "Для просмотра архивов нужен bsdtar из пакета libarchive.",
+  "Listing this archive took too long.": "Просмотр этого архива занял слишком много времени.",
   "Make Executable": "Сделать исполняемым",
   "Make Not Executable": "Сделать неисполняемым",
   "Making a preview…": "Создание предпросмотра…",
@@ -336,6 +358,7 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "Для предпросмотра PDF-файлов нужен Qt PDF из пакета qt6-webengine.",
   "Previous (%1)": "Назад (%1)",
   "Previous / next file": "Предыдущий / следующий файл",
+  "Reading the archive…": "Чтение архива…",
   "Recents": "Недавние",
   "Redid compressing into %1.": "Повторено сжатие в %1.",
   "Redid copying %Ln items.": {
@@ -465,6 +488,7 @@
   "The drive is gone.": "Диск исчез.",
   "The drive stopped taking data (%1).": "Диск перестал принимать данные (%1).",
   "The drive was changed or removed.": "Диск был заменён или извлечён.",
+  "The names in this archive are encrypted.": "Имена файлов в этом архиве зашифрованы.",
   "The preview closed unexpectedly on %1.": "Предпросмотр %1 неожиданно закрылся.",
   "There's nothing in %1 to extract.": "В %1 нечего распаковывать.",
   "There's nothing to redo.": "Нечего повторять.",

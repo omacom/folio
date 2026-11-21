@@ -40,6 +40,10 @@
     "one": "ஒரு உருப்படி நிரந்தரமாக நீக்கப்படும். இதைச் செயல்தவிர்க்க முடியாது.",
     "other": "%Ln உருப்படிகள் நிரந்தரமாக நீக்கப்படும். இதைச் செயல்தவிர்க்க முடியாது."
   },
+  "%Ln more": {
+    "one": "இன்னும் ஒன்று",
+    "other": "இன்னும் %Ln"
+  },
   "A folder here is already called %1.": "இங்கே ஏற்கனவே %1 என்ற பெயரில் ஒரு கோப்புறை உள்ளது.",
   "A folder, or a server's address like sftp://host/": "ஒரு கோப்புறை, அல்லது sftp://host/ போன்ற சேவையக முகவரி",
   "A name can't contain \"/\".": "பெயரில் \"/\" இருக்கக்கூடாது.",
@@ -47,6 +51,14 @@
   "Add or remove one": "ஒன்றைச் சேர் அல்லது நீக்கு",
   "Add the exported folder, as in nfs://%1/export.": "ஏற்றுமதி செய்யப்பட்ட கோப்புறையைச் சேர், உதாரணமாக nfs://%1/export.",
   "Archive": "காப்பகம்",
+  "At least %Ln items": {
+    "one": "குறைந்தது ஒரு உருப்படி",
+    "other": "குறைந்தது %Ln உருப்படிகள்"
+  },
+  "At least %Ln more": {
+    "one": "குறைந்தது இன்னும் ஒன்று",
+    "other": "குறைந்தது இன்னும் %Ln"
+  },
   "Back / ahead 5 seconds": "5 வினாடிகள் பின்னால் / முன்னால்",
   "Back / forward": "பின்னே / முன்னே",
   "Bigger, smaller or normal tiles and rows": "பெரிய, சிறிய அல்லது இயல்பான ஓடுகள் மற்றும் வரிசைகள்",
@@ -125,6 +137,7 @@
   "Couldn't open this PDF: %1": "இந்த PDF ஐத் திறக்க முடியவில்லை: %1",
   "Couldn't play this file: %1": "இந்தக் கோப்பை இயக்க முடியவில்லை: %1",
   "Couldn't read %1.": "%1 ஐப் படிக்க முடியவில்லை.",
+  "Couldn't read this archive.": "இந்தக் காப்பகத்தைப் படிக்க முடியவில்லை.",
   "Couldn't read this picture.": "இந்தப் படத்தைப் படிக்க முடியவில்லை.",
   "Couldn't recreate %1.": "%1 ஐ மீண்டும் உருவாக்க முடியவில்லை.",
   "Couldn't remove %1.": "%1 ஐ நீக்க முடியவில்லை.",
@@ -166,6 +179,7 @@
     "one": "குப்பையைக் காலி செய்தது: ஒரு உருப்படி நீக்கப்பட்டது.",
     "other": "குப்பையைக் காலி செய்தது: %Ln உருப்படிகள் நீக்கப்பட்டன."
   },
+  "Empty": "காலி",
   "Empty Trash": "குப்பையைக் காலி செய்",
   "Empty Trash…": "குப்பையைக் காலி செய்…",
   "Empty the trash?": "குப்பையைக் காலி செய்யவா?",
@@ -223,6 +237,8 @@
   "Keyboard shortcuts": "விசைப்பலகை குறுக்குவழிகள்",
   "Kind": "வகை",
   "Leave the password out of the address; enter it when asked to sign in.": "முகவரியில் கடவுச்சொல்லைச் சேர்க்காதே; உள்நுழையுமாறு கேட்கும்போது அதை உள்ளிடு.",
+  "Listing archives needs bsdtar, from the libarchive package.": "காப்பகங்களைப் பட்டியலிட, libarchive தொகுப்பில் உள்ள bsdtar தேவை.",
+  "Listing this archive took too long.": "இந்தக் காப்பகத்தைப் பட்டியலிட அதிக நேரம் எடுத்தது.",
   "Make Executable": "இயக்கக்கூடியதாக்கு",
   "Make Not Executable": "இயக்க முடியாததாக்கு",
   "Making a preview…": "முன்னோட்டத்தை உருவாக்குகிறது…",
@@ -298,6 +314,7 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "PDFகளை முன்னோட்டம் பார்ப்பதற்கு qt6-webengine தொகுப்பிலிருந்து Qt PDF தேவை.",
   "Previous (%1)": "முந்தையது (%1)",
   "Previous / next file": "முந்தைய / அடுத்த கோப்பு",
+  "Reading the archive…": "காப்பகத்தைப் படிக்கிறது…",
   "Recents": "சமீபத்தியவை",
   "Redid compressing into %1.": "%1 ஆகச் சுருக்கியதை மீண்டும் செய்துவிட்டது.",
   "Redid copying %Ln items.": {
@@ -405,6 +422,7 @@
   "The drive is gone.": "இயக்ககம் இனி இல்லை.",
   "The drive stopped taking data (%1).": "இயக்ககம் தரவை ஏற்பதை நிறுத்திவிட்டது (%1).",
   "The drive was changed or removed.": "இயக்ககம் மாற்றப்பட்டது அல்லது அகற்றப்பட்டது.",
+  "The names in this archive are encrypted.": "இந்தக் காப்பகத்தில் உள்ள பெயர்கள் மறையாக்கம் செய்யப்பட்டவை.",
   "The preview closed unexpectedly on %1.": "%1 இன் முன்னோட்டம் எதிர்பாராமல் மூடிவிட்டது.",
   "There's nothing in %1 to extract.": "%1 இல் பிரித்தெடுக்க எதுவும் இல்லை.",
   "There's nothing to redo.": "மீண்டும் செய்ய எதுவும் இல்லை.",

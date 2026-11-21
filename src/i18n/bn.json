@@ -40,6 +40,10 @@
     "one": "%Lnটি আইটেম স্থায়ীভাবে মুছে যাবে। এটি ফেরানো যাবে না।",
     "other": "%Lnটি আইটেম স্থায়ীভাবে মুছে যাবে। এটি ফেরানো যাবে না।"
   },
+  "%Ln more": {
+    "one": "আরও %Lnটি",
+    "other": "আরও %Lnটি"
+  },
   "A folder here is already called %1.": "এখানে ইতিমধ্যেই %1 নামে একটি ফোল্ডার আছে।",
   "A folder, or a server's address like sftp://host/": "একটি ফোল্ডার, অথবা সার্ভারের ঠিকানা, যেমন sftp://host/",
   "A name can't contain \"/\".": "নামে \"/\" থাকা যাবে না।",
@@ -47,6 +51,14 @@
   "Add or remove one": "একটি যোগ করুন বা বাদ দিন",
   "Add the exported folder, as in nfs://%1/export.": "এক্সপোর্ট করা ফোল্ডারটি যোগ করুন, যেমন nfs://%1/export।",
   "Archive": "আর্কাইভ",
+  "At least %Ln items": {
+    "one": "কমপক্ষে %Lnটি আইটেম",
+    "other": "কমপক্ষে %Lnটি আইটেম"
+  },
+  "At least %Ln more": {
+    "one": "কমপক্ষে আরও %Lnটি",
+    "other": "কমপক্ষে আরও %Lnটি"
+  },
   "Back / ahead 5 seconds": "৫ সেকেন্ড পেছনে / সামনে",
   "Back / forward": "পেছনে / সামনে",
   "Bigger, smaller or normal tiles and rows": "বড়, ছোট বা স্বাভাবিক টাইল ও সারি",
@@ -125,6 +137,7 @@
   "Couldn't open this PDF: %1": "এই PDF-টি খোলা যায়নি: %1",
   "Couldn't play this file: %1": "এই ফাইলটি চালানো যায়নি: %1",
   "Couldn't read %1.": "%1 পড়া যায়নি।",
+  "Couldn't read this archive.": "এই আর্কাইভটি পড়া যায়নি।",
   "Couldn't read this picture.": "এই ছবিটি পড়া যায়নি।",
   "Couldn't recreate %1.": "%1 আবার তৈরি করা যায়নি।",
   "Couldn't remove %1.": "%1 সরানো যায়নি।",
@@ -166,6 +179,7 @@
     "one": "ট্র্যাশ খালি করা হয়েছে: %Lnটি আইটেম মোছা হয়েছে।",
     "other": "ট্র্যাশ খালি করা হয়েছে: %Lnটি আইটেম মোছা হয়েছে।"
   },
+  "Empty": "খালি",
   "Empty Trash": "ট্র্যাশ খালি করুন",
   "Empty Trash…": "ট্র্যাশ খালি করুন…",
   "Empty the trash?": "ট্র্যাশ খালি করবেন?",
@@ -223,6 +237,8 @@
   "Keyboard shortcuts": "কীবোর্ড শর্টকাট",
   "Kind": "ধরন",
   "Leave the password out of the address; enter it when asked to sign in.": "ঠিকানায় পাসওয়ার্ড রাখবেন না; সাইন ইন করতে বলা হলে তা লিখুন।",
+  "Listing archives needs bsdtar, from the libarchive package.": "আর্কাইভের তালিকা দেখতে bsdtar দরকার, যা libarchive প্যাকেজে আছে।",
+  "Listing this archive took too long.": "এই আর্কাইভের তালিকা দেখতে অনেক বেশি সময় লেগেছে।",
   "Make Executable": "এক্সিকিউটেবল করুন",
   "Make Not Executable": "এক্সিকিউটেবল নয় করুন",
   "Making a preview…": "প্রিভিউ তৈরি করা হচ্ছে…",
@@ -298,6 +314,7 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "PDF-এর প্রিভিউ দেখতে qt6-webengine প্যাকেজের Qt PDF প্রয়োজন।",
   "Previous (%1)": "আগেরটি (%1)",
   "Previous / next file": "আগের / পরের ফাইল",
+  "Reading the archive…": "আর্কাইভটি পড়া হচ্ছে…",
   "Recents": "সাম্প্রতিক",
   "Redid compressing into %1.": "%1-এ সংকোচন আবার করা হয়েছে।",
   "Redid copying %Ln items.": {
@@ -405,6 +422,7 @@
   "The drive is gone.": "ড্রাইভটি আর নেই।",
   "The drive stopped taking data (%1).": "ড্রাইভটি ডেটা নেওয়া বন্ধ করে দিয়েছে (%1)।",
   "The drive was changed or removed.": "ড্রাইভটি বদলে গেছে বা সরিয়ে ফেলা হয়েছে।",
+  "The names in this archive are encrypted.": "এই আর্কাইভের নামগুলো এনক্রিপ্ট করা।",
   "The preview closed unexpectedly on %1.": "%1-এর প্রিভিউ অপ্রত্যাশিতভাবে বন্ধ হয়ে গেছে।",
   "There's nothing in %1 to extract.": "%1-এ এক্সট্র্যাক্ট করার মতো কিছু নেই।",
   "There's nothing to redo.": "আবার করার মতো কিছু নেই।",

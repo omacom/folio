@@ -38,6 +38,9 @@
   "%Ln items will be deleted permanently. This can't be undone.": {
     "other": "%Ln 個項目將永久刪除。此操作無法復原。"
   },
+  "%Ln more": {
+    "other": "還有 %Ln 個"
+  },
   "A folder here is already called %1.": "此處已有名為 %1 的資料夾。",
   "A folder, or a server's address like sftp://host/": "資料夾，或伺服器位址，例如 sftp://host/",
   "A name can't contain \"/\".": "名稱不可包含 \"/\"。",
@@ -45,6 +48,12 @@
   "Add or remove one": "增選或取消選取一個",
   "Add the exported folder, as in nfs://%1/export.": "請新增匯出的資料夾，例如 nfs://%1/export。",
   "Archive": "封存",
+  "At least %Ln items": {
+    "other": "至少 %Ln 個項目"
+  },
+  "At least %Ln more": {
+    "other": "至少還有 %Ln 個"
+  },
   "Back / ahead 5 seconds": "倒退 / 快進 5 秒",
   "Back / forward": "返回 / 前進",
   "Bigger, smaller or normal tiles and rows": "較大、較小或一般大小的磚塊與列",
@@ -119,6 +128,7 @@
   "Couldn't open this PDF: %1": "無法開啟此 PDF：%1",
   "Couldn't play this file: %1": "無法播放此檔案：%1",
   "Couldn't read %1.": "無法讀取 %1。",
+  "Couldn't read this archive.": "無法讀取此封存檔。",
   "Couldn't read this picture.": "無法讀取此圖片。",
   "Couldn't recreate %1.": "無法重新建立 %1。",
   "Couldn't remove %1.": "無法移除 %1。",
@@ -156,6 +166,7 @@
   "Emptied the trash: %Ln items deleted.": {
     "other": "已清空垃圾桶：已刪除 %Ln 個項目。"
   },
+  "Empty": "空的",
   "Empty Trash": "清空垃圾桶",
   "Empty Trash…": "清空垃圾桶…",
   "Empty the trash?": "要清空垃圾桶嗎？",
@@ -208,6 +219,8 @@
   "Keyboard shortcuts": "鍵盤捷徑",
   "Kind": "類型",
   "Leave the password out of the address; enter it when asked to sign in.": "不要在地址中填入密碼，登入時再輸入即可。",
+  "Listing archives needs bsdtar, from the libarchive package.": "列出封存檔需要 bsdtar，來自 libarchive 套件。",
+  "Listing this archive took too long.": "列出此封存檔耗時過久。",
   "Make Executable": "設為可執行",
   "Make Not Executable": "取消可執行",
   "Making a preview…": "正在產生預覽…",
@@ -279,6 +292,7 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "預覽 PDF 需要 Qt PDF，來自 qt6-webengine 套件。",
   "Previous (%1)": "上一個 (%1)",
   "Previous / next file": "上一個 / 下一個檔案",
+  "Reading the archive…": "正在讀取封存檔…",
   "Recents": "最近使用",
   "Redid compressing into %1.": "已重做壓縮至 %1。",
   "Redid copying %Ln items.": {
@@ -375,6 +389,7 @@
   "The drive is gone.": "磁碟機已不存在。",
   "The drive stopped taking data (%1).": "磁碟機已停止接收資料 (%1)。",
   "The drive was changed or removed.": "磁碟機已被更換或移除。",
+  "The names in this archive are encrypted.": "此封存檔中的名稱已加密。",
   "The preview closed unexpectedly on %1.": "%1 的預覽意外關閉。",
   "There's nothing in %1 to extract.": "%1 裡沒有任何可解壓縮的內容。",
   "There's nothing to redo.": "沒有可重做的操作。",

@@ -42,6 +42,11 @@
     "few": "%Ln položky budou trvale smazány. Tuto akci nelze vzít zpět.",
     "other": "%Ln položek bude trvale smazáno. Tuto akci nelze vzít zpět."
   },
+  "%Ln more": {
+    "one": "%Ln další",
+    "few": "%Ln další",
+    "other": "%Ln dalších"
+  },
   "A folder here is already called %1.": "Složka s názvem %1 tu již existuje.",
   "A folder, or a server's address like sftp://host/": "Složka, nebo adresa serveru, například sftp://host/",
   "A name can't contain \"/\".": "Název nesmí obsahovat \"/\".",
@@ -49,6 +54,16 @@
   "Add or remove one": "Přidat nebo odebrat jednu položku",
   "Add the exported folder, as in nfs://%1/export.": "Přidejte exportovanou složku, například nfs://%1/export.",
   "Archive": "Archivovat",
+  "At least %Ln items": {
+    "one": "Nejméně %Ln položka",
+    "few": "Nejméně %Ln položky",
+    "other": "Nejméně %Ln položek"
+  },
+  "At least %Ln more": {
+    "one": "Nejméně %Ln další",
+    "few": "Nejméně %Ln další",
+    "other": "Nejméně %Ln dalších"
+  },
   "Back / ahead 5 seconds": "Zpět / vpřed o 5 sekund",
   "Back / forward": "Zpět / vpřed",
   "Bigger, smaller or normal tiles and rows": "Větší, menší nebo normální dlaždice a řádky",
@@ -131,6 +146,7 @@
   "Couldn't open this PDF: %1": "Nepodařilo se otevřít toto PDF: %1",
   "Couldn't play this file: %1": "Nepodařilo se přehrát tento soubor: %1",
   "Couldn't read %1.": "Nepodařilo se přečíst %1.",
+  "Couldn't read this archive.": "Tento archiv se nepodařilo přečíst.",
   "Couldn't read this picture.": "Nepodařilo se přečíst tento obrázek.",
   "Couldn't recreate %1.": "Nepodařilo se znovu vytvořit %1.",
   "Couldn't remove %1.": "Nepodařilo se odstranit %1.",
@@ -176,6 +192,7 @@
     "few": "Koš byl vysypán: %Ln položky byly smazány.",
     "other": "Koš byl vysypán: %Ln položek bylo smazáno."
   },
+  "Empty": "Prázdné",
   "Empty Trash": "Vysypat koš",
   "Empty Trash…": "Vysypat koš…",
   "Empty the trash?": "Vysypat koš?",
@@ -238,6 +255,8 @@
   "Keyboard shortcuts": "Klávesové zkratky",
   "Kind": "Typ",
   "Leave the password out of the address; enter it when asked to sign in.": "Heslo v adrese vynechte; zadejte ho až při přihlášení.",
+  "Listing archives needs bsdtar, from the libarchive package.": "K výpisu archivů je potřeba bsdtar z balíčku libarchive.",
+  "Listing this archive took too long.": "Výpis tohoto archivu trval příliš dlouho.",
   "Make Executable": "Nastavit jako spustitelný",
   "Make Not Executable": "Nastavit jako nespustitelný",
   "Making a preview…": "Vytváří se náhled…",
@@ -317,6 +336,7 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "Zobrazování náhledů PDF vyžaduje Qt PDF z balíčku qt6-webengine.",
   "Previous (%1)": "Předchozí (%1)",
   "Previous / next file": "Předchozí / další soubor",
+  "Reading the archive…": "Čte se archiv…",
   "Recents": "Nedávné",
   "Redid compressing into %1.": "Komprimování do %1 bylo provedeno znovu.",
   "Redid copying %Ln items.": {
@@ -435,6 +455,7 @@
   "The drive is gone.": "Jednotka zmizela.",
   "The drive stopped taking data (%1).": "Jednotka přestala přijímat data (%1).",
   "The drive was changed or removed.": "Jednotka byla změněna nebo odebrána.",
+  "The names in this archive are encrypted.": "Názvy v tomto archivu jsou zašifrované.",
   "The preview closed unexpectedly on %1.": "Náhled se u %1 nečekaně zavřel.",
   "There's nothing in %1 to extract.": "V %1 není nic k rozbalení.",
   "There's nothing to redo.": "Není co provést znovu.",

@@ -38,6 +38,9 @@
   "%Ln items will be deleted permanently. This can't be undone.": {
     "other": "%Ln รายการจะถูกลบถาวร ยกเลิกไม่ได้"
   },
+  "%Ln more": {
+    "other": "อีก %Ln รายการ"
+  },
   "A folder here is already called %1.": "โฟลเดอร์ที่นี่ชื่อ %1 อยู่แล้ว",
   "A folder, or a server's address like sftp://host/": "โฟลเดอร์ หรือที่อยู่เซิร์ฟเวอร์ เช่น sftp://host/",
   "A name can't contain \"/\".": "ชื่อมี \"/\" ไม่ได้",
@@ -45,6 +48,12 @@
   "Add or remove one": "เพิ่มหรือเอาออกหนึ่งรายการ",
   "Add the exported folder, as in nfs://%1/export.": "เพิ่มโฟลเดอร์ที่ส่งออก เช่น nfs://%1/export",
   "Archive": "เก็บถาวร",
+  "At least %Ln items": {
+    "other": "อย่างน้อย %Ln รายการ"
+  },
+  "At least %Ln more": {
+    "other": "อย่างน้อยอีก %Ln รายการ"
+  },
   "Back / ahead 5 seconds": "ย้อนกลับ / ไปข้างหน้า 5 วินาที",
   "Back / forward": "ย้อนกลับ / ไปข้างหน้า",
   "Bigger, smaller or normal tiles and rows": "ไทล์และแถวที่ใหญ่กว่า เล็กกว่า หรือขนาดปกติ",
@@ -119,6 +128,7 @@
   "Couldn't open this PDF: %1": "เปิด PDF นี้ไม่ได้: %1",
   "Couldn't play this file: %1": "เล่นไฟล์นี้ไม่ได้: %1",
   "Couldn't read %1.": "อ่าน %1 ไม่ได้",
+  "Couldn't read this archive.": "อ่านไฟล์เก็บถาวรนี้ไม่ได้",
   "Couldn't read this picture.": "อ่านรูปภาพนี้ไม่ได้",
   "Couldn't recreate %1.": "สร้าง %1 ขึ้นใหม่ไม่ได้",
   "Couldn't remove %1.": "ลบ %1 ไม่ได้",
@@ -156,6 +166,7 @@
   "Emptied the trash: %Ln items deleted.": {
     "other": "ล้างถังขยะแล้ว: ลบ %Ln รายการ"
   },
+  "Empty": "ว่างเปล่า",
   "Empty Trash": "ล้างถังขยะ",
   "Empty Trash…": "ล้างถังขยะ…",
   "Empty the trash?": "ล้างถังขยะหรือไม่?",
@@ -208,6 +219,8 @@
   "Keyboard shortcuts": "แป้นพิมพ์ลัด",
   "Kind": "ประเภท",
   "Leave the password out of the address; enter it when asked to sign in.": "อย่าใส่รหัสผ่านลงในที่อยู่ ให้กรอกเมื่อระบบขอให้ลงชื่อเข้าใช้",
+  "Listing archives needs bsdtar, from the libarchive package.": "การแสดงรายการไฟล์เก็บถาวรต้องใช้ bsdtar จากแพ็กเกจ libarchive",
+  "Listing this archive took too long.": "การแสดงรายการในไฟล์เก็บถาวรนี้ใช้เวลานานเกินไป",
   "Make Executable": "ทำให้เรียกใช้งานได้",
   "Make Not Executable": "ทำให้เรียกใช้งานไม่ได้",
   "Making a preview…": "กำลังสร้างตัวอย่าง…",
@@ -279,6 +292,7 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "การดูตัวอย่าง PDF ต้องการ Qt PDF จากแพ็กเกจ qt6-webengine",
   "Previous (%1)": "ก่อนหน้า (%1)",
   "Previous / next file": "ไฟล์ก่อนหน้า / ถัดไป",
+  "Reading the archive…": "กำลังอ่านไฟล์เก็บถาวร…",
   "Recents": "ล่าสุด",
   "Redid compressing into %1.": "ทำซ้ำการบีบอัดเป็น %1 แล้ว",
   "Redid copying %Ln items.": {
@@ -375,6 +389,7 @@
   "The drive is gone.": "ไดรฟ์หายไปแล้ว",
   "The drive stopped taking data (%1).": "ไดรฟ์หยุดรับข้อมูล (%1)",
   "The drive was changed or removed.": "ไดรฟ์ถูกเปลี่ยนหรือนำออกแล้ว",
+  "The names in this archive are encrypted.": "ชื่อในไฟล์เก็บถาวรนี้ถูกเข้ารหัส",
   "The preview closed unexpectedly on %1.": "ตัวอย่างของ %1 ปิดลงกะทันหัน",
   "There's nothing in %1 to extract.": "ไม่มีอะไรใน %1 ให้แตกไฟล์",
   "There's nothing to redo.": "ไม่มีอะไรให้ทำซ้ำ",

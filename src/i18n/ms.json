@@ -38,6 +38,9 @@
   "%Ln items will be deleted permanently. This can't be undone.": {
     "other": "%Ln item akan dipadam secara kekal. Ini tidak boleh dibatalkan."
   },
+  "%Ln more": {
+    "other": "%Ln lagi"
+  },
   "A folder here is already called %1.": "Folder di sini sudah bernama %1.",
   "A folder, or a server's address like sftp://host/": "Sebuah folder, atau alamat pelayan seperti sftp://host/",
   "A name can't contain \"/\".": "Nama tidak boleh mengandungi \"/\".",
@@ -45,6 +48,12 @@
   "Add or remove one": "Tambah atau buang satu",
   "Add the exported folder, as in nfs://%1/export.": "Tambah folder yang dieksport, seperti nfs://%1/export.",
   "Archive": "Arkib",
+  "At least %Ln items": {
+    "other": "Sekurang-kurangnya %Ln item"
+  },
+  "At least %Ln more": {
+    "other": "Sekurang-kurangnya %Ln lagi"
+  },
   "Back / ahead 5 seconds": "Undur / maju 5 saat",
   "Back / forward": "Undur / maju",
   "Bigger, smaller or normal tiles and rows": "Jubin dan baris lebih besar, lebih kecil atau biasa",
@@ -119,6 +128,7 @@
   "Couldn't open this PDF: %1": "Tidak dapat membuka PDF ini: %1",
   "Couldn't play this file: %1": "Tidak dapat memainkan fail ini: %1",
   "Couldn't read %1.": "Tidak dapat membaca %1.",
+  "Couldn't read this archive.": "Tidak dapat membaca arkib ini.",
   "Couldn't read this picture.": "Tidak dapat membaca gambar ini.",
   "Couldn't recreate %1.": "Tidak dapat mencipta semula %1.",
   "Couldn't remove %1.": "Tidak dapat membuang %1.",
@@ -156,6 +166,7 @@
   "Emptied the trash: %Ln items deleted.": {
     "other": "Tong sampah dikosongkan: %Ln item dipadam."
   },
+  "Empty": "Kosong",
   "Empty Trash": "Kosongkan Tong Sampah",
   "Empty Trash…": "Kosongkan Tong Sampah…",
   "Empty the trash?": "Kosongkan tong sampah?",
@@ -208,6 +219,8 @@
   "Keyboard shortcuts": "Pintasan papan kekunci",
   "Kind": "Jenis",
   "Leave the password out of the address; enter it when asked to sign in.": "Jangan sertakan kata laluan dalam alamat; masukkannya apabila diminta log masuk.",
+  "Listing archives needs bsdtar, from the libarchive package.": "Penyenaraian arkib memerlukan bsdtar, daripada pakej libarchive.",
+  "Listing this archive took too long.": "Penyenaraian arkib ini mengambil masa terlalu lama.",
   "Make Executable": "Jadikan Boleh Laksana",
   "Make Not Executable": "Jadikan Tidak Boleh Laksana",
   "Making a preview…": "Membuat pratonton…",
@@ -279,6 +292,7 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "Pratonton PDF memerlukan Qt PDF, daripada pakej qt6-webengine.",
   "Previous (%1)": "Sebelumnya (%1)",
   "Previous / next file": "Fail sebelumnya / seterusnya",
+  "Reading the archive…": "Membaca arkib…",
   "Recents": "Terkini",
   "Redid compressing into %1.": "Pemampatan ke dalam %1 telah dibuat semula.",
   "Redid copying %Ln items.": {
@@ -375,6 +389,7 @@
   "The drive is gone.": "Pemacu itu sudah tiada.",
   "The drive stopped taking data (%1).": "Pemacu itu berhenti menerima data (%1).",
   "The drive was changed or removed.": "Pemacu itu telah ditukar atau dikeluarkan.",
+  "The names in this archive are encrypted.": "Nama-nama dalam arkib ini disulitkan.",
   "The preview closed unexpectedly on %1.": "Pratonton untuk %1 ditutup secara tidak dijangka.",
   "There's nothing in %1 to extract.": "Tiada apa-apa dalam %1 untuk diekstrak.",
   "There's nothing to redo.": "Tiada apa-apa untuk dibuat semula.",

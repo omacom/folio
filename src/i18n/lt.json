@@ -42,6 +42,11 @@
     "few": "%Ln elementai bus ištrinti visam laikui. Šio veiksmo atšaukti negalima.",
     "other": "%Ln elementų bus ištrinta visam laikui. Šio veiksmo atšaukti negalima."
   },
+  "%Ln more": {
+    "one": "dar %Ln",
+    "few": "dar %Ln",
+    "other": "dar %Ln"
+  },
   "A folder here is already called %1.": "Čia jau yra aplankas pavadinimu „%1“.",
   "A folder, or a server's address like sftp://host/": "Aplankas arba serverio adresas, pvz., sftp://host/",
   "A name can't contain \"/\".": "Pavadinime negali būti ženklo „/“.",
@@ -49,6 +54,16 @@
   "Add or remove one": "Pridėti arba pašalinti vieną elementą",
   "Add the exported folder, as in nfs://%1/export.": "Pridėkite eksportuojamą aplanką, pvz., nfs://%1/export.",
   "Archive": "Archyvuoti",
+  "At least %Ln items": {
+    "one": "Bent %Ln elementas",
+    "few": "Bent %Ln elementai",
+    "other": "Bent %Ln elementų"
+  },
+  "At least %Ln more": {
+    "one": "Bent dar %Ln",
+    "few": "Bent dar %Ln",
+    "other": "Bent dar %Ln"
+  },
   "Back / ahead 5 seconds": "Atgal / pirmyn 5 sekundes",
   "Back / forward": "Atgal / pirmyn",
   "Bigger, smaller or normal tiles and rows": "Didesnės, mažesnės arba įprastos plytelės ir eilutės",
@@ -131,6 +146,7 @@
   "Couldn't open this PDF: %1": "Nepavyko atidaryti šio PDF: %1",
   "Couldn't play this file: %1": "Nepavyko paleisti šio failo: %1",
   "Couldn't read %1.": "Nepavyko perskaityti %1.",
+  "Couldn't read this archive.": "Nepavyko perskaityti šio archyvo.",
   "Couldn't read this picture.": "Nepavyko perskaityti šio paveikslėlio.",
   "Couldn't recreate %1.": "Nepavyko iš naujo sukurti %1.",
   "Couldn't remove %1.": "Nepavyko pašalinti %1.",
@@ -176,6 +192,7 @@
     "few": "Šiukšlinė ištuštinta: ištrinti %Ln elementai.",
     "other": "Šiukšlinė ištuštinta: ištrinta %Ln elementų."
   },
+  "Empty": "Tuščia",
   "Empty Trash": "Ištuštinti šiukšlinę",
   "Empty Trash…": "Ištuštinti šiukšlinę…",
   "Empty the trash?": "Ištuštinti šiukšlinę?",
@@ -238,6 +255,8 @@
   "Keyboard shortcuts": "Klaviatūros spartieji klavišai",
   "Kind": "Rūšis",
   "Leave the password out of the address; enter it when asked to sign in.": "Neįrašykite slaptažodžio į adresą; įveskite jį, kai būsite paprašyti prisijungti.",
+  "Listing archives needs bsdtar, from the libarchive package.": "Archyvų turiniui rodyti reikia bsdtar iš libarchive paketo.",
+  "Listing this archive took too long.": "Šio archyvo turinio rodymas užtruko per ilgai.",
   "Make Executable": "Padaryti vykdomąjį",
   "Make Not Executable": "Padaryti nevykdomąjį",
   "Making a preview…": "Kuriama peržiūra…",
@@ -317,6 +336,7 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "PDF peržiūrai reikia Qt PDF iš qt6-webengine paketo.",
   "Previous (%1)": "Ankstesnis (%1)",
   "Previous / next file": "Ankstesnis / kitas failas",
+  "Reading the archive…": "Skaitomas archyvas…",
   "Recents": "Paskutiniai",
   "Redid compressing into %1.": "Pakartotinai suglaudinta į %1.",
   "Redid copying %Ln items.": {
@@ -435,6 +455,7 @@
   "The drive is gone.": "Disko nebėra.",
   "The drive stopped taking data (%1).": "Diskas nustojo priimti duomenis (%1).",
   "The drive was changed or removed.": "Diskas buvo pakeistas arba pašalintas.",
+  "The names in this archive are encrypted.": "Šio archyvo pavadinimai užšifruoti.",
   "The preview closed unexpectedly on %1.": "Peržiūra netikėtai užsidarė žiūrint %1.",
   "There's nothing in %1 to extract.": "%1 nėra ko išskleisti.",
   "There's nothing to redo.": "Nėra ko pakartoti.",

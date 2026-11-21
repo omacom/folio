@@ -38,6 +38,9 @@
   "%Ln items will be deleted permanently. This can't be undone.": {
     "other": "%Ln 个项目将被永久删除。此操作无法撤销。"
   },
+  "%Ln more": {
+    "other": "还有 %Ln 个"
+  },
   "A folder here is already called %1.": "此处已有一个名为 %1 的文件夹。",
   "A folder, or a server's address like sftp://host/": "文件夹，或 sftp://host/ 之类的服务器地址",
   "A name can't contain \"/\".": "名称不能包含“/”。",
@@ -45,6 +48,12 @@
   "Add or remove one": "添加或移除一项",
   "Add the exported folder, as in nfs://%1/export.": "添加导出的文件夹，如 nfs://%1/export。",
   "Archive": "归档",
+  "At least %Ln items": {
+    "other": "至少 %Ln 个项目"
+  },
+  "At least %Ln more": {
+    "other": "至少还有 %Ln 个"
+  },
   "Back / ahead 5 seconds": "后退 / 前进 5 秒",
   "Back / forward": "后退 / 前进",
   "Bigger, smaller or normal tiles and rows": "放大、缩小或正常大小的平铺和行",
@@ -119,6 +128,7 @@
   "Couldn't open this PDF: %1": "无法打开此 PDF：%1",
   "Couldn't play this file: %1": "无法播放此文件：%1",
   "Couldn't read %1.": "无法读取 %1。",
+  "Couldn't read this archive.": "无法读取此归档文件。",
   "Couldn't read this picture.": "无法读取此图片。",
   "Couldn't recreate %1.": "无法重新创建 %1。",
   "Couldn't remove %1.": "无法移除 %1。",
@@ -156,6 +166,7 @@
   "Emptied the trash: %Ln items deleted.": {
     "other": "已清空回收站：已删除 %Ln 个项目。"
   },
+  "Empty": "空",
   "Empty Trash": "清空回收站",
   "Empty Trash…": "清空回收站…",
   "Empty the trash?": "清空回收站？",
@@ -208,6 +219,8 @@
   "Keyboard shortcuts": "键盘快捷键",
   "Kind": "类型",
   "Leave the password out of the address; enter it when asked to sign in.": "不要在地址中填写密码，登录时再输入。",
+  "Listing archives needs bsdtar, from the libarchive package.": "列出归档文件需要 bsdtar，来自 libarchive 软件包。",
+  "Listing this archive took too long.": "列出此归档文件耗时过长。",
   "Make Executable": "设为可执行",
   "Make Not Executable": "设为不可执行",
   "Making a preview…": "正在生成预览…",
@@ -279,6 +292,7 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "预览 PDF 需要 qt6-webengine 软件包中的 Qt PDF。",
   "Previous (%1)": "上一个（%1）",
   "Previous / next file": "上一个 / 下一个文件",
+  "Reading the archive…": "正在读取归档文件…",
   "Recents": "最近",
   "Redid compressing into %1.": "已重做压缩为 %1。",
   "Redid copying %Ln items.": {
@@ -375,6 +389,7 @@
   "The drive is gone.": "该驱动器已不存在。",
   "The drive stopped taking data (%1).": "该驱动器已停止接收数据（%1）。",
   "The drive was changed or removed.": "该驱动器已被更换或移除。",
+  "The names in this archive are encrypted.": "此归档文件中的文件名已加密。",
   "The preview closed unexpectedly on %1.": "%1 的预览意外关闭。",
   "There's nothing in %1 to extract.": "%1 中没有可解压的内容。",
   "There's nothing to redo.": "没有可重做的操作。",

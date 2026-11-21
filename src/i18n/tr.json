@@ -40,6 +40,10 @@
     "one": "%Ln öge kalıcı olarak silinecek. Bu geri alınamaz.",
     "other": "%Ln öge kalıcı olarak silinecek. Bu geri alınamaz."
   },
+  "%Ln more": {
+    "one": "%Ln tane daha",
+    "other": "%Ln tane daha"
+  },
   "A folder here is already called %1.": "Burada zaten %1 adında bir klasör var.",
   "A folder, or a server's address like sftp://host/": "Bir klasör veya sftp://host/ gibi bir sunucu adresi",
   "A name can't contain \"/\".": "Ad \"/\" içeremez.",
@@ -47,6 +51,14 @@
   "Add or remove one": "Bir öge ekle veya kaldır",
   "Add the exported folder, as in nfs://%1/export.": "Paylaşılan klasörü ekleyin, örneğin nfs://%1/export.",
   "Archive": "Arşiv",
+  "At least %Ln items": {
+    "one": "En az %Ln öge",
+    "other": "En az %Ln öge"
+  },
+  "At least %Ln more": {
+    "one": "En az %Ln tane daha",
+    "other": "En az %Ln tane daha"
+  },
   "Back / ahead 5 seconds": "5 saniye geri / ileri",
   "Back / forward": "Geri / ileri",
   "Bigger, smaller or normal tiles and rows": "Daha büyük, daha küçük veya normal kutucuklar ve satırlar",
@@ -125,6 +137,7 @@
   "Couldn't open this PDF: %1": "Bu PDF açılamadı: %1",
   "Couldn't play this file: %1": "Bu dosya oynatılamadı: %1",
   "Couldn't read %1.": "%1 okunamadı.",
+  "Couldn't read this archive.": "Bu arşiv okunamadı.",
   "Couldn't read this picture.": "Bu resim okunamadı.",
   "Couldn't recreate %1.": "%1 yeniden oluşturulamadı.",
   "Couldn't remove %1.": "%1 kaldırılamadı.",
@@ -166,6 +179,7 @@
     "one": "Çöp boşaltıldı: %Ln öge silindi.",
     "other": "Çöp boşaltıldı: %Ln öge silindi."
   },
+  "Empty": "Boş",
   "Empty Trash": "Çöpü Boşalt",
   "Empty Trash…": "Çöpü Boşalt…",
   "Empty the trash?": "Çöp boşaltılsın mı?",
@@ -223,6 +237,8 @@
   "Keyboard shortcuts": "Klavye kısayolları",
   "Kind": "Tür",
   "Leave the password out of the address; enter it when asked to sign in.": "Parolayı adrese eklemeyin; oturum açmanız istendiğinde girin.",
+  "Listing archives needs bsdtar, from the libarchive package.": "Arşivleri listelemek için libarchive paketindeki bsdtar gerekli.",
+  "Listing this archive took too long.": "Bu arşivi listelemek çok uzun sürdü.",
   "Make Executable": "Çalıştırılabilir Yap",
   "Make Not Executable": "Çalıştırılabilirliği Kaldır",
   "Making a preview…": "Ön izleme oluşturuluyor…",
@@ -298,6 +314,7 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "PDF ön izlemesi için qt6-webengine paketinden Qt PDF gerekir.",
   "Previous (%1)": "Önceki (%1)",
   "Previous / next file": "Önceki / sonraki dosya",
+  "Reading the archive…": "Arşiv okunuyor…",
   "Recents": "Son kullanılanlar",
   "Redid compressing into %1.": "%1 içine sıkıştırma yinelendi.",
   "Redid copying %Ln items.": {
@@ -405,6 +422,7 @@
   "The drive is gone.": "Sürücü artık yok.",
   "The drive stopped taking data (%1).": "Sürücü veri almayı durdurdu (%1).",
   "The drive was changed or removed.": "Sürücü değiştirildi veya kaldırıldı.",
+  "The names in this archive are encrypted.": "Bu arşivdeki adlar şifreli.",
   "The preview closed unexpectedly on %1.": "Ön izleme %1 üzerinde beklenmedik şekilde kapandı.",
   "There's nothing in %1 to extract.": "%1 içinde çıkarılacak hiçbir şey yok.",
   "There's nothing to redo.": "Yinelenecek bir şey yok.",

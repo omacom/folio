@@ -42,6 +42,11 @@
     "few": "%Ln ставке ће бити трајно обрисане. Ово се не може поништити.",
     "other": "%Ln ставки ће бити трајно обрисано. Ово се не може поништити."
   },
+  "%Ln more": {
+    "one": "још %Ln",
+    "few": "још %Ln",
+    "other": "још %Ln"
+  },
   "A folder here is already called %1.": "Овде већ постоји фасцикла под називом %1.",
   "A folder, or a server's address like sftp://host/": "Фасцикла или адреса сервера, као sftp://host/",
   "A name can't contain \"/\".": "Назив не може да садржи „/“.",
@@ -49,6 +54,16 @@
   "Add or remove one": "Додај или уклони једну",
   "Add the exported folder, as in nfs://%1/export.": "Додај извезену фасциклу, као у nfs://%1/export.",
   "Archive": "Архивирај",
+  "At least %Ln items": {
+    "one": "Најмање %Ln ставка",
+    "few": "Најмање %Ln ставке",
+    "other": "Најмање %Ln ставки"
+  },
+  "At least %Ln more": {
+    "one": "Најмање још %Ln",
+    "few": "Најмање још %Ln",
+    "other": "Најмање још %Ln"
+  },
   "Back / ahead 5 seconds": "Уназад / унапред 5 секунди",
   "Back / forward": "Назад / напред",
   "Bigger, smaller or normal tiles and rows": "Веће, мање или нормалне плочице и редови",
@@ -131,6 +146,7 @@
   "Couldn't open this PDF: %1": "Није могуће отворити овај PDF: %1",
   "Couldn't play this file: %1": "Није могуће репродуковати ову датотеку: %1",
   "Couldn't read %1.": "Није могуће прочитати %1.",
+  "Couldn't read this archive.": "Није могуће прочитати ову архиву.",
   "Couldn't read this picture.": "Није могуће прочитати ову слику.",
   "Couldn't recreate %1.": "Није могуће поново направити %1.",
   "Couldn't remove %1.": "Није могуће уклонити %1.",
@@ -176,6 +192,7 @@
     "few": "Смеће је испражњено: обрисане су %Ln ставке.",
     "other": "Смеће је испражњено: обрисано је %Ln ставки."
   },
+  "Empty": "Празно",
   "Empty Trash": "Испразни смеће",
   "Empty Trash…": "Испразни смеће…",
   "Empty the trash?": "Испразнити смеће?",
@@ -238,6 +255,8 @@
   "Keyboard shortcuts": "Пречице на тастатури",
   "Kind": "Врста",
   "Leave the password out of the address; enter it when asked to sign in.": "Изостави лозинку из адресе; унеси је при пријави кад буде затражена.",
+  "Listing archives needs bsdtar, from the libarchive package.": "За прегледање архива потребан је bsdtar, из пакета libarchive.",
+  "Listing this archive took too long.": "Прегледање ове архиве је трајало предуго.",
   "Make Executable": "Учини извршним",
   "Make Not Executable": "Учини неизвршним",
   "Making a preview…": "Прављење прегледа…",
@@ -317,6 +336,7 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "За преглед PDF датотека потребан је Qt PDF из пакета qt6-webengine.",
   "Previous (%1)": "Претходно (%1)",
   "Previous / next file": "Претходна / следећа датотека",
+  "Reading the archive…": "Читање архиве…",
   "Recents": "Недавне",
   "Redid compressing into %1.": "Поновљено компримовање у %1.",
   "Redid copying %Ln items.": {
@@ -435,6 +455,7 @@
   "The drive is gone.": "Диск је нестао.",
   "The drive stopped taking data (%1).": "Диск је престао да прима податке (%1).",
   "The drive was changed or removed.": "Диск је промењен или уклоњен.",
+  "The names in this archive are encrypted.": "Имена у овој архиви су шифрована.",
   "The preview closed unexpectedly on %1.": "Преглед датотеке %1 се неочекивано затворио.",
   "There's nothing in %1 to extract.": "У %1 нема ничега за издвајање.",
   "There's nothing to redo.": "Нема ничега за понављање.",

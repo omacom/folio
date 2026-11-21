@@ -42,6 +42,11 @@
     "few": "%Ln položky sa natrvalo odstránia. Túto akciu nemožno vrátiť späť.",
     "other": "%Ln položiek sa natrvalo odstráni. Túto akciu nemožno vrátiť späť."
   },
+  "%Ln more": {
+    "one": "%Ln ďalšia",
+    "few": "%Ln ďalšie",
+    "other": "%Ln ďalších"
+  },
   "A folder here is already called %1.": "Priečinok s názvom %1 tu už existuje.",
   "A folder, or a server's address like sftp://host/": "Priečinok alebo adresa servera, napríklad sftp://host/",
   "A name can't contain \"/\".": "Názov nemôže obsahovať \"/\".",
@@ -49,6 +54,16 @@
   "Add or remove one": "Pridať alebo odstrániť položku",
   "Add the exported folder, as in nfs://%1/export.": "Pridajte exportovaný priečinok, napríklad nfs://%1/export.",
   "Archive": "Archivovať",
+  "At least %Ln items": {
+    "one": "Aspoň %Ln položka",
+    "few": "Aspoň %Ln položky",
+    "other": "Aspoň %Ln položiek"
+  },
+  "At least %Ln more": {
+    "one": "Aspoň %Ln ďalšia",
+    "few": "Aspoň %Ln ďalšie",
+    "other": "Aspoň %Ln ďalších"
+  },
   "Back / ahead 5 seconds": "Späť / dopredu o 5 sekúnd",
   "Back / forward": "Späť / dopredu",
   "Bigger, smaller or normal tiles and rows": "Väčšie, menšie alebo normálne dlaždice a riadky",
@@ -131,6 +146,7 @@
   "Couldn't open this PDF: %1": "Nepodarilo sa otvoriť tento súbor PDF: %1",
   "Couldn't play this file: %1": "Tento súbor sa nepodarilo prehrať: %1",
   "Couldn't read %1.": "%1 sa nepodarilo prečítať.",
+  "Couldn't read this archive.": "Nepodarilo sa prečítať tento archív.",
   "Couldn't read this picture.": "Tento obrázok sa nepodarilo prečítať.",
   "Couldn't recreate %1.": "%1 sa nepodarilo znova vytvoriť.",
   "Couldn't remove %1.": "%1 sa nepodarilo odstrániť.",
@@ -176,6 +192,7 @@
     "few": "Kôš bol vyprázdnený: odstránené %Ln položky.",
     "other": "Kôš bol vyprázdnený: odstránených %Ln položiek."
   },
+  "Empty": "Prázdne",
   "Empty Trash": "Vyprázdniť kôš",
   "Empty Trash…": "Vyprázdniť kôš…",
   "Empty the trash?": "Vyprázdniť kôš?",
@@ -238,6 +255,8 @@
   "Keyboard shortcuts": "Klávesové skratky",
   "Kind": "Druh",
   "Leave the password out of the address; enter it when asked to sign in.": "Heslo do adresy neuvádzajte; zadajte ho, keď sa zobrazí výzva na prihlásenie.",
+  "Listing archives needs bsdtar, from the libarchive package.": "Na zobrazenie obsahu archívov je potrebný bsdtar z balíka libarchive.",
+  "Listing this archive took too long.": "Zobrazenie obsahu tohto archívu trvalo príliš dlho.",
   "Make Executable": "Urobiť spustiteľným",
   "Make Not Executable": "Urobiť nespustiteľným",
   "Making a preview…": "Vytváranie náhľadu…",
@@ -317,6 +336,7 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "Zobrazovanie náhľadov PDF vyžaduje Qt PDF z balíka qt6-webengine.",
   "Previous (%1)": "Späť (%1)",
   "Previous / next file": "Predchádzajúci / nasledujúci súbor",
+  "Reading the archive…": "Číta sa archív…",
   "Recents": "Nedávne",
   "Redid compressing into %1.": "Zopakované komprimovanie do %1.",
   "Redid copying %Ln items.": {
@@ -435,6 +455,7 @@
   "The drive is gone.": "Jednotka už nie je k dispozícii.",
   "The drive stopped taking data (%1).": "Jednotka prestala prijímať údaje (%1).",
   "The drive was changed or removed.": "Jednotka bola zmenená alebo odstránená.",
+  "The names in this archive are encrypted.": "Názvy v tomto archíve sú zašifrované.",
   "The preview closed unexpectedly on %1.": "Náhľad súboru %1 sa neočakávane zatvoril.",
   "There's nothing in %1 to extract.": "V %1 nie je nič na rozbalenie.",
   "There's nothing to redo.": "Nie je čo zopakovať.",

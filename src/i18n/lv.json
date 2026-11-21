@@ -42,6 +42,11 @@
     "one": "%Ln vienums tiks neatgriezeniski izdzēsts. Šo darbību nevar atsaukt.",
     "other": "%Ln vienumi tiks neatgriezeniski izdzēsti. Šo darbību nevar atsaukt."
   },
+  "%Ln more": {
+    "zero": "vēl %Ln",
+    "one": "vēl %Ln",
+    "other": "vēl %Ln"
+  },
   "A folder here is already called %1.": "Šeit jau ir mape ar nosaukumu %1.",
   "A folder, or a server's address like sftp://host/": "Mape vai servera adrese, piemēram, sftp://host/",
   "A name can't contain \"/\".": "Nosaukumā nevar būt \"/\".",
@@ -49,6 +54,16 @@
   "Add or remove one": "Pievienot vai noņemt vienu",
   "Add the exported folder, as in nfs://%1/export.": "Pievienojiet eksportēto mapi, piemēram, nfs://%1/export.",
   "Archive": "Arhivēt",
+  "At least %Ln items": {
+    "zero": "Vismaz %Ln vienumu",
+    "one": "Vismaz %Ln vienums",
+    "other": "Vismaz %Ln vienumi"
+  },
+  "At least %Ln more": {
+    "zero": "Vismaz vēl %Ln",
+    "one": "Vismaz vēl %Ln",
+    "other": "Vismaz vēl %Ln"
+  },
   "Back / ahead 5 seconds": "Atpakaļ / uz priekšu par 5 sekundēm",
   "Back / forward": "Atpakaļ / uz priekšu",
   "Bigger, smaller or normal tiles and rows": "Lielākas, mazākas vai normālas flīzes un rindas",
@@ -131,6 +146,7 @@
   "Couldn't open this PDF: %1": "Neizdevās atvērt šo PDF: %1",
   "Couldn't play this file: %1": "Neizdevās atskaņot šo failu: %1",
   "Couldn't read %1.": "Neizdevās nolasīt %1.",
+  "Couldn't read this archive.": "Neizdevās nolasīt šo arhīvu.",
   "Couldn't read this picture.": "Neizdevās nolasīt šo attēlu.",
   "Couldn't recreate %1.": "Neizdevās atkārtoti izveidot %1.",
   "Couldn't remove %1.": "Neizdevās noņemt %1.",
@@ -176,6 +192,7 @@
     "one": "Atkritne iztukšota: izdzēsts %Ln vienums.",
     "other": "Atkritne iztukšota: izdzēsti %Ln vienumi."
   },
+  "Empty": "Tukšs",
   "Empty Trash": "Iztukšot atkritni",
   "Empty Trash…": "Iztukšot atkritni…",
   "Empty the trash?": "Iztukšot atkritni?",
@@ -238,6 +255,8 @@
   "Keyboard shortcuts": "Tastatūras saīsnes",
   "Kind": "Veids",
   "Leave the password out of the address; enter it when asked to sign in.": "Neiekļaujiet paroli adresē; ievadiet to, kad tiek prasīts pierakstīties.",
+  "Listing archives needs bsdtar, from the libarchive package.": "Arhīvu satura parādīšanai nepieciešams bsdtar no libarchive pakotnes.",
+  "Listing this archive took too long.": "Šī arhīva satura parādīšana ilga pārāk ilgi.",
   "Make Executable": "Padarīt izpildāmu",
   "Make Not Executable": "Padarīt neizpildāmu",
   "Making a preview…": "Veido priekšskatījumu…",
@@ -317,6 +336,7 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "PDF priekšskatīšanai nepieciešams Qt PDF no qt6-webengine pakotnes.",
   "Previous (%1)": "Iepriekšējais (%1)",
   "Previous / next file": "Iepriekšējais / nākamais fails",
+  "Reading the archive…": "Lasa arhīvu…",
   "Recents": "Nesenie",
   "Redid compressing into %1.": "Atkārtoti saspieda arhīvā %1.",
   "Redid copying %Ln items.": {
@@ -435,6 +455,7 @@
   "The drive is gone.": "Disks ir pazudis.",
   "The drive stopped taking data (%1).": "Disks pārstāja pieņemt datus (%1).",
   "The drive was changed or removed.": "Disks tika mainīts vai noņemts.",
+  "The names in this archive are encrypted.": "Šajā arhīvā nosaukumi ir šifrēti.",
   "The preview closed unexpectedly on %1.": "Priekšskatījums failam %1 negaidīti aizvērās.",
   "There's nothing in %1 to extract.": "%1 nav nekā, ko izvilkt.",
   "There's nothing to redo.": "Nav nekā, ko atkārtot.",

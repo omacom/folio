@@ -40,6 +40,10 @@
     "one": "%Ln مورد برای همیشه حذف می‌شود. این کار قابل بازگشت نیست.",
     "other": "%Ln مورد برای همیشه حذف می‌شود. این کار قابل بازگشت نیست."
   },
+  "%Ln more": {
+    "one": "%Ln مورد دیگر",
+    "other": "%Ln مورد دیگر"
+  },
   "A folder here is already called %1.": "پوشه‌ای در اینجا از قبل “%1” نام دارد.",
   "A folder, or a server's address like sftp://host/": "یک پوشه یا نشانی سرور، مانند sftp://host/",
   "A name can't contain \"/\".": "نام نمی‌تواند شامل «/» باشد.",
@@ -47,6 +51,14 @@
   "Add or remove one": "افزودن یا حذف یک مورد",
   "Add the exported folder, as in nfs://%1/export.": "پوشهٔ صادرشده را بیفزایید، مانند nfs://%1/export.",
   "Archive": "بایگانی",
+  "At least %Ln items": {
+    "one": "حداقل %Ln مورد",
+    "other": "حداقل %Ln مورد"
+  },
+  "At least %Ln more": {
+    "one": "حداقل %Ln مورد دیگر",
+    "other": "حداقل %Ln مورد دیگر"
+  },
   "Back / ahead 5 seconds": "۵ ثانیه عقب / جلو",
   "Back / forward": "عقب / جلو",
   "Bigger, smaller or normal tiles and rows": "کاشی‌ها و ردیف‌های بزرگ‌تر، کوچک‌تر یا معمولی",
@@ -125,6 +137,7 @@
   "Couldn't open this PDF: %1": "این PDF باز نشد: %1",
   "Couldn't play this file: %1": "پخش این پرونده ممکن نشد: %1",
   "Couldn't read %1.": "%1 خوانده نشد.",
+  "Couldn't read this archive.": "خواندن این بایگانی ممکن نشد.",
   "Couldn't read this picture.": "این تصویر خوانده نشد.",
   "Couldn't recreate %1.": "%1 بازسازی نشد.",
   "Couldn't remove %1.": "%1 حذف نشد.",
@@ -166,6 +179,7 @@
     "one": "زباله‌دان خالی شد: %Ln مورد حذف شد.",
     "other": "زباله‌دان خالی شد: %Ln مورد حذف شد."
   },
+  "Empty": "خالی",
   "Empty Trash": "خالی کردن زباله‌دان",
   "Empty Trash…": "خالی کردن زباله‌دان…",
   "Empty the trash?": "زباله‌دان خالی شود؟",
@@ -223,6 +237,8 @@
   "Keyboard shortcuts": "میانبرهای صفحه‌کلید",
   "Kind": "نوع",
   "Leave the password out of the address; enter it when asked to sign in.": "گذرواژه را در نشانی نیاورید؛ آن را هنگام درخواست ورود وارد کنید.",
+  "Listing archives needs bsdtar, from the libarchive package.": "برای فهرست‌کردن بایگانی‌ها به bsdtar، از بستهٔ libarchive، نیاز است.",
+  "Listing this archive took too long.": "فهرست‌کردن این بایگانی خیلی طول کشید.",
   "Make Executable": "قابل‌اجرا کردن",
   "Make Not Executable": "غیرقابل‌اجرا کردن",
   "Making a preview…": "در حال ساخت پیش‌نمایش…",
@@ -298,6 +314,7 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "برای پیش‌نمایش PDFها به Qt PDF از بستهٔ qt6-webengine نیاز است.",
   "Previous (%1)": "قبلی (%1)",
   "Previous / next file": "پروندهٔ قبلی / بعدی",
+  "Reading the archive…": "در حال خواندن بایگانی…",
   "Recents": "موارد اخیر",
   "Redid compressing into %1.": "فشرده‌سازی در %1 دوباره انجام شد.",
   "Redid copying %Ln items.": {
@@ -405,6 +422,7 @@
   "The drive is gone.": "درایو دیگر نیست.",
   "The drive stopped taking data (%1).": "درایو از گرفتن داده بازایستاد (%1).",
   "The drive was changed or removed.": "درایو تغییر کرده یا برداشته شده است.",
+  "The names in this archive are encrypted.": "نام‌های این بایگانی رمزگذاری شده‌اند.",
   "The preview closed unexpectedly on %1.": "پیش‌نمایش %1 به‌طور غیرمنتظره بسته شد.",
   "There's nothing in %1 to extract.": "در %1 چیزی برای استخراج نیست.",
   "There's nothing to redo.": "چیزی برای بازانجام نیست.",

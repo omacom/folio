@@ -38,6 +38,9 @@
   "%Ln items will be deleted permanently. This can't be undone.": {
     "other": "%Ln mục sẽ bị xóa vĩnh viễn. Không thể hoàn tác thao tác này."
   },
+  "%Ln more": {
+    "other": "%Ln nữa"
+  },
   "A folder here is already called %1.": "Ở đây đã có thư mục tên %1.",
   "A folder, or a server's address like sftp://host/": "Một thư mục hoặc địa chỉ máy chủ như sftp://host/",
   "A name can't contain \"/\".": "Tên không được chứa \"/\".",
@@ -45,6 +48,12 @@
   "Add or remove one": "Thêm hoặc bỏ một mục",
   "Add the exported folder, as in nfs://%1/export.": "Thêm thư mục đã xuất, như nfs://%1/export.",
   "Archive": "Lưu trữ",
+  "At least %Ln items": {
+    "other": "Ít nhất %Ln mục"
+  },
+  "At least %Ln more": {
+    "other": "Ít nhất %Ln nữa"
+  },
   "Back / ahead 5 seconds": "Tua lùi / tua tiến 5 giây",
   "Back / forward": "Quay lại / Tiến",
   "Bigger, smaller or normal tiles and rows": "Ô và hàng lớn hơn, nhỏ hơn hoặc bình thường",
@@ -119,6 +128,7 @@
   "Couldn't open this PDF: %1": "Không thể mở PDF này: %1",
   "Couldn't play this file: %1": "Không thể phát tệp này: %1",
   "Couldn't read %1.": "Không thể đọc %1.",
+  "Couldn't read this archive.": "Không thể đọc tệp lưu trữ này.",
   "Couldn't read this picture.": "Không thể đọc ảnh này.",
   "Couldn't recreate %1.": "Không thể tạo lại %1.",
   "Couldn't remove %1.": "Không thể xóa %1.",
@@ -156,6 +166,7 @@
   "Emptied the trash: %Ln items deleted.": {
     "other": "Đã dọn sạch thùng rác: đã xóa %Ln mục."
   },
+  "Empty": "Trống",
   "Empty Trash": "Dọn sạch thùng rác",
   "Empty Trash…": "Dọn sạch thùng rác…",
   "Empty the trash?": "Dọn sạch thùng rác?",
@@ -208,6 +219,8 @@
   "Keyboard shortcuts": "Phím tắt",
   "Kind": "Loại",
   "Leave the password out of the address; enter it when asked to sign in.": "Không điền mật khẩu vào địa chỉ; nhập mật khẩu khi được yêu cầu đăng nhập.",
+  "Listing archives needs bsdtar, from the libarchive package.": "Liệt kê tệp lưu trữ cần bsdtar, từ gói libarchive.",
+  "Listing this archive took too long.": "Liệt kê tệp lưu trữ này mất quá lâu.",
   "Make Executable": "Đặt quyền thực thi",
   "Make Not Executable": "Bỏ quyền thực thi",
   "Making a preview…": "Đang tạo bản xem trước…",
@@ -279,6 +292,7 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "Việc xem trước tệp PDF cần Qt PDF, từ gói qt6-webengine.",
   "Previous (%1)": "Trước đó (%1)",
   "Previous / next file": "Tệp trước / tiếp theo",
+  "Reading the archive…": "Đang đọc tệp lưu trữ…",
   "Recents": "Gần đây",
   "Redid compressing into %1.": "Đã làm lại việc nén vào %1.",
   "Redid copying %Ln items.": {
@@ -375,6 +389,7 @@
   "The drive is gone.": "Ổ đĩa không còn nữa.",
   "The drive stopped taking data (%1).": "Ổ đĩa đã ngừng nhận dữ liệu (%1).",
   "The drive was changed or removed.": "Ổ đĩa đã bị thay đổi hoặc tháo ra.",
+  "The names in this archive are encrypted.": "Các tên trong tệp lưu trữ này được mã hóa.",
   "The preview closed unexpectedly on %1.": "Xem trước đã đóng bất ngờ khi hiển thị %1.",
   "There's nothing in %1 to extract.": "Không có gì trong %1 để giải nén.",
   "There's nothing to redo.": "Không có gì để làm lại.",

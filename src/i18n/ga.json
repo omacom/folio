@@ -46,6 +46,13 @@
     "many": "%Ln mír a scriosfar go buan. Ní féidir é seo a chealú.",
     "other": "%Ln míreanna a scriosfar go buan. Ní féidir é seo a chealú."
   },
+  "%Ln more": {
+    "one": "%Ln eile",
+    "two": "%Ln eile",
+    "few": "%Ln eile",
+    "many": "%Ln eile",
+    "other": "%Ln eile"
+  },
   "A folder here is already called %1.": "Tá fillteán darb ainm %1 anseo cheana.",
   "A folder, or a server's address like sftp://host/": "Fillteán, nó seoladh freastalaí ar nós sftp://host/",
   "A name can't contain \"/\".": "Ní féidir \"/\" a bheith in ainm.",
@@ -53,6 +60,20 @@
   "Add or remove one": "Cuir ceann leis nó bain ceann",
   "Add the exported folder, as in nfs://%1/export.": "Cuir an fillteán easpórtáilte leis, mar atá i nfs://%1/export.",
   "Archive": "Cartlannaigh",
+  "At least %Ln items": {
+    "one": "Ar a laghad %Ln mír",
+    "two": "Ar a laghad %Ln mhír",
+    "few": "Ar a laghad %Ln mhír",
+    "many": "Ar a laghad %Ln mír",
+    "other": "Ar a laghad %Ln míreanna"
+  },
+  "At least %Ln more": {
+    "one": "Ar a laghad %Ln eile",
+    "two": "Ar a laghad %Ln eile",
+    "few": "Ar a laghad %Ln eile",
+    "many": "Ar a laghad %Ln eile",
+    "other": "Ar a laghad %Ln eile"
+  },
   "Back / ahead 5 seconds": "Ar ais / ar aghaidh 5 shoicind",
   "Back / forward": "Siar / ar aghaidh",
   "Bigger, smaller or normal tiles and rows": "Tíleanna agus sraitheanna níos mó, níos lú nó gnáth",
@@ -143,6 +164,7 @@
   "Couldn't open this PDF: %1": "Níorbh fhéidir an PDF seo a oscailt: %1",
   "Couldn't play this file: %1": "Níorbh fhéidir an comhad seo a sheinm: %1",
   "Couldn't read %1.": "Níorbh fhéidir %1 a léamh.",
+  "Couldn't read this archive.": "Níorbh fhéidir an chartlann seo a léamh.",
   "Couldn't read this picture.": "Níorbh fhéidir an pictiúr seo a léamh.",
   "Couldn't recreate %1.": "Níorbh fhéidir %1 a athchruthú.",
   "Couldn't remove %1.": "Níorbh fhéidir %1 a bhaint.",
@@ -196,6 +218,7 @@
     "many": "Folmhaíodh an Bruscar: scriosadh %Ln mír.",
     "other": "Folmhaíodh an Bruscar: scriosadh %Ln míreanna."
   },
+  "Empty": "Folamh",
   "Empty Trash": "Folmhaigh an Bruscar",
   "Empty Trash…": "Folmhaigh an Bruscar…",
   "Empty the trash?": "Folmhú an Bruscar?",
@@ -268,6 +291,8 @@
   "Keyboard shortcuts": "Aicearraí méarchláir",
   "Kind": "Cineál",
   "Leave the password out of the address; enter it when asked to sign in.": "Fág an pasfhocal as an seoladh; cuir isteach é nuair a iarrtar ort síniú isteach.",
+  "Listing archives needs bsdtar, from the libarchive package.": "Teastaíonn bsdtar, ón bpacáiste libarchive, chun cartlanna a liostú.",
+  "Listing this archive took too long.": "Thóg liostú na cartlainne seo rófhada.",
   "Make Executable": "Déan Inrite",
   "Make Not Executable": "Déan Neamh-inrite",
   "Making a preview…": "Ag déanamh réamhamhairc…",
@@ -355,6 +380,7 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "Teastaíonn Qt PDF, ón bpacáiste qt6-webengine, chun réamhamharc a fháil ar PDFanna.",
   "Previous (%1)": "Ar ais (%1)",
   "Previous / next file": "An comhad roimhe / an comhad ina dhiaidh",
+  "Reading the archive…": "Ag léamh na cartlainne…",
   "Recents": "Le déanaí",
   "Redid compressing into %1.": "Comhbhrúdh isteach i %1 arís.",
   "Redid copying %Ln items.": {
@@ -495,6 +521,7 @@
   "The drive is gone.": "Tá an tiomántán imithe.",
   "The drive stopped taking data (%1).": "Stop an tiomántán ag glacadh sonraí (%1).",
   "The drive was changed or removed.": "Athraíodh nó baineadh an tiomántán.",
+  "The names in this archive are encrypted.": "Tá na hainmneacha sa chartlann seo criptithe.",
   "The preview closed unexpectedly on %1.": "Dhún an réamhamharc gan choinne ar %1.",
   "There's nothing in %1 to extract.": "Níl aon rud i %1 le baint amach.",
   "There's nothing to redo.": "Níl aon rud le hathdhéanamh.",

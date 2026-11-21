@@ -40,6 +40,10 @@
     "one": "%Ln kipengee kitafutwa kabisa. Hili haliwezi kutenduliwa.",
     "other": "%Ln vipengee vitafutwa kabisa. Hili haliwezi kutenduliwa."
   },
+  "%Ln more": {
+    "one": "%Ln zaidi",
+    "other": "%Ln zaidi"
+  },
   "A folder here is already called %1.": "Folda hapa tayari inaitwa %1.",
   "A folder, or a server's address like sftp://host/": "Folda, au anwani ya seva kama sftp://host/",
   "A name can't contain \"/\".": "Jina haliwezi kuwa na \"/\".",
@@ -47,6 +51,14 @@
   "Add or remove one": "Ongeza au ondoa moja",
   "Add the exported folder, as in nfs://%1/export.": "Ongeza folda iliyosafirishwa, kama katika nfs://%1/export.",
   "Archive": "Hifadhi",
+  "At least %Ln items": {
+    "one": "Angalau %Ln kipengee",
+    "other": "Angalau %Ln vipengee"
+  },
+  "At least %Ln more": {
+    "one": "Angalau %Ln zaidi",
+    "other": "Angalau %Ln zaidi"
+  },
   "Back / ahead 5 seconds": "Rudi / songa mbele sekunde 5",
   "Back / forward": "Nyuma / mbele",
   "Bigger, smaller or normal tiles and rows": "Vigae na safu kubwa, ndogo au za kawaida",
@@ -125,6 +137,7 @@
   "Couldn't open this PDF: %1": "Haikuweza kufungua PDF hii: %1",
   "Couldn't play this file: %1": "Haikuweza kucheza faili hii: %1",
   "Couldn't read %1.": "Haikuweza kusoma %1.",
+  "Couldn't read this archive.": "Haikuweza kusoma hifadhi hii.",
   "Couldn't read this picture.": "Haikuweza kusoma picha hii.",
   "Couldn't recreate %1.": "Haikuweza kuunda tena %1.",
   "Couldn't remove %1.": "Haikuweza kuondoa %1.",
@@ -166,6 +179,7 @@
     "one": "Takataka imesafishwa: %Ln kipengee kimefutwa.",
     "other": "Takataka imesafishwa: %Ln vipengee vimefutwa."
   },
+  "Empty": "Tupu",
   "Empty Trash": "Safisha takataka",
   "Empty Trash…": "Safisha takataka…",
   "Empty the trash?": "Safisha takataka?",
@@ -223,6 +237,8 @@
   "Keyboard shortcuts": "Mikato ya kibodi",
   "Kind": "Aina",
   "Leave the password out of the address; enter it when asked to sign in.": "Usijumuishe nenosiri kwenye anwani; liingize unapoombwa kuingia.",
+  "Listing archives needs bsdtar, from the libarchive package.": "Kuorodhesha hifadhi kunahitaji bsdtar, kutoka kwenye kifurushi cha libarchive.",
+  "Listing this archive took too long.": "Kuorodhesha hifadhi hii kumetumia muda mrefu sana.",
   "Make Executable": "Fanya itekelezeke",
   "Make Not Executable": "Fanya isitekelezeke",
   "Making a preview…": "Inaandaa hakiki…",
@@ -298,6 +314,7 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "Kuhakiki PDF kunahitaji Qt PDF, kutoka kwenye kifurushi cha qt6-webengine.",
   "Previous (%1)": "Iliyopita (%1)",
   "Previous / next file": "Faili iliyopita / ijayo",
+  "Reading the archive…": "Inasoma hifadhi…",
   "Recents": "Za hivi karibuni",
   "Redid compressing into %1.": "Imerudia kubana kwenye %1.",
   "Redid copying %Ln items.": {
@@ -405,6 +422,7 @@
   "The drive is gone.": "Kiendeshi kimeondoka.",
   "The drive stopped taking data (%1).": "Kiendeshi kimeacha kupokea data (%1).",
   "The drive was changed or removed.": "Kiendeshi kimebadilishwa au kuondolewa.",
+  "The names in this archive are encrypted.": "Majina yaliyo kwenye hifadhi hii yamesimbwa fiche.",
   "The preview closed unexpectedly on %1.": "Hakiki imefungwa bila kutarajiwa kwenye %1.",
   "There's nothing in %1 to extract.": "Hakuna chochote kwenye %1 cha kupanua.",
   "There's nothing to redo.": "Hakuna cha kurudia.",

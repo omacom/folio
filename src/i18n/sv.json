@@ -40,6 +40,10 @@
     "one": "%Ln objekt kommer att tas bort permanent. Det kan inte ångras.",
     "other": "%Ln objekt kommer att tas bort permanent. Det kan inte ångras."
   },
+  "%Ln more": {
+    "one": "%Ln fler",
+    "other": "%Ln fler"
+  },
   "A folder here is already called %1.": "En mapp här heter redan %1.",
   "A folder, or a server's address like sftp://host/": "En mapp eller en serveradress som sftp://host/",
   "A name can't contain \"/\".": "Ett namn får inte innehålla \"/\".",
@@ -47,6 +51,14 @@
   "Add or remove one": "Lägg till eller ta bort en",
   "Add the exported folder, as in nfs://%1/export.": "Lägg till den exporterade mappen, som i nfs://%1/export.",
   "Archive": "Arkivera",
+  "At least %Ln items": {
+    "one": "Minst %Ln objekt",
+    "other": "Minst %Ln objekt"
+  },
+  "At least %Ln more": {
+    "one": "Minst %Ln fler",
+    "other": "Minst %Ln fler"
+  },
   "Back / ahead 5 seconds": "Bakåt / framåt 5 sekunder",
   "Back / forward": "Bakåt / framåt",
   "Bigger, smaller or normal tiles and rows": "Större, mindre eller normala rutor och rader",
@@ -125,6 +137,7 @@
   "Couldn't open this PDF: %1": "Kunde inte öppna den här PDF:en: %1",
   "Couldn't play this file: %1": "Kunde inte spela upp den här filen: %1",
   "Couldn't read %1.": "Kunde inte läsa %1.",
+  "Couldn't read this archive.": "Kunde inte läsa det här arkivet.",
   "Couldn't read this picture.": "Kunde inte läsa den här bilden.",
   "Couldn't recreate %1.": "Kunde inte återskapa %1.",
   "Couldn't remove %1.": "Kunde inte ta bort %1.",
@@ -166,6 +179,7 @@
     "one": "Tömde papperskorgen: %Ln objekt borttaget.",
     "other": "Tömde papperskorgen: %Ln objekt borttagna."
   },
+  "Empty": "Tom",
   "Empty Trash": "Töm papperskorgen",
   "Empty Trash…": "Töm papperskorgen…",
   "Empty the trash?": "Töm papperskorgen?",
@@ -223,6 +237,8 @@
   "Keyboard shortcuts": "Tangentbordsgenvägar",
   "Kind": "Typ",
   "Leave the password out of the address; enter it when asked to sign in.": "Ange inte lösenordet i adressen; skriv in det när du ombeds logga in.",
+  "Listing archives needs bsdtar, from the libarchive package.": "Att lista arkiv kräver bsdtar, från paketet libarchive.",
+  "Listing this archive took too long.": "Det tog för lång tid att lista det här arkivet.",
   "Make Executable": "Gör körbar",
   "Make Not Executable": "Ta bort körbarhet",
   "Making a preview…": "Skapar förhandsvisning…",
@@ -298,6 +314,7 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "Förhandsvisning av PDF-filer kräver Qt PDF, från paketet qt6-webengine.",
   "Previous (%1)": "Föregående (%1)",
   "Previous / next file": "Föregående / nästa fil",
+  "Reading the archive…": "Läser arkivet…",
   "Recents": "Senaste",
   "Redid compressing into %1.": "Gjorde om komprimeringen till %1.",
   "Redid copying %Ln items.": {
@@ -405,6 +422,7 @@
   "The drive is gone.": "Enheten är borta.",
   "The drive stopped taking data (%1).": "Enheten slutade ta emot data (%1).",
   "The drive was changed or removed.": "Enheten har ändrats eller tagits bort.",
+  "The names in this archive are encrypted.": "Namnen i det här arkivet är krypterade.",
   "The preview closed unexpectedly on %1.": "Förhandsvisningen stängdes oväntat för %1.",
   "There's nothing in %1 to extract.": "Det finns ingenting i %1 att extrahera.",
   "There's nothing to redo.": "Det finns inget att göra om.",

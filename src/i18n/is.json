@@ -40,6 +40,10 @@
     "one": "%Ln atriði verður eytt varanlega. Ekki er hægt að afturkalla þetta.",
     "other": "%Ln atriði verða eytt varanlega. Ekki er hægt að afturkalla þetta."
   },
+  "%Ln more": {
+    "one": "%Ln til viðbótar",
+    "other": "%Ln til viðbótar"
+  },
   "A folder here is already called %1.": "Mappa hér heitir þegar %1.",
   "A folder, or a server's address like sftp://host/": "Mappa eða vistfang þjóns eins og sftp://host/",
   "A name can't contain \"/\".": "Heiti má ekki innihalda \"/\".",
@@ -47,6 +51,14 @@
   "Add or remove one": "Bæta við eða fjarlægja eitt",
   "Add the exported folder, as in nfs://%1/export.": "Bættu við útfluttu möppunni, eins og í nfs://%1/export.",
   "Archive": "Setja í safn",
+  "At least %Ln items": {
+    "one": "Að minnsta kosti %Ln atriði",
+    "other": "Að minnsta kosti %Ln atriði"
+  },
+  "At least %Ln more": {
+    "one": "Að minnsta kosti %Ln til viðbótar",
+    "other": "Að minnsta kosti %Ln til viðbótar"
+  },
   "Back / ahead 5 seconds": "Til baka / áfram 5 sekúndur",
   "Back / forward": "Til baka / áfram",
   "Bigger, smaller or normal tiles and rows": "Stærri, minni eða venjulegar flísar og raðir",
@@ -125,6 +137,7 @@
   "Couldn't open this PDF: %1": "Ekki tókst að opna þetta PDF: %1",
   "Couldn't play this file: %1": "Ekki tókst að spila þessa skrá: %1",
   "Couldn't read %1.": "Ekki tókst að lesa %1.",
+  "Couldn't read this archive.": "Ekki tókst að lesa þetta safn.",
   "Couldn't read this picture.": "Ekki tókst að lesa þessa mynd.",
   "Couldn't recreate %1.": "Ekki tókst að endurgera %1.",
   "Couldn't remove %1.": "Ekki tókst að fjarlægja %1.",
@@ -166,6 +179,7 @@
     "one": "Tæmdi ruslið: %Ln atriði eytt.",
     "other": "Tæmdi ruslið: %Ln atriði eydd."
   },
+  "Empty": "Tómt",
   "Empty Trash": "Tæma ruslið",
   "Empty Trash…": "Tæma ruslið…",
   "Empty the trash?": "Tæma ruslið?",
@@ -223,6 +237,8 @@
   "Keyboard shortcuts": "Flýtilyklar",
   "Kind": "Tegund",
   "Leave the password out of the address; enter it when asked to sign in.": "Slepptu lykilorðinu í vistfanginu; sláðu það inn þegar beðið er um innskráningu.",
+  "Listing archives needs bsdtar, from the libarchive package.": "Til að lista söfn þarf bsdtar úr libarchive-pakkanum.",
+  "Listing this archive took too long.": "Að lista þetta safn tók of langan tíma.",
   "Make Executable": "Gera keyranlegt",
   "Make Not Executable": "Gera ekki keyranlegt",
   "Making a preview…": "Býr til forskoðun…",
@@ -298,6 +314,7 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "Til að forskoða PDF-skrár þarf Qt PDF, úr qt6-webengine pakkanum.",
   "Previous (%1)": "Fyrra (%1)",
   "Previous / next file": "Fyrri / næsta skrá",
+  "Reading the archive…": "Les safnið…",
   "Recents": "Nýlegt",
   "Redid compressing into %1.": "Endurgerði þjöppun í %1.",
   "Redid copying %Ln items.": {
@@ -405,6 +422,7 @@
   "The drive is gone.": "Drifið er horfið.",
   "The drive stopped taking data (%1).": "Drifið hætti að taka við gögnum (%1).",
   "The drive was changed or removed.": "Drifið var breytt eða fjarlægt.",
+  "The names in this archive are encrypted.": "Nöfnin í þessu safni eru dulkóðuð.",
   "The preview closed unexpectedly on %1.": "Forskoðunin lokaðist óvænt fyrir %1.",
   "There's nothing in %1 to extract.": "Ekkert er í %1 til að afþjappa.",
   "There's nothing to redo.": "Ekkert er til að endurgera.",

@@ -42,6 +42,11 @@
     "many": "%Ln elementi verranno eliminati definitivamente. L'operazione non può essere annullata.",
     "other": "%Ln elementi verranno eliminati definitivamente. L'operazione non può essere annullata."
   },
+  "%Ln more": {
+    "one": "%Ln in più",
+    "many": "%Ln in più",
+    "other": "%Ln in più"
+  },
   "A folder here is already called %1.": "Una cartella qui si chiama già %1.",
   "A folder, or a server's address like sftp://host/": "Una cartella o l'indirizzo di un server, ad esempio sftp://host/",
   "A name can't contain \"/\".": "Un nome non può contenere \"/\".",
@@ -49,6 +54,16 @@
   "Add or remove one": "Aggiungi o rimuovi un elemento",
   "Add the exported folder, as in nfs://%1/export.": "Aggiungi la cartella esportata, ad esempio nfs://%1/export.",
   "Archive": "Archivia",
+  "At least %Ln items": {
+    "one": "Almeno %Ln elemento",
+    "many": "Almeno %Ln elementi",
+    "other": "Almeno %Ln elementi"
+  },
+  "At least %Ln more": {
+    "one": "Almeno %Ln in più",
+    "many": "Almeno %Ln in più",
+    "other": "Almeno %Ln in più"
+  },
   "Back / ahead 5 seconds": "Indietro / avanti di 5 secondi",
   "Back / forward": "Indietro / avanti",
   "Bigger, smaller or normal tiles and rows": "Dimensioni maggiori, minori o normali per riquadri e righe",
@@ -131,6 +146,7 @@
   "Couldn't open this PDF: %1": "Impossibile aprire questo PDF: %1",
   "Couldn't play this file: %1": "Impossibile riprodurre questo file: %1",
   "Couldn't read %1.": "Impossibile leggere %1.",
+  "Couldn't read this archive.": "Impossibile leggere questo archivio.",
   "Couldn't read this picture.": "Impossibile leggere questa immagine.",
   "Couldn't recreate %1.": "Impossibile ricreare %1.",
   "Couldn't remove %1.": "Impossibile rimuovere %1.",
@@ -176,6 +192,7 @@
     "many": "Cestino svuotato: %Ln elementi eliminati.",
     "other": "Cestino svuotato: %Ln elementi eliminati."
   },
+  "Empty": "Vuoto",
   "Empty Trash": "Svuota cestino",
   "Empty Trash…": "Svuota cestino…",
   "Empty the trash?": "Svuotare il cestino?",
@@ -238,6 +255,8 @@
   "Keyboard shortcuts": "Scorciatoie da tastiera",
   "Kind": "Tipo",
   "Leave the password out of the address; enter it when asked to sign in.": "Non includere la password nell'indirizzo; inseriscila quando ti viene chiesto di accedere.",
+  "Listing archives needs bsdtar, from the libarchive package.": "Per elencare gli archivi è necessario bsdtar, dal pacchetto libarchive.",
+  "Listing this archive took too long.": "L'elenco di questo archivio ha richiesto troppo tempo.",
   "Make Executable": "Rendi eseguibile",
   "Make Not Executable": "Rendi non eseguibile",
   "Making a preview…": "Creazione dell'anteprima…",
@@ -317,6 +336,7 @@
   "Previewing PDFs needs Qt PDF, from the qt6-webengine package.": "Per l'anteprima dei PDF serve Qt PDF, del pacchetto qt6-webengine.",
   "Previous (%1)": "Precedente (%1)",
   "Previous / next file": "File precedente / successivo",
+  "Reading the archive…": "Lettura dell'archivio…",
   "Recents": "Recenti",
   "Redid compressing into %1.": "Ripetuta la compressione in %1.",
   "Redid copying %Ln items.": {
@@ -435,6 +455,7 @@
   "The drive is gone.": "L'unità è scomparsa.",
   "The drive stopped taking data (%1).": "L'unità ha smesso di ricevere dati (%1).",
   "The drive was changed or removed.": "L'unità è stata modificata o rimossa.",
+  "The names in this archive are encrypted.": "I nomi in questo archivio sono crittografati.",
   "The preview closed unexpectedly on %1.": "L'anteprima di %1 si è chiusa inaspettatamente.",
   "There's nothing in %1 to extract.": "In %1 non c'è nulla da estrarre.",
   "There's nothing to redo.": "Non c'è nulla da ripetere.",
