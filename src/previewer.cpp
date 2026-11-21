@@ -82,9 +82,11 @@ QString Previewer::archiveNames(const QString &path, int shown) {
         full = names.size() == shown || (bytes += line.size()) > 256 * 1024;
         names << (full ? QString("…") : name);
     };
-    while (!full && !done) {
+    while (!done) {
         while (!full && bsdtar.canReadLine())
             take(bsdtar.readLine());
+        if (full)
+            break;
         if (bsdtar.state() == QProcess::NotRunning) {
             take(bsdtar.readAll());
             done = true;
