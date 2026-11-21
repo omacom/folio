@@ -26,6 +26,7 @@ public:
              const std::function<void(const QByteArray &)> &output,
              const std::function<void(int, const QByteArray &)> &finished);
     void stop();
+    bool running() const { return m_process; }
 
 private:
     void end(int code, const QByteArray &errors);

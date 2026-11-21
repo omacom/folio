@@ -281,11 +281,14 @@ void Previewer::setIndex(int index, bool report) {
     m_readingText = false;
     m_sentence.clear();
     m_helper.stop();
-    // An archive's names are listed by bsdtar as they come.
+    // An archive's names are listed by bsdtar as they come, read like a
+    // text until the last is in.
     const auto listNames = [this](const QString &path) {
+        m_readingText = true;
         listArchive(m_helper, path, [this](const QString &text, const QString &sentence) {
             m_text = text;
             m_sentence = sentence;
+            m_readingText = m_helper.running();
             emit changed();
         });
     };

@@ -8838,9 +8838,15 @@ private slots:
         // Scrolled down while the rest is still to come: the place is kept when it comes.
         QTRY_VERIFY(previewer.text().contains("name-200"));
         QTRY_VERIFY(view() && view()->property("contentHeight").toReal() > view()->property("height").toReal() + 300);
+        // Still being read, ↓ scrolls the names there are rather than stepping past them.
+        QVERIFY(previewer.readingText());
+        QMetaObject::invokeMethod(window.get(), "upDown", Q_ARG(QVariant, 1));
+        QCOMPARE(previewer.item().value("name").toString(), QString("a.tar"));
+        QCOMPARE(place(), 60.0);
         QVERIFY(view()->setProperty("contentY", 300));
         write(tools.filePath("go"), "x");
         QTRY_VERIFY(previewer.text().contains("name-400"));
+        QTRY_VERIFY(!previewer.readingText());
         QCOMPARE(place(), 300.0);
 
         // Another file starts at its top.

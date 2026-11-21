@@ -63,13 +63,13 @@ ApplicationWindow {
     // picture, a PDF); anything that fits moves to the item above or below,
     // as the arrows do in the folder.
     function upDown(direction) {
-        // A text still being read looks short; stepping past it then would
-        // skip a long one. The next press, once it's in, knows which.
-        if (previewer.readingText)
-            return
         const v = win.view
         const scrolls = v && typeof v.scroll === "function"
             && (v.scrolls !== undefined ? v.scrolls : v.contentHeight > v.height + 1)
+        // A text still being read looks short; stepping past it then would
+        // skip a long one. The next press, once it's in, knows which.
+        if (previewer.readingText && !scrolls)
+            return
         if (scrolls)
             v.scroll(direction)
         else
