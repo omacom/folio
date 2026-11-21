@@ -46,9 +46,8 @@ Rectangle {
     readonly property var info: backend.details
     // The item's type: its name's, or the one read from what it holds when its name gave none, never one read for another item.
     readonly property string type: (info.path === item.path && info.mime) || item.mime || ""
-    // Text files show their opening lines in a frame, archives bsdtar can list the names inside.
-    readonly property bool archive: hasItem && backend.listsArchive(type)
-    readonly property bool listed: hasItem && (item.kind === "text" || archive)
+    // Text files show their opening lines in a frame, archives the names inside.
+    readonly property bool listed: hasItem && (item.kind === "text" || backend.listsArchive(type))
     // Described once the folder's loaded has put the cursor back on its
     // item: a re-read leaves another item on the cursor's row for a moment,
     // and describing that would drop what's been read of this one.
@@ -176,13 +175,6 @@ Rectangle {
                     wrapMode: Text.WrapAnywhere
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
-                }
-                Sentence {
-                    visible: pane.archive && !pane.info.text
-                    margin: 14
-                    text: pane.info.sentence || qsTr("Reading the archive…")
-                    color: theme.secondaryForeground
-                    size: 12
                 }
             }
 

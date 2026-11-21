@@ -63,13 +63,13 @@ ApplicationWindow {
     // picture, a PDF); anything that fits moves to the item above or below,
     // as the arrows do in the folder.
     function upDown(direction) {
+        // A text still being read looks short; stepping past it then would
+        // skip a long one. The next press, once it's in, knows which.
+        if (previewer.readingText)
+            return
         const v = win.view
         const scrolls = v && typeof v.scroll === "function"
             && (v.scrolls !== undefined ? v.scrolls : v.contentHeight > v.height + 1)
-        // A text still being read looks short; stepping past it then would
-        // skip a long one. The next press, once it's in, knows which.
-        if (previewer.readingText && !scrolls)
-            return
         if (scrolls)
             v.scroll(direction)
         else
@@ -189,13 +189,6 @@ ApplicationWindow {
                     text: win.viewer === "pdf" ? qsTr("Previewing PDFs needs Qt PDF, from the qt6-webengine package.")
                                                : qsTr("Playing video and audio needs Qt Multimedia, from the qt6-multimedia package.")
                     color: theme.foreground
-                }
-
-                // An archive's names are read as bsdtar prints them.
-                Sentence {
-                    visible: win.viewer === "archive" && !previewer.text
-                    text: previewer.sentence || qsTr("Reading the archive…")
-                    color: previewer.sentence ? theme.foreground : theme.secondaryForeground
                 }
             }
         }
@@ -371,7 +364,11 @@ ApplicationWindow {
             function scroll(direction) { contentY = Math.max(0, Math.min(contentHeight - height, contentY + direction * 60)) }
             function page(direction) { contentY = Math.max(0, Math.min(contentHeight - height, contentY + direction * (height - 60))) }
 
-            // Never sent to the top when the text changes: an archive's names keep arriving, and another file empties the text first, which brings the view back by itself, even one still gliding.
+            Connections {
+                target: previewer
+                function onChanged() { flick.contentY = 0 }
+            }
+
             TextEdit {
                 id: body
                 width: Math.min(flick.width - 96, win.viewer === "markdown" ? 820 : 1200)

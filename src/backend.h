@@ -30,10 +30,9 @@ class Backend : public QObject {
     Q_PROPERTY(bool previewing READ previewing NOTIFY previewingChanged)
     // What the details column shows beyond the listing, for the item last
     // given to describe(), once they've been read in the background: a
-    // picture's dimensions, a text's opening lines, an archive's names (or
-    // a sentence in their place), or a trashed item's origin and deletion
-    // time; and under `plugins`, plugins' rows about a file or folder,
-    // [[label, value]...].
+    // picture's dimensions, a text's opening lines, an archive's names, or
+    // a trashed item's origin and deletion time; and under `plugins`,
+    // plugins' rows about a file or folder, [[label, value]...].
     // Changes whenever an order is chosen, for what shows other folders
     // than the one shown (the columns) to look their orders up again.
     Q_PROPERTY(int sortsRevision READ sortsRevision NOTIFY sortsChanged)
@@ -233,6 +232,4 @@ private:
     // The pane the working directory follows: the one used last.
     static inline Backend *s_working = nullptr;
     void moveWorkingDirectory();
-    // Reads what only a helper program can, for the item described last.
-    Helper m_helper{this};
 };
