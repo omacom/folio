@@ -6415,6 +6415,72 @@ private slots:
         QCOMPARE(notice.count(), 0);
     }
 
+    void placesListDrivesNotMountedYet()
+    {
+        // GIO's volumes come first, in its order: one not mounted, one
+        // mounted, and one mounted where the system lives.
+        const QList<Drives::Volume> volumes{
+            {"Windows", "/dev/nvme0n1p3", ""},
+            {"Photos", "/dev/sdb1", "/run/media/me/Photos"},
+            {"Home", "/dev/nvme0n1p2", "/home"},
+            {"1.0 TB Volume", "/dev/sdc1", "/run/media/me/8CAE187EAE18634E"},
+            // A disk image set up with udisksctl loop-setup, which
+            // physicalDrives passes over.
+            {"Image", "/dev/loop3", "/run/media/me/Image", false, true},
+        };
+        // The physical drives: a mounted volume is its drive, with what's
+        // free and how it's let go of; one GIO doesn't list (an fstab
+        // mount) follows.
+        const QVariantList drives{
+            QVariantMap{{"name", "archive"}, {"path", "/mnt/archive"}, {"icon", "drive"}, {"release", ""}, {"free", 5}},
+            QVariantMap{{"name", "Photos"}, {"path", "/run/media/me/Photos"}, {"icon", "drive"}, {"release", "eject"}, {"free", 7}},
+            // Unlabeled, so named after its mount folder, the UUID.
+            QVariantMap{{"name", "8CAE187EAE18634E"}, {"path", "/run/media/me/8CAE187EAE18634E"}, {"icon", "drive"},
+                        {"release", "eject"}, {"free", 9}},
+        };
+        // What's free on the image comes from the mounts already read.
+        Places::Mount imageMount{"/run/media/me/Image", "/dev/loop3", "ext4", "Image"};
+        imageMount.free = 11;
+        const auto devices = Places::devicesFrom(volumes, drives, {imageMount});
+        QCOMPARE(devices.size(), 5);
+        const QVariantMap windows = devices.at(0).toMap();
+        QCOMPARE(windows.value("name").toString(), QString("Windows"));
+        QVERIFY(windows.value("path").toString().isEmpty());
+        QCOMPARE(windows.value("volume").toString(), QString("/dev/nvme0n1p3"));
+        QVERIFY(windows.value("release").toString().isEmpty());
+        const QVariantMap photos = devices.at(1).toMap();
+        QCOMPARE(photos.value("path").toString(), QString("/run/media/me/Photos"));
+        QCOMPARE(photos.value("volume").toString(), QString("/dev/sdb1"));
+        QCOMPARE(photos.value("release").toString(), QString("eject"));
+        QCOMPARE(photos.value("free").toLongLong(), 7);
+        // The system's own stays out, as physicalDrives left it. An
+        // unlabeled drive takes GIO's name, not its UUID folder's.
+        const QVariantMap unlabeled = devices.at(2).toMap();
+        QCOMPARE(unlabeled.value("name").toString(), QString("1.0 TB Volume"));
+        QCOMPARE(unlabeled.value("path").toString(), QString("/run/media/me/8CAE187EAE18634E"));
+        // The image stays once mounted, from GIO's mount, and unmounts.
+        const QVariantMap image = devices.at(3).toMap();
+        QCOMPARE(image.value("name").toString(), QString("Image"));
+        QCOMPARE(image.value("path").toString(), QString("/run/media/me/Image"));
+        QCOMPARE(image.value("volume").toString(), QString("/dev/loop3"));
+        QCOMPARE(image.value("release").toString(), QString("unmount"));
+        QCOMPARE(image.value("free").toLongLong(), 11);
+        QCOMPARE(devices.at(4).toMap().value("path").toString(), QString("/mnt/archive"));
+        QVERIFY(!devices.at(4).toMap().contains("volume"));
+    }
+
+    void drivesReadWhatUdevFoundOnADevice()
+    {
+        // The system's own disk holds a filesystem (an encrypted one's
+        // cleartext device does too); a device that isn't there, nothing.
+        const QString device = QFileInfo(QString::fromUtf8(QStorageInfo::root().device())).canonicalFilePath();
+        const QString name = QFileInfo(device).fileName();
+        if (!device.startsWith("/dev/") || !QFileInfo::exists("/run/udev/data"))
+            QSKIP("No udev, or the system doesn't run from a block device");
+        QCOMPARE(Drives::usageOf(name), QString("filesystem"));
+        QCOMPARE(Drives::usageOf("no-such-device"), QString());
+    }
+
     void drivesSayWhatsFreeInTheLanguagesDigits()
     {
         QQmlEngine engine;

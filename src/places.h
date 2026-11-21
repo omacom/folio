@@ -5,6 +5,8 @@
 #include <QTimer>
 #include <QVariantList>
 
+#include "drives.h"
+
 // The sidebar's own rows: the user's places, pinned folders, views and
 // drives (plugins add the rest). Each list is small, so it is handed to QML
 // as plain maps rather than a model.
@@ -70,6 +72,18 @@ public:
     // says how it's let go of ("release": "eject", "unmount", or empty when
     // it can't be) and how much is free.
     static QVariantList physicalDrives(const QList<Mount> &mounts, const QString &systemDevice);
+    // The Devices list: GIO's volumes in its order, each mounted one as its
+    // drive among `drives` under GIO's name, and each unmounted one by
+    // `volume` (no path, and nothing to let go of, until it's mounted),
+    // then the drives GIO
+    // doesn't list (an fstab mount). A mounted volume `drives` leaves out
+    // stays out when it's the system's own, and is listed from GIO's mount
+    // otherwise (a loop device), with what's free from `mounts`.
+    static QVariantList devicesFrom(const QList<Drives::Volume> &volumes, const QVariantList &drives,
+                                    const QList<Mount> &mounts = {});
+
+    // GIO's drives; null for a test's home, which has none.
+    Drives *drives() const { return m_drives; }
 
 signals:
     void changed();
@@ -103,8 +117,12 @@ private:
     QStringList m_hidden;
     QTimer m_poll;
     QFutureWatcher<QList<Mount>> m_mounts;
+    // The last reading finished, and the Devices list from it and GIO.
+    QList<Mount> m_lastMounts;
+    void publishDevices();
     // Another refresh was asked for while one was reading.
     bool m_rereadMounts = false;
     // The device the system runs from, read once: it doesn't change.
     QString m_systemDevice;
+    Drives *m_drives = nullptr;
 };

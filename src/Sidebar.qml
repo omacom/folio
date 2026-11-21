@@ -77,8 +77,15 @@ Rectangle {
         if (row.root !== undefined)
             sidebar.target.open(row.path)
         else
-            sidebar.go(row.path)
+            openDevice(row)
         finished()
+    }
+    // A drive that isn't mounted yet has no path: opening it mounts it.
+    function openDevice(row) {
+        if (row.path)
+            sidebar.go(row.path)
+        else if (row.volume !== undefined)
+            sidebar.target.openVolume(row.volume, row.name)
     }
     function reveal(item) {
         const y = item.mapToItem(column, 0, 0).y
@@ -142,7 +149,7 @@ Rectangle {
 
     DriveMenu {
         id: driveMenu
-        onOpenRequested: (path) => { sidebar.go(path); sidebar.finished() }
+        onOpenRequested: (drive) => { sidebar.openDevice(drive); sidebar.finished() }
         onFormatRequested: (disk) => sidebar.formatRequested(disk)
     }
 
@@ -430,11 +437,11 @@ Rectangle {
                     onKeyedChanged: if (keyed) sidebar.reveal(this)
                     text: modelData.name
                     glyph: eject.visible ? "" : modelData.icon
-                    active: sidebar.activePath === modelData.path
-                    onClicked: sidebar.go(modelData.path)
+                    active: !!modelData.path && sidebar.activePath === modelData.path
+                    onClicked: sidebar.openDevice(modelData)
                     detail: {
                         translator.language // Re-read when the language (and so its digits) changes.
-                        return modelData.free < 0 ? "" : Format.free(modelData.free)
+                        return modelData.free === undefined || modelData.free < 0 ? "" : Format.free(modelData.free)
                     }
                     TapHandler {
                         acceptedButtons: Qt.RightButton
@@ -448,7 +455,7 @@ Rectangle {
                         anchors.verticalCenter: parent.verticalCenter
                         implicitWidth: 28
                         implicitHeight: 28
-                        visible: driveRow.modelData.release !== "" && (driveRow.hovered || hovered || driveRow.keyed)
+                        visible: !!driveRow.modelData.release && (driveRow.hovered || hovered || driveRow.keyed)
                         glyph: "eject"
                         text: driveRow.modelData.release === "eject" ? qsTr("Eject") : qsTr("Unmount")
                         onClicked: places.eject(driveRow.modelData.path)
