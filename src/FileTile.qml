@@ -143,23 +143,32 @@ Item {
     Drag.supportedActions: Qt.CopyAction | Qt.LinkAction
     Drag.hotSpot.x: tile.width / 2
     Drag.hotSpot.y: 40
-    // A plugin's item isn't a file to hand anywhere.
-    DragHandler {
-        target: null
-        enabled: tile.kind !== "item"
-        // Dragging a selected item takes the whole selection along. The list
-        // is built as the drag starts, not again on every change of selection.
-        onActiveChanged: {
-            if (active)
-                tile.Drag.mimeData = { "text/uri-list": fileOps.uriList(tile.selected && backend.folder.selectedCount > 1 ? backend.folder.selectedPaths() : [tile.path]) }
-            tile.Drag.active = active
-        }
-    }
+    // Presses take only the picture and name, the area the band hits (see
+    // FolderGrid): the padding around them is empty space to start a band.
+    Item {
+        x: 20
+        y: 12
+        width: tile.width - 40
+        height: tile.height - 24
 
-    TapHandler {
-        id: tap
-        onTapped: tile.clicked(tap.point.modifiers)
-        onDoubleTapped: tile.activated()
+        // A plugin's item isn't a file to hand anywhere.
+        DragHandler {
+            target: null
+            enabled: tile.kind !== "item"
+            // Dragging a selected item takes the whole selection along. The list
+            // is built as the drag starts, not again on every change of selection.
+            onActiveChanged: {
+                if (active)
+                    tile.Drag.mimeData = { "text/uri-list": fileOps.uriList(tile.selected && backend.folder.selectedCount > 1 ? backend.folder.selectedPaths() : [tile.path]) }
+                tile.Drag.active = active
+            }
+        }
+
+        TapHandler {
+            id: tap
+            onTapped: tile.clicked(tap.point.modifiers)
+            onDoubleTapped: tile.activated()
+        }
     }
 
     // A folder's outline: a card with a tab on its top left edge, drawn as

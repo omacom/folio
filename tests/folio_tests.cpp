@@ -8593,6 +8593,52 @@ private slots:
         }
     }
 
+    void gridBandStartsBetweenTiles()
+    {
+        // A band can start in the padding between two tiles, not only past
+        // the last one: in a full folder that's all the empty space there is.
+        QTemporaryDir home;
+        for (const char *name : {"a", "b", "c", "d", "e", "f", "g"})
+            write(home.filePath(name), "x");
+        Backend backend(home.path());
+        backend.navigate(home.path());
+        QTRY_COMPARE(backend.folder()->rowCount(), 7);
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine);
+        // Five columns of 200 by 192, each tile drawn at 20..180 across.
+        component.setData("import QtQuick\n"
+                          "Window { width: 1000; height: 600; visible: true\n"
+                          "    FolderGrid { anchors.fill: parent } }\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/GridBandStartTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+
+        // From between a and b, over b, c and g below b.
+        QTest::mousePress(window, Qt::LeftButton, {}, QPoint(200, 100));
+        for (int step = 1; step <= 10; ++step)
+            QTest::mouseMove(window, QPoint(200 + step * 30, 100 + step * 15));
+        QTest::mouseRelease(window, Qt::LeftButton, {}, QPoint(500, 250));
+        QStringList names;
+        for (const QString &path : backend.folder()->selectedPaths())
+            names << QFileInfo(path).fileName();
+        names.sort();
+        QCOMPARE(names, QStringList({"b", "c", "g"}));
+
+        // A click on a tile's picture still picks that tile.
+        QTest::mouseClick(window, Qt::LeftButton, {}, QPoint(100, 60));
+        QTRY_COMPARE(backend.folder()->selectedPaths(), QStringList({home.filePath("a")}));
+    }
+
     void folderViewsKeepNoCacheBuffer_data()
     {
         QTest::addColumn<QString>("pane");
