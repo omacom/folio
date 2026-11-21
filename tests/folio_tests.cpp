@@ -8743,15 +8743,16 @@ private slots:
         QTemporaryDir dir;
         QDir(dir.path()).mkpath("files/sub dir");
         write(dir.filePath("files/sub dir/a b.txt"), "x");
-        write(dir.filePath("files/café.txt"), "x");
-        QCOMPARE(QProcess::execute("bsdtar", {"-a", "-cf", dir.filePath("project.zip"), "-C", dir.filePath("files"), "sub dir", "café.txt"}), 0);
-        const QString names = "sub dir/\nsub dir/a b.txt\ncafé.txt";
+        // bsdtar escapes a backslash in what it lists (a zip would take it for a folder).
+        write(dir.filePath("files/café \\ two.txt"), "x");
+        QCOMPARE(QProcess::execute("bsdtar", {"-cf", dir.filePath("project.tar"), "-C", dir.filePath("files"), "sub dir", "café \\ two.txt"}), 0);
+        const QString names = "sub dir/\nsub dir/a b.txt\ncafé \\ two.txt";
 
         Backend backend(dir.path());
-        backend.describe({{"path", dir.filePath("project.zip")}, {"kind", "archive"}, {"mime", "application/zip"}});
+        backend.describe({{"path", dir.filePath("project.tar")}, {"kind", "archive"}, {"mime", "application/x-tar"}});
         QTRY_COMPARE(backend.details().value("text").toString(), names);
         Previewer previewer;
-        previewer.start(dir.filePath("project.zip"), false, "name");
+        previewer.start(dir.filePath("project.tar"), false, "name");
         QCOMPARE(previewer.viewer(), QString("archive"));
         QTRY_COMPARE(previewer.text(), names);
 

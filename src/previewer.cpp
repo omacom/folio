@@ -56,6 +56,25 @@ bool Previewer::listsArchive(const QString &mime) {
     return FolderModel::kindForMime(mime) == "archive" && !single.contains(mime);
 }
 
+// A line of `bsdtar -t` back to the name it escapes: `\\` is a backslash
+// and `\303` a byte, so `caf\303\251 \\ two` reads `café \ two`.
+static QString unescaped(QByteArrayView line) {
+    const auto octal = [&](qsizetype at) { return at < line.size() && line[at] >= '0' && line[at] <= '7'; };
+    QByteArray name;
+    for (qsizetype i = 0; i < line.size(); ++i) {
+        if (line[i] == '\\' && i + 1 < line.size() && line[i + 1] == '\\') {
+            name += '\\';
+            ++i;
+        } else if (line[i] == '\\' && octal(i + 1) && octal(i + 2) && octal(i + 3)) {
+            name += char((line[i + 1] - '0') * 64 + (line[i + 2] - '0') * 8 + (line[i + 3] - '0'));
+            i += 3;
+        } else {
+            name += line[i];
+        }
+    }
+    return QString::fromUtf8(name);
+}
+
 QString Previewer::archiveNames(const QString &path, int shown) {
     QProcess bsdtar;
     // UTF-8 names print as they are, whatever Folio's language.
@@ -73,7 +92,7 @@ QString Previewer::archiveNames(const QString &path, int shown) {
     qint64 bytes = 0;
     bool full = false, done = false;
     const auto take = [&](const QByteArray &line) {
-        QString name = QString::fromUtf8(line).chopped(line.endsWith('\n'));
+        QString name = unescaped(QByteArrayView(line).chopped(line.endsWith('\n')));
         // The "./" a tar made with `-C folder .` starts with, or an ISO's ".", is the archive itself.
         if (name.startsWith("./"))
             name.remove(0, 2);
