@@ -24,6 +24,8 @@
 #include <QTemporaryDir>
 #include <QUrl>
 #include <atomic>
+#include <csignal>
+#include <unistd.h>
 
 namespace {
 
@@ -100,14 +102,31 @@ QStringList expandCommand(const QString &command, const QString &input, const QS
     return args;
 }
 
+// Runs a helper to its end, true when it ended well. It runs in a process
+// group of its own, so that past `patience` milliseconds what it started
+// (glycin and the office thumbnailer start their own) is stopped with it:
+// a broken file must never hang a tile forever.
+bool run(QProcess &process, const QString &program, const QStringList &args, int patience) {
+    process.setChildProcessModifier([] { ::setpgid(0, 0); });
+    process.start(program, args);
+    if (!process.waitForFinished(patience)) {
+        if (process.processId() > 0)
+            ::kill(-pid_t(process.processId()), SIGKILL);
+        process.waitForFinished(1000);
+        return false;
+    }
+    return process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0;
+}
+
 } // namespace
 
 Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbnailerDirectories,
-                       const QString &remoteRoot)
+                       const QString &remoteRoot, int patience)
     : m_cache(cacheDirectory.isEmpty()
                   ? QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + "/thumbnails"
                   : cacheDirectory),
-      m_remoteRoot(remoteRoot.isEmpty() ? Mounter::root() : remoteRoot) {
+      m_remoteRoot(remoteRoot.isEmpty() ? Mounter::root() : remoteRoot),
+      m_patience(patience) {
     QStringList directories = thumbnailerDirectories;
     if (directories.isEmpty()) {
         // Later directories win, so the user's own thumbnailers override the
@@ -320,7 +339,7 @@ QImage Thumbnails::generate(const QString &path, const QString &mime, int pixels
     // CUPS) draws the first page.
     if (mime == "application/pdf" && !QStandardPaths::findExecutable("pdftoppm").isEmpty()) {
         attempted = true;
-        return pdfPage(path, pixels);
+        return pdfPage(path, pixels, m_patience);
     }
     return {};
 }
@@ -372,19 +391,13 @@ QImage Thumbnails::textPage(const QString &path, int pixels, const QColor &paper
     return page;
 }
 
-QImage Thumbnails::pdfPage(const QString &path, int pixels) {
+QImage Thumbnails::pdfPage(const QString &path, int pixels, int patience) {
     QTemporaryDir scratch;
     if (!scratch.isValid())
         return {};
     QProcess process;
-    process.start("pdftoppm", {"-f", "1", "-l", "1", "-singlefile", "-png", "-scale-to", QString::number(pixels),
-                               path, scratch.filePath("page")});
-    if (!process.waitForFinished(15000)) {
-        process.kill();
-        process.waitForFinished(1000);
-        return {};
-    }
-    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0)
+    if (!run(process, "pdftoppm", {"-f", "1", "-l", "1", "-singlefile", "-png", "-scale-to",
+                                   QString::number(pixels), path, scratch.filePath("page")}, patience))
         return {};
     return QImage(scratch.filePath("page.png"));
 }
@@ -416,14 +429,7 @@ QImage Thumbnails::runThumbnailer(const QString &command, const QString &path, i
 
     QProcess process;
     process.setProcessChannelMode(QProcess::ForwardedErrorChannel);
-    process.start(program, args);
-    // A broken file must never hang a tile forever.
-    if (!process.waitForFinished(15000)) {
-        process.kill();
-        process.waitForFinished(1000);
-        return {};
-    }
-    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0)
+    if (!run(process, program, args, m_patience))
         return {};
     return QImage(output);
 }

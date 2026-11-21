@@ -6905,6 +6905,28 @@ private slots:
         QVERIFY(QFile::exists(dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(dir.filePath("clip.mp4")))));
     }
 
+    void thumbnailsStopAThumbnailerWithWhatItStarted()
+    {
+        QTemporaryDir dir;
+        // The thumbnailer starts a helper of its own, notes the helper's number beside itself, and never ends.
+        const QString script = dir.filePath("hang.sh"), clip = dir.filePath("clip.mp4");
+        write(script, "sleep 300 &\necho $! > \"$0.helper\"\nwait\n");
+        write(dir.filePath("demo.thumbnailer"),
+              "[Thumbnailer Entry]\nExec=/bin/sh \"" + script.toUtf8() + "\" %i %o\nMimeType=video/mp4;\n");
+        write(clip, "not a video");
+        const Thumbnails thumbnails(dir.filePath("cache"), {dir.path()}, {}, 1000);
+        QVERIFY(thumbnails.load(clip, "video/mp4", 128).isNull());
+
+        // Past its time the helper is stopped as well.
+        QFile noted(script + ".helper");
+        QVERIFY(noted.open(QIODevice::ReadOnly));
+        const QString helper = QString::fromLatin1(noted.readAll()).trimmed();
+        QVERIFY(helper.toInt() > 0);
+        QTRY_VERIFY(ended(helper.toInt()));
+        // A file its thumbnailer hangs on is held back like any other it fails on.
+        QVERIFY(QFile::exists(dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(clip))));
+    }
+
     void thumbnailsHandAThumbnailerANameThatHoldsACode()
     {
         QTemporaryDir dir;
