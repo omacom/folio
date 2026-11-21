@@ -80,6 +80,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "সংকুচিত করতে libarchive প্যাকেজের bsdtar প্রয়োজন।",
   "Computer": "কম্পিউটার",
   "Connect": "সংযোগ করুন",
+  "Connect as Guest": "অতিথি হিসেবে সংযোগ করুন",
   "Connecting to %1…": "%1-এ সংযোগ করা হচ্ছে…",
   "Copied %1, but couldn't remove the original.": "%1 কপি হয়েছে, তবে মূলটি সরানো যায়নি।",
   "Copy": "কপি করুন",
@@ -152,6 +153,7 @@
     "one": "অন্য %Lnটি সংঘাতের ক্ষেত্রেও এটি করুন",
     "other": "অন্য %Lnটি সংঘাতের ক্ষেত্রেও এটি করুন"
   },
+  "Domain or workgroup": "ডোমেইন বা ওয়ার্কগ্রুপ",
   "Drives can't be changed without udisks2.": "udisks2 ছাড়া ড্রাইভ বদলানো যায় না।",
   "Drop to pin": "পিন করতে ছাড়ুন",
   "Duplicate": "প্রতিলিপি করুন",
@@ -320,6 +322,7 @@
   },
   "Redoing…": "আবার করা হচ্ছে…",
   "Reload": "আবার লোড করুন",
+  "Remember the password in the keyring": "কিরিং-এ পাসওয়ার্ড মনে রাখুন",
   "Remove from the sidebar": "সাইডবার থেকে সরান",
   "Rename": "নাম পরিবর্তন করুন",
   "Rename…": "নাম পরিবর্তন করুন…",

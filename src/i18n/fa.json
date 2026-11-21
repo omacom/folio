@@ -80,6 +80,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "برای فشرده‌سازی به bsdtar از بستهٔ libarchive نیاز است.",
   "Computer": "رایانه",
   "Connect": "اتصال",
+  "Connect as Guest": "اتصال به‌عنوان مهمان",
   "Connecting to %1…": "در حال اتصال به %1…",
   "Copied %1, but couldn't remove the original.": "%1 کپی شد، اما اصل آن حذف نشد.",
   "Copy": "کپی",
@@ -152,6 +153,7 @@
     "one": "برای %Ln تداخل دیگر هم همین کار را انجام دهید",
     "other": "برای %Ln تداخل دیگر هم همین کار را انجام دهید"
   },
+  "Domain or workgroup": "دامنه یا گروه کاری",
   "Drives can't be changed without udisks2.": "بدون udisks2 نمی‌توان درایوها را تغییر داد.",
   "Drop to pin": "برای سنجاق کردن رها کنید",
   "Duplicate": "تکثیر",
@@ -320,6 +322,7 @@
   },
   "Redoing…": "در حال بازانجام…",
   "Reload": "بارگذاری مجدد",
+  "Remember the password in the keyring": "به‌خاطر سپردن گذرواژه در حلقه‌کلید",
   "Remove from the sidebar": "حذف از نوار کناری",
   "Rename": "تغییر نام",
   "Rename…": "تغییر نام…",

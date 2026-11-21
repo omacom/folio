@@ -80,6 +80,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "Pakkaaminen vaatii bsdtar-ohjelman libarchive-paketista.",
   "Computer": "Tietokone",
   "Connect": "Yhdistä",
+  "Connect as Guest": "Yhdistä vieraana",
   "Connecting to %1…": "Yhdistetään kohteeseen %1…",
   "Copied %1, but couldn't remove the original.": "%1 kopioitiin, mutta alkuperäistä ei voitu poistaa.",
   "Copy": "Kopioi",
@@ -152,6 +153,7 @@
     "one": "Tee sama myös %Ln muulle ristiriidalle",
     "other": "Tee sama myös %Ln muille ristiriidoille"
   },
+  "Domain or workgroup": "Toimialue tai työryhmä",
   "Drives can't be changed without udisks2.": "Asemia ei voi muuttaa ilman udisks2:ta.",
   "Drop to pin": "Pudota kiinnittääksesi",
   "Duplicate": "Monista",
@@ -320,6 +322,7 @@
   },
   "Redoing…": "Tehdään uudelleen…",
   "Reload": "Lataa uudelleen",
+  "Remember the password in the keyring": "Muista salasana avainnipussa",
   "Remove from the sidebar": "Poista sivupalkista",
   "Rename": "Nimeä uudelleen",
   "Rename…": "Nimeä uudelleen…",

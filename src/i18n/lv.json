@@ -83,6 +83,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "Saspiešanai nepieciešams bsdtar no libarchive pakotnes.",
   "Computer": "Dators",
   "Connect": "Savienoties",
+  "Connect as Guest": "Pieslēgties kā viesim",
   "Connecting to %1…": "Savienojas ar %1…",
   "Copied %1, but couldn't remove the original.": "Nokopēts %1, bet neizdevās noņemt oriģinālu.",
   "Copy": "Kopēt",
@@ -161,6 +162,7 @@
     "one": "Tāpat rīkoties ar pārējo %Ln konfliktu",
     "other": "Tāpat rīkoties ar pārējiem %Ln konfliktiem"
   },
+  "Domain or workgroup": "Domēns vai darba grupa",
   "Drives can't be changed without udisks2.": "Diskus nevar mainīt bez udisks2.",
   "Drop to pin": "Nometiet, lai piespraustu",
   "Duplicate": "Dublēt",
@@ -344,6 +346,7 @@
   },
   "Redoing…": "Atkārto…",
   "Reload": "Pārlādēt",
+  "Remember the password in the keyring": "Atcerēties paroli atslēgu saišķī",
   "Remove from the sidebar": "Noņemt no sānjoslas",
   "Rename": "Pārdēvēt",
   "Rename…": "Pārdēvēt…",

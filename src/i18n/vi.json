@@ -77,6 +77,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "Việc nén cần bsdtar, từ gói libarchive.",
   "Computer": "Máy tính",
   "Connect": "Kết nối",
+  "Connect as Guest": "Kết nối với tư cách khách",
   "Connecting to %1…": "Đang kết nối tới %1…",
   "Copied %1, but couldn't remove the original.": "Đã sao chép %1, nhưng không thể xóa bản gốc.",
   "Copy": "Sao chép",
@@ -143,6 +144,7 @@
   "Do this for the other %Ln clashes": {
     "other": "Áp dụng cho %Ln xung đột còn lại"
   },
+  "Domain or workgroup": "Miền hoặc nhóm làm việc",
   "Drives can't be changed without udisks2.": "Không thể thay đổi ổ đĩa khi không có udisks2.",
   "Drop to pin": "Thả để ghim",
   "Duplicate": "Tạo bản sao",
@@ -296,6 +298,7 @@
   },
   "Redoing…": "Đang làm lại…",
   "Reload": "Tải lại",
+  "Remember the password in the keyring": "Ghi nhớ mật khẩu trong vòng khóa",
   "Remove from the sidebar": "Xóa khỏi thanh bên",
   "Rename": "Đổi tên",
   "Rename…": "Đổi tên…",

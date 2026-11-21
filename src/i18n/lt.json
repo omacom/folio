@@ -83,6 +83,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "Suspaudimui reikia bsdtar iš libarchive paketo.",
   "Computer": "Kompiuteris",
   "Connect": "Prisijungti",
+  "Connect as Guest": "Prisijungti kaip svečias",
   "Connecting to %1…": "Jungiamasi prie %1…",
   "Copied %1, but couldn't remove the original.": "Nukopijuota %1, bet nepavyko pašalinti originalo.",
   "Copy": "Kopijuoti",
@@ -161,6 +162,7 @@
     "few": "Daryti tą patį ir likusių %Ln konfliktų atveju",
     "other": "Daryti tą patį ir likusių %Ln konfliktų atveju"
   },
+  "Domain or workgroup": "Domenas arba darbo grupė",
   "Drives can't be changed without udisks2.": "Diskų negalima keisti be udisks2.",
   "Drop to pin": "Numeskite, kad prisegtumėte",
   "Duplicate": "Dubliuoti",
@@ -344,6 +346,7 @@
   },
   "Redoing…": "Pakartojama…",
   "Reload": "Atnaujinti",
+  "Remember the password in the keyring": "Įsiminti slaptažodį raktinėje",
   "Remove from the sidebar": "Pašalinti iš šoninės juostos",
   "Rename": "Pervadinti",
   "Rename…": "Pervadinti…",

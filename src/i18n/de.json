@@ -80,6 +80,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "Zum Komprimieren wird bsdtar aus dem Paket libarchive benötigt.",
   "Computer": "Rechner",
   "Connect": "Verbinden",
+  "Connect as Guest": "Als Gast verbinden",
   "Connecting to %1…": "Verbindung mit %1 wird hergestellt…",
   "Copied %1, but couldn't remove the original.": "%1 wurde kopiert, aber das Original konnte nicht entfernt werden.",
   "Copy": "Kopieren",
@@ -152,6 +153,7 @@
     "one": "Auch für den anderen Konflikt anwenden",
     "other": "Auch für die anderen %Ln Konflikte anwenden"
   },
+  "Domain or workgroup": "Domäne oder Arbeitsgruppe",
   "Drives can't be changed without udisks2.": "Laufwerke können ohne udisks2 nicht geändert werden.",
   "Drop to pin": "Zum Anheften ablegen",
   "Duplicate": "Duplizieren",
@@ -320,6 +322,7 @@
   },
   "Redoing…": "Wird wiederholt…",
   "Reload": "Neu laden",
+  "Remember the password in the keyring": "Passwort im Schlüsselbund speichern",
   "Remove from the sidebar": "Aus Seitenleiste entfernen",
   "Rename": "Umbenennen",
   "Rename…": "Umbenennen…",

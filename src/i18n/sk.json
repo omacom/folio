@@ -83,6 +83,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "Komprimovanie vyžaduje bsdtar z balíka libarchive.",
   "Computer": "Počítač",
   "Connect": "Pripojiť",
+  "Connect as Guest": "Pripojiť ako hosť",
   "Connecting to %1…": "Pripájanie k %1…",
   "Copied %1, but couldn't remove the original.": "%1 bolo skopírované, ale nepodarilo sa odstrániť pôvodné.",
   "Copy": "Kopírovať",
@@ -161,6 +162,7 @@
     "few": "Toto urobiť aj pre ostatné %Ln konflikty",
     "other": "Toto urobiť aj pre ostatné %Ln konflikty"
   },
+  "Domain or workgroup": "Doména alebo pracovná skupina",
   "Drives can't be changed without udisks2.": "Jednotky nie je možné upravovať bez udisks2.",
   "Drop to pin": "Pustiť na pripnutie",
   "Duplicate": "Duplikovať",
@@ -344,6 +346,7 @@
   },
   "Redoing…": "Zopakovávanie…",
   "Reload": "Znova načítať",
+  "Remember the password in the keyring": "Zapamätať si heslo v kľúčenke",
   "Remove from the sidebar": "Odstrániť z bočného panela",
   "Rename": "Premenovať",
   "Rename…": "Premenovať…",

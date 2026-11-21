@@ -80,6 +80,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "சுருக்குவதற்கு libarchive தொகுப்பிலிருந்து bsdtar தேவை.",
   "Computer": "கணினி",
   "Connect": "இணை",
+  "Connect as Guest": "விருந்தினராக இணை",
   "Connecting to %1…": "%1 உடன் இணைக்கிறது…",
   "Copied %1, but couldn't remove the original.": "%1 ஐ நகலெடுத்துவிட்டது, ஆனால் அசலை நீக்க முடியவில்லை.",
   "Copy": "நகலெடு",
@@ -152,6 +153,7 @@
     "one": "மற்ற ஒரு மோதலுக்கும் இதையே செய்",
     "other": "மற்ற %Ln மோதல்களுக்கும் இதையே செய்"
   },
+  "Domain or workgroup": "களம் அல்லது பணிக்குழு",
   "Drives can't be changed without udisks2.": "udisks2 இல்லாமல் இயக்ககங்களை மாற்ற முடியாது.",
   "Drop to pin": "பின் செய்ய விடு",
   "Duplicate": "நகலாக்கு",
@@ -320,6 +322,7 @@
   },
   "Redoing…": "மீண்டும் செய்கிறது…",
   "Reload": "மீண்டும் ஏற்று",
+  "Remember the password in the keyring": "கடவுச்சொல்லை விசைவளையத்தில் நினைவில் வை",
   "Remove from the sidebar": "பக்கப்பட்டியிலிருந்து நீக்கு",
   "Rename": "மறுபெயரிடு",
   "Rename…": "மறுபெயரிடு…",

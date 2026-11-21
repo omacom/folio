@@ -80,6 +80,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "Компресирането изисква bsdtar от пакета libarchive.",
   "Computer": "Компютър",
   "Connect": "Свържи се",
+  "Connect as Guest": "Свързване като гост",
   "Connecting to %1…": "Свързване с %1…",
   "Copied %1, but couldn't remove the original.": "%1 се копира, но оригиналът не може да се премахне.",
   "Copy": "Копирай",
@@ -152,6 +153,7 @@
     "one": "Направи това и за другия %Ln конфликт",
     "other": "Направи това и за другите %Ln конфликта"
   },
+  "Domain or workgroup": "Домейн или работна група",
   "Drives can't be changed without udisks2.": "Устройствата не могат да се променят без udisks2.",
   "Drop to pin": "Пусни, за да закрепиш",
   "Duplicate": "Дублирай",
@@ -320,6 +322,7 @@
   },
   "Redoing…": "Повтаряне…",
   "Reload": "Презареди",
+  "Remember the password in the keyring": "Запомни паролата в ключодържателя",
   "Remove from the sidebar": "Премахни от страничната лента",
   "Rename": "Преименувай",
   "Rename…": "Преименувай…",

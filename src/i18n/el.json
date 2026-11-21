@@ -80,6 +80,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "Η συμπίεση απαιτεί το bsdtar, από το πακέτο libarchive.",
   "Computer": "Υπολογιστής",
   "Connect": "Σύνδεση",
+  "Connect as Guest": "Σύνδεση ως επισκέπτης",
   "Connecting to %1…": "Σύνδεση στο %1…",
   "Copied %1, but couldn't remove the original.": "Το %1 αντιγράφηκε, αλλά δεν ήταν δυνατή η αφαίρεση του αρχικού.",
   "Copy": "Αντιγραφή",
@@ -152,6 +153,7 @@
     "one": "Να γίνει το ίδιο και για την άλλη σύγκρουση",
     "other": "Να γίνει το ίδιο και για τις άλλες %Ln συγκρούσεις"
   },
+  "Domain or workgroup": "Τομέας ή ομάδα εργασίας",
   "Drives can't be changed without udisks2.": "Δεν είναι δυνατή η αλλαγή μονάδων δίσκου χωρίς το udisks2.",
   "Drop to pin": "Απόθεση για καρφίτσωμα",
   "Duplicate": "Δημιουργία αντιγράφου",
@@ -320,6 +322,7 @@
   },
   "Redoing…": "Επανάληψη…",
   "Reload": "Επαναφόρτωση",
+  "Remember the password in the keyring": "Απομνημόνευση κωδικού πρόσβασης στην κλειδοθήκη",
   "Remove from the sidebar": "Αφαίρεση από την πλευρική γραμμή",
   "Rename": "Μετονομασία",
   "Rename…": "Μετονομασία…",

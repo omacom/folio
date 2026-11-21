@@ -80,6 +80,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "Til að þjappa þarf bsdtar, úr libarchive pakkanum.",
   "Computer": "Tölva",
   "Connect": "Tengjast",
+  "Connect as Guest": "Tengjast sem gestur",
   "Connecting to %1…": "Tengist %1…",
   "Copied %1, but couldn't remove the original.": "Afritaði %1, en gat ekki fjarlægt frumritið.",
   "Copy": "Afrita",
@@ -152,6 +153,7 @@
     "one": "Gera þetta fyrir hinn %Ln árekstur",
     "other": "Gera þetta fyrir hina %Ln árekstra"
   },
+  "Domain or workgroup": "Lén eða vinnuhópur",
   "Drives can't be changed without udisks2.": "Ekki er hægt að breyta drifum án udisks2.",
   "Drop to pin": "Slepptu til að festa",
   "Duplicate": "Tvöfalda",
@@ -320,6 +322,7 @@
   },
   "Redoing…": "Endurgerir…",
   "Reload": "Endurhlaða",
+  "Remember the password in the keyring": "Muna lykilorðið í lyklakippunni",
   "Remove from the sidebar": "Fjarlægja af hliðarstiku",
   "Rename": "Endurnefna",
   "Rename…": "Endurnefna…",

@@ -83,6 +83,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "Za sažimanje je potreban bsdtar iz paketa libarchive.",
   "Computer": "Računalo",
   "Connect": "Poveži se",
+  "Connect as Guest": "Poveži se kao gost",
   "Connecting to %1…": "Povezivanje s %1…",
   "Copied %1, but couldn't remove the original.": "%1 je kopiran, ali izvornik nije moguće ukloniti.",
   "Copy": "Kopiraj",
@@ -161,6 +162,7 @@
     "few": "Učini isto i za ostala %Ln sukoba",
     "other": "Učini isto i za ostalih %Ln sukoba"
   },
+  "Domain or workgroup": "Domena ili radna grupa",
   "Drives can't be changed without udisks2.": "Pogone nije moguće mijenjati bez udisks2.",
   "Drop to pin": "Ispusti za prikvačivanje",
   "Duplicate": "Dupliciraj",
@@ -344,6 +346,7 @@
   },
   "Redoing…": "Ponavljanje…",
   "Reload": "Ponovno učitaj",
+  "Remember the password in the keyring": "Zapamti lozinku u privjesku za ključeve",
   "Remove from the sidebar": "Ukloni s bočne trake",
   "Rename": "Preimenuj",
   "Rename…": "Preimenuj…",

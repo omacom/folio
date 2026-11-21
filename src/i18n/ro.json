@@ -83,6 +83,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "Comprimarea necesită bsdtar, din pachetul libarchive.",
   "Computer": "Computer",
   "Connect": "Conectează-te",
+  "Connect as Guest": "Conectează-te ca invitat",
   "Connecting to %1…": "Se conectează la %1…",
   "Copied %1, but couldn't remove the original.": "%1 a fost copiat, dar originalul nu a putut fi eliminat.",
   "Copy": "Copiază",
@@ -161,6 +162,7 @@
     "few": "Fă la fel pentru celelalte %Ln conflicte",
     "other": "Fă la fel pentru celelalte %Ln de conflicte"
   },
+  "Domain or workgroup": "Domeniu sau grup de lucru",
   "Drives can't be changed without udisks2.": "Unitățile nu pot fi modificate fără udisks2.",
   "Drop to pin": "Eliberează pentru a fixa",
   "Duplicate": "Duplică",
@@ -344,6 +346,7 @@
   },
   "Redoing…": "Se reface…",
   "Reload": "Reîncarcă",
+  "Remember the password in the keyring": "Memorează parola în inelul de chei",
   "Remove from the sidebar": "Elimină din bara laterală",
   "Rename": "Redenumește",
   "Rename…": "Redenumește…",

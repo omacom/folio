@@ -80,6 +80,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "Komprimering kräver bsdtar, från paketet libarchive.",
   "Computer": "Dator",
   "Connect": "Anslut",
+  "Connect as Guest": "Anslut som gäst",
   "Connecting to %1…": "Ansluter till %1…",
   "Copied %1, but couldn't remove the original.": "Kopierade %1, men kunde inte ta bort originalet.",
   "Copy": "Kopiera",
@@ -152,6 +153,7 @@
     "one": "Gör detta för %Ln annan konflikt",
     "other": "Gör detta för %Ln andra konflikter"
   },
+  "Domain or workgroup": "Domän eller arbetsgrupp",
   "Drives can't be changed without udisks2.": "Enheter kan inte ändras utan udisks2.",
   "Drop to pin": "Släpp för att fästa",
   "Duplicate": "Duplicera",
@@ -320,6 +322,7 @@
   },
   "Redoing…": "Gör om…",
   "Reload": "Ladda om",
+  "Remember the password in the keyring": "Kom ihåg lösenordet i nyckelringen",
   "Remove from the sidebar": "Ta bort från sidofältet",
   "Rename": "Byt namn",
   "Rename…": "Byt namn…",

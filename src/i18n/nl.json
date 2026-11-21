@@ -80,6 +80,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "Comprimeren vereist bsdtar uit het libarchive-pakket.",
   "Computer": "Computer",
   "Connect": "Verbinden",
+  "Connect as Guest": "Verbinden als gast",
   "Connecting to %1…": "Verbinden met %1…",
   "Copied %1, but couldn't remove the original.": "%1 is gekopieerd, maar het origineel kon niet worden verwijderd.",
   "Copy": "Kopiëren",
@@ -152,6 +153,7 @@
     "one": "Doe dit voor de andere %Ln botsing",
     "other": "Doe dit voor de andere %Ln botsingen"
   },
+  "Domain or workgroup": "Domein of werkgroep",
   "Drives can't be changed without udisks2.": "Zonder udisks2 kunnen stations niet worden gewijzigd.",
   "Drop to pin": "Loslaten om vast te zetten",
   "Duplicate": "Dupliceren",
@@ -320,6 +322,7 @@
   },
   "Redoing…": "Opnieuw uitvoeren…",
   "Reload": "Opnieuw laden",
+  "Remember the password in the keyring": "Wachtwoord onthouden in de sleutelbos",
   "Remove from the sidebar": "Uit zijbalk verwijderen",
   "Rename": "Hernoemen",
   "Rename…": "Hernoemen…",

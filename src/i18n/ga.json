@@ -89,6 +89,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "Teastaíonn bsdtar, ón bpacáiste libarchive, chun comhbhrú.",
   "Computer": "Ríomhaire",
   "Connect": "Ceangail",
+  "Connect as Guest": "Ceangail mar aoi",
   "Connecting to %1…": "Ag ceangal le %1…",
   "Copied %1, but couldn't remove the original.": "Cóipeáladh %1, ach níorbh fhéidir an bunleagan a bhaint.",
   "Copy": "Cóipeáil",
@@ -179,6 +180,7 @@
     "many": "Cuir é seo i bhfeidhm ar %Ln gcoimhlint eile",
     "other": "Cuir é seo i bhfeidhm ar %Ln coimhlintí eile"
   },
+  "Domain or workgroup": "Fearann nó grúpa oibre",
   "Drives can't be changed without udisks2.": "Ní féidir tiomántáin a athrú gan udisks2.",
   "Drop to pin": "Scaoil chun pionnáil",
   "Duplicate": "Dúblaigh",
@@ -392,6 +394,7 @@
   },
   "Redoing…": "Ag athdhéanamh…",
   "Reload": "Athlódáil",
+  "Remember the password in the keyring": "Cuimhnigh an pasfhocal san fháinne eochracha",
   "Remove from the sidebar": "Bain ón mbarra taoibh",
   "Rename": "Athainmnigh",
   "Rename…": "Athainmnigh…",

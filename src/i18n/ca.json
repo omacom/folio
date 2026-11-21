@@ -83,6 +83,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "Per comprimir cal bsdtar, del paquet libarchive.",
   "Computer": "Ordinador",
   "Connect": "Connecta",
+  "Connect as Guest": "Connecta't com a convidat",
   "Connecting to %1…": "S'està connectant a %1…",
   "Copied %1, but couldn't remove the original.": "S'ha copiat %1, però no s'ha pogut eliminar l'original.",
   "Copy": "Copia",
@@ -161,6 +162,7 @@
     "many": "Fes això mateix amb els altres %Ln conflictes",
     "other": "Fes això mateix amb els altres %Ln conflictes"
   },
+  "Domain or workgroup": "Domini o grup de treball",
   "Drives can't be changed without udisks2.": "Les unitats no es poden modificar sense udisks2.",
   "Drop to pin": "Deixa anar per fixar",
   "Duplicate": "Duplica",
@@ -344,6 +346,7 @@
   },
   "Redoing…": "S'està refent…",
   "Reload": "Recarrega",
+  "Remember the password in the keyring": "Recorda la contrasenya a l'anell de claus",
   "Remove from the sidebar": "Treu de la barra lateral",
   "Rename": "Reanomena",
   "Rename…": "Reanomena…",

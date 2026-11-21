@@ -80,6 +80,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "සම්පීඩනයට libarchive පැකේජයේ bsdtar අවශ්‍යයි.",
   "Computer": "පරිගණකය",
   "Connect": "සම්බන්ධ වන්න",
+  "Connect as Guest": "අමුත්තා ලෙස සම්බන්ධ වන්න",
   "Connecting to %1…": "%1 වෙත සම්බන්ධ වෙමින්…",
   "Copied %1, but couldn't remove the original.": "%1 පිටපත් කළා, නමුත් මුල් පිටපත ඉවත් කළ නොහැකි විය.",
   "Copy": "පිටපත් කරන්න",
@@ -152,6 +153,7 @@
     "one": "අනෙක් %Ln ගැටුමටද මෙය කරන්න",
     "other": "අනෙක් %Ln ගැටුම්වලටද මෙය කරන්න"
   },
+  "Domain or workgroup": "වසම හෝ වැඩ කණ්ඩායම",
   "Drives can't be changed without udisks2.": "udisks2 නොමැතිව ධාවක වෙනස් කළ නොහැකියි.",
   "Drop to pin": "අමුණන්න දාන්න",
   "Duplicate": "අනුපිටපත් කරන්න",
@@ -320,6 +322,7 @@
   },
   "Redoing…": "නැවත කරමින්…",
   "Reload": "නැවත පූරණය කරන්න",
+  "Remember the password in the keyring": "යතුරු මුදුව තුළ මුරපදය මතක තබා ගන්න",
   "Remove from the sidebar": "පැති තීරුවෙන් ඉවත් කරන්න",
   "Rename": "නම වෙනස් කරන්න",
   "Rename…": "නම වෙනස් කරන්න…",

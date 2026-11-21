@@ -80,6 +80,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "Kailangan ang bsdtar, mula sa paketeng libarchive, para mag-compress.",
   "Computer": "Computer",
   "Connect": "Kumonekta",
+  "Connect as Guest": "Kumonekta bilang Bisita",
   "Connecting to %1…": "Kumokonekta sa %1…",
   "Copied %1, but couldn't remove the original.": "Nakopya ang %1, pero hindi natanggal ang orihinal.",
   "Copy": "Kopyahin",
@@ -152,6 +153,7 @@
     "one": "Gawin ito para sa isa pang clash",
     "other": "Gawin ito para sa iba pang %Ln clash"
   },
+  "Domain or workgroup": "Domain o workgroup",
   "Drives can't be changed without udisks2.": "Hindi mababago ang mga drive nang walang udisks2.",
   "Drop to pin": "I-drop para i-pin",
   "Duplicate": "I-duplicate",
@@ -320,6 +322,7 @@
   },
   "Redoing…": "Inuulit…",
   "Reload": "I-reload",
+  "Remember the password in the keyring": "Tandaan ang password sa keyring",
   "Remove from the sidebar": "Alisin sa sidebar",
   "Rename": "Palitan ang pangalan",
   "Rename…": "Palitan ang pangalan…",

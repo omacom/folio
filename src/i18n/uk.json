@@ -86,6 +86,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "Для стиснення потрібен bsdtar із пакета libarchive.",
   "Computer": "Комп’ютер",
   "Connect": "Підключитися",
+  "Connect as Guest": "Підключитися як гість",
   "Connecting to %1…": "Підключення до %1…",
   "Copied %1, but couldn't remove the original.": "Скопійовано %1, але не вдалося видалити оригінал.",
   "Copy": "Копіювати",
@@ -170,6 +171,7 @@
     "many": "Зробити так само для інших %Ln конфліктів",
     "other": "Зробити так само для іншого %Ln конфлікту"
   },
+  "Domain or workgroup": "Домен або робоча група",
   "Drives can't be changed without udisks2.": "Диски не можна змінювати без udisks2.",
   "Drop to pin": "Відпустіть, щоб закріпити",
   "Duplicate": "Дублювати",
@@ -368,6 +370,7 @@
   },
   "Redoing…": "Повторення…",
   "Reload": "Перезавантажити",
+  "Remember the password in the keyring": "Запам'ятати пароль у в'язці ключів",
   "Remove from the sidebar": "Вилучити з бічної панелі",
   "Rename": "Перейменувати",
   "Rename…": "Перейменувати…",

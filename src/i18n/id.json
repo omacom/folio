@@ -77,6 +77,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "Mengompres memerlukan bsdtar, dari paket libarchive.",
   "Computer": "Komputer",
   "Connect": "Sambungkan",
+  "Connect as Guest": "Hubungkan sebagai Tamu",
   "Connecting to %1…": "Menyambungkan ke %1…",
   "Copied %1, but couldn't remove the original.": "%1 disalin, tetapi aslinya tidak dapat dihapus.",
   "Copy": "Salin",
@@ -143,6 +144,7 @@
   "Do this for the other %Ln clashes": {
     "other": "Lakukan ini untuk %Ln konflik lainnya"
   },
+  "Domain or workgroup": "Domain atau grup kerja",
   "Drives can't be changed without udisks2.": "Drive tidak dapat diubah tanpa udisks2.",
   "Drop to pin": "Lepaskan untuk menyematkan",
   "Duplicate": "Gandakan",
@@ -296,6 +298,7 @@
   },
   "Redoing…": "Mengulangi…",
   "Reload": "Muat Ulang",
+  "Remember the password in the keyring": "Ingat kata sandi di keyring",
   "Remove from the sidebar": "Hapus dari bilah sisi",
   "Rename": "Ganti Nama",
   "Rename…": "Ganti Nama…",

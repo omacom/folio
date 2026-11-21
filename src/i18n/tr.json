@@ -80,6 +80,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "Sıkıştırmak için libarchive paketinden bsdtar gerekir.",
   "Computer": "Bilgisayar",
   "Connect": "Bağlan",
+  "Connect as Guest": "Misafir olarak bağlan",
   "Connecting to %1…": "%1'e bağlanılıyor…",
   "Copied %1, but couldn't remove the original.": "%1 kopyalandı ancak aslı silinemedi.",
   "Copy": "Kopyala",
@@ -152,6 +153,7 @@
     "one": "Bunu diğer %Ln çakışma için de yap",
     "other": "Bunu diğer %Ln çakışma için de yap"
   },
+  "Domain or workgroup": "Etki alanı veya çalışma grubu",
   "Drives can't be changed without udisks2.": "Sürücüler udisks2 olmadan değiştirilemez.",
   "Drop to pin": "Sabitlemek için bırak",
   "Duplicate": "Çoğalt",
@@ -320,6 +322,7 @@
   },
   "Redoing…": "Yineleniyor…",
   "Reload": "Yeniden Yükle",
+  "Remember the password in the keyring": "Parolayı anahtarlıkta hatırla",
   "Remove from the sidebar": "Kenar çubuğundan kaldır",
   "Rename": "Yeniden Adlandır",
   "Rename…": "Yeniden Adlandır…",

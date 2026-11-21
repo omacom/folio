@@ -80,6 +80,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "संपीड़ित करने के लिए libarchive पैकेज से bsdtar चाहिए।",
   "Computer": "कंप्यूटर",
   "Connect": "कनेक्ट करें",
+  "Connect as Guest": "अतिथि के रूप में कनेक्ट करें",
   "Connecting to %1…": "%1 से कनेक्ट किया जा रहा है…",
   "Copied %1, but couldn't remove the original.": "%1 कॉपी किया गया, लेकिन मूल को हटाया नहीं जा सका।",
   "Copy": "कॉपी करें",
@@ -152,6 +153,7 @@
     "one": "अन्य एक टकराव के लिए भी यही करें",
     "other": "अन्य %Ln टकरावों के लिए भी यही करें"
   },
+  "Domain or workgroup": "डोमेन या कार्यसमूह",
   "Drives can't be changed without udisks2.": "udisks2 के बिना ड्राइव नहीं बदले जा सकते।",
   "Drop to pin": "पिन करने के लिए छोड़ें",
   "Duplicate": "डुप्लिकेट बनाएँ",
@@ -320,6 +322,7 @@
   },
   "Redoing…": "फिर से किया जा रहा है…",
   "Reload": "फिर से लोड करें",
+  "Remember the password in the keyring": "कीरिंग में पासवर्ड याद रखें",
   "Remove from the sidebar": "साइडबार से हटाएँ",
   "Rename": "नाम बदलें",
   "Rename…": "नाम बदलें…",

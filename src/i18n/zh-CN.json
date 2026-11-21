@@ -77,6 +77,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "压缩需要 libarchive 软件包中的 bsdtar。",
   "Computer": "计算机",
   "Connect": "连接",
+  "Connect as Guest": "以访客身份连接",
   "Connecting to %1…": "正在连接到 %1…",
   "Copied %1, but couldn't remove the original.": "已复制 %1，但无法删除原项目。",
   "Copy": "复制",
@@ -143,6 +144,7 @@
   "Do this for the other %Ln clashes": {
     "other": "对其他 %Ln 个冲突也执行此操作"
   },
+  "Domain or workgroup": "域或工作组",
   "Drives can't be changed without udisks2.": "没有 udisks2，无法修改驱动器。",
   "Drop to pin": "放下以固定",
   "Duplicate": "创建副本",
@@ -296,6 +298,7 @@
   },
   "Redoing…": "正在重做…",
   "Reload": "重新加载",
+  "Remember the password in the keyring": "在密钥环中记住密码",
   "Remove from the sidebar": "从侧边栏移除",
   "Rename": "重命名",
   "Rename…": "重命名…",

@@ -80,6 +80,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "Kubana kunahitaji bsdtar, kutoka kwenye kifurushi cha libarchive.",
   "Computer": "Kompyuta",
   "Connect": "Unganisha",
+  "Connect as Guest": "Unganisha kama mgeni",
   "Connecting to %1…": "Inaunganisha kwenye %1…",
   "Copied %1, but couldn't remove the original.": "%1 imenakiliwa, lakini asili yake haikuweza kuondolewa.",
   "Copy": "Nakili",
@@ -152,6 +153,7 @@
     "one": "Fanya hivi kwa mgongano mwingine %Ln",
     "other": "Fanya hivi kwa migongano mingine %Ln"
   },
+  "Domain or workgroup": "Kikoa au kikundi cha kazi",
   "Drives can't be changed without udisks2.": "Viendeshi haviwezi kubadilishwa bila udisks2.",
   "Drop to pin": "Achia ili kubandika",
   "Duplicate": "Rudufu",
@@ -320,6 +322,7 @@
   },
   "Redoing…": "Inarudia…",
   "Reload": "Pakia upya",
+  "Remember the password in the keyring": "Kumbuka nenosiri kwenye mkusanyiko wa funguo",
   "Remove from the sidebar": "Ondoa kwenye upau wa pembeni",
   "Rename": "Badili jina",
   "Rename…": "Badili jina…",

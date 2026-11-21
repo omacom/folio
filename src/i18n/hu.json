@@ -80,6 +80,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "A tömörítéshez bsdtar szükséges a libarchive csomagból.",
   "Computer": "Számítógép",
   "Connect": "Csatlakozás",
+  "Connect as Guest": "Csatlakozás vendégként",
   "Connecting to %1…": "Csatlakozás ehhez: %1…",
   "Copied %1, but couldn't remove the original.": "%1 átmásolva, de az eredeti nem törölhető.",
   "Copy": "Másolás",
@@ -152,6 +153,7 @@
     "one": "Ugyanez a többi %Ln ütközésre is",
     "other": "Ugyanez a többi %Ln ütközésre is"
   },
+  "Domain or workgroup": "Tartomány vagy munkacsoport",
   "Drives can't be changed without udisks2.": "A meghajtók nem módosíthatók udisks2 nélkül.",
   "Drop to pin": "Ejtés a kitűzéshez",
   "Duplicate": "Duplikálás",
@@ -320,6 +322,7 @@
   },
   "Redoing…": "Újra végrehajtás…",
   "Reload": "Újratöltés",
+  "Remember the password in the keyring": "Jelszó megjegyzése a kulcstartóban",
   "Remove from the sidebar": "Eltávolítás az oldalsávról",
   "Rename": "Átnevezés",
   "Rename…": "Átnevezés…",

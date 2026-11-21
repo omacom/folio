@@ -80,6 +80,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "Tihendamiseks on vaja programmi bsdtar paketist libarchive.",
   "Computer": "Arvuti",
   "Connect": "Ühendu",
+  "Connect as Guest": "Ühendu külalisena",
   "Connecting to %1…": "Ühendamine serveriga %1…",
   "Copied %1, but couldn't remove the original.": "%1 kopeeriti, kuid originaali ei õnnestunud eemaldada.",
   "Copy": "Kopeeri",
@@ -152,6 +153,7 @@
     "one": "Tee sama ka ülejäänud %Ln konflikti korral",
     "other": "Tee sama ka ülejäänud %Ln konfliktide korral"
   },
+  "Domain or workgroup": "Domeen või töörühm",
   "Drives can't be changed without udisks2.": "Draive ei saa ilma udisks2-ta muuta.",
   "Drop to pin": "Lase lahti, et kinnitada",
   "Duplicate": "Dubleeri",
@@ -320,6 +322,7 @@
   },
   "Redoing…": "Uuesti tegemine…",
   "Reload": "Laadi uuesti",
+  "Remember the password in the keyring": "Salvesta parool võtmehoidjas",
   "Remove from the sidebar": "Eemalda külgribalt",
   "Rename": "Nimeta ümber",
   "Rename…": "Nimeta ümber…",

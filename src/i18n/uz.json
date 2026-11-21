@@ -80,6 +80,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "Siqish uchun libarchive paketidagi bsdtar kerak.",
   "Computer": "Kompyuter",
   "Connect": "Ulanish",
+  "Connect as Guest": "Mehmon sifatida ulanish",
   "Connecting to %1…": "%1ga ulanilmoqda…",
   "Copied %1, but couldn't remove the original.": "%1 nusxalandi, lekin aslini olib tashlab boʻlmadi.",
   "Copy": "Nusxalash",
@@ -152,6 +153,7 @@
     "one": "Buni qolgan %Ln ta toʻqnashuv uchun ham qoʻllash",
     "other": "Buni qolgan %Ln ta toʻqnashuv uchun ham qoʻllash"
   },
+  "Domain or workgroup": "Domen yoki ishchi guruh",
   "Drives can't be changed without udisks2.": "udisks2siz disklarni oʻzgartirib boʻlmaydi.",
   "Drop to pin": "Qadash uchun tashlang",
   "Duplicate": "Nusxa yaratish",
@@ -320,6 +322,7 @@
   },
   "Redoing…": "Qayta bajarilmoqda…",
   "Reload": "Qayta yuklash",
+  "Remember the password in the keyring": "Parolni kalitlar halqasida saqlash",
   "Remove from the sidebar": "Yon paneldan olib tashlash",
   "Rename": "Nomini oʻzgartirish",
   "Rename…": "Nomini oʻzgartirish…",

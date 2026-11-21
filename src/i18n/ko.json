@@ -77,6 +77,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "압축하려면 libarchive 패키지의 bsdtar가 필요합니다.",
   "Computer": "컴퓨터",
   "Connect": "연결",
+  "Connect as Guest": "게스트로 연결",
   "Connecting to %1…": "%1에 연결 중…",
   "Copied %1, but couldn't remove the original.": "%1을(를) 복사했지만 원본을 제거하지 못했습니다.",
   "Copy": "복사",
@@ -143,6 +144,7 @@
   "Do this for the other %Ln clashes": {
     "other": "나머지 %Ln개 충돌에도 동일하게 적용"
   },
+  "Domain or workgroup": "도메인 또는 작업 그룹",
   "Drives can't be changed without udisks2.": "udisks2 없이는 드라이브를 변경할 수 없습니다.",
   "Drop to pin": "놓으면 핀으로 고정",
   "Duplicate": "복제",
@@ -296,6 +298,7 @@
   },
   "Redoing…": "다시 실행 중…",
   "Reload": "새로고침",
+  "Remember the password in the keyring": "키링에 비밀번호 저장",
   "Remove from the sidebar": "사이드바에서 제거",
   "Rename": "이름 바꾸기",
   "Rename…": "이름 바꾸기…",

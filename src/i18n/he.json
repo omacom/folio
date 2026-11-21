@@ -83,6 +83,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "לדחיסה נדרש bsdtar, מחבילת libarchive.",
   "Computer": "מחשב",
   "Connect": "התחברות",
+  "Connect as Guest": "התחברות כאורח",
   "Connecting to %1…": "מתחבר ל־%1…",
   "Copied %1, but couldn't remove the original.": "%1 הועתק, אך לא ניתן היה להסיר את המקור.",
   "Copy": "העתקה",
@@ -161,6 +162,7 @@
     "two": "לעשות זאת גם עבור שתי ההתנגשויות הנוספות",
     "other": "לעשות זאת גם עבור %Ln ההתנגשויות הנוספות"
   },
+  "Domain or workgroup": "דומיין או קבוצת עבודה",
   "Drives can't be changed without udisks2.": "לא ניתן לשנות כוננים ללא udisks2.",
   "Drop to pin": "שחרור להצמדה",
   "Duplicate": "שכפול",
@@ -344,6 +346,7 @@
   },
   "Redoing…": "מבצע שוב…",
   "Reload": "טעינה מחדש",
+  "Remember the password in the keyring": "לזכור את הסיסמה במחזיק המפתחות",
   "Remove from the sidebar": "הסרה מסרגל הצד",
   "Rename": "שינוי שם",
   "Rename…": "שינוי שם…",

@@ -80,6 +80,7 @@
   "Compressing needs bsdtar, from the libarchive package.": "Komprimering krever bsdtar, fra pakken libarchive.",
   "Computer": "Datamaskin",
   "Connect": "Koble til",
+  "Connect as Guest": "Koble til som gjest",
   "Connecting to %1…": "Kobler til %1…",
   "Copied %1, but couldn't remove the original.": "Kopierte %1, men kunne ikke fjerne originalen.",
   "Copy": "Kopier",
@@ -152,6 +153,7 @@
     "one": "Gjør dette for den andre %Ln konflikten",
     "other": "Gjør dette for de andre %Ln konfliktene"
   },
+  "Domain or workgroup": "Domene eller arbeidsgruppe",
   "Drives can't be changed without udisks2.": "Stasjoner kan ikke endres uten udisks2.",
   "Drop to pin": "Slipp for å feste",
   "Duplicate": "Dupliser",
@@ -320,6 +322,7 @@
   },
   "Redoing…": "Gjør om…",
   "Reload": "Last på nytt",
+  "Remember the password in the keyring": "Husk passordet i nøkkelringen",
   "Remove from the sidebar": "Fjern fra sidepanelet",
   "Rename": "Gi nytt navn",
   "Rename…": "Gi nytt navn…",
