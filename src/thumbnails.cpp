@@ -138,8 +138,12 @@ Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbna
                     fields.insert(line.section('=', 0, 0).trimmed(), line.section('=', 1).trimmed());
             }
             const QString exec = fields.value("Exec");
+            // The program Exec runs has to be installed, or a .thumbnailer
+            // file left behind would mark every file it was asked about failed.
+            const QStringList command = expandCommand(exec, {}, {}, 0);
             const QString tryExec = fields.value("TryExec");
-            if (exec.isEmpty() || (!tryExec.isEmpty() && QStandardPaths::findExecutable(tryExec).isEmpty()))
+            const auto missing = [](const QString &program) { return QStandardPaths::findExecutable(program).isEmpty(); };
+            if (command.isEmpty() || missing(command.first()) || (!tryExec.isEmpty() && missing(tryExec)))
                 continue;
             for (const QString &declared : fields.value("MimeType").split(';', Qt::SkipEmptyParts)) {
                 const QString mime = declared.trimmed();

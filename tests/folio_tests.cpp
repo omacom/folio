@@ -6895,6 +6895,9 @@ private slots:
         QTemporaryDir dir;
         write(dir.filePath("demo.thumbnailer"),
               "[Thumbnailer Entry]\nTryExec=/bin/sh\nExec=/bin/sh -c \"exit 1\" %i %o %s\nMimeType=video/mp4;video/webm;\n");
+        // One left behind by a program since removed is no thumbnailer.
+        write(dir.filePath("gone.thumbnailer"),
+              "[Thumbnailer Entry]\nExec=" + dir.filePath("no-such-program").toUtf8() + " %i %o\nMimeType=video/ogg;\n");
         Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
         QVERIFY(thumbnails.thumbnailerFor("video/webm").startsWith("/bin/sh"));
         QVERIFY(thumbnails.thumbnailerFor("video/ogg").isEmpty());
