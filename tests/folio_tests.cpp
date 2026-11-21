@@ -8573,7 +8573,7 @@ private slots:
                           "        const off = []\n"
                           "        for (let i = 0; i < grid.count; ++i) {\n"
                           "            if (!grid.itemAtIndex(i)) return 'no tile ' + i\n"
-                          "            const at = grid.itemAtIndex(i).mapToItem(band, 20, 12)\n"
+                          "            const at = grid.itemAtIndex(i).mapToItem(band, 14, 12)\n"
                           "            if (band.rectOf(i).x !== at.x || band.rectOf(i).y !== at.y)\n"
                           "                off.push(i + ': ' + band.rectOf(i).x + ',' + band.rectOf(i).y + ' not ' + at.x + ',' + at.y)\n"
                           "        }\n"
@@ -8613,7 +8613,7 @@ private slots:
         Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
         engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
         QQmlComponent component(&engine);
-        // Five columns of 200 by 192, each tile drawn at 20..180 across.
+        // Five columns of 200 by 192, each tile drawn at 14..186 across.
         component.setData("import QtQuick\n"
                           "Window { width: 1000; height: 600; visible: true\n"
                           "    FolderGrid { anchors.fill: parent } }\n",

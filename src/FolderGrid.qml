@@ -42,8 +42,8 @@ GridView {
         rectOf: (i) => {
             const c = i % grid.columns
             const x = grid.effectiveLayoutDirection === Qt.RightToLeft ? grid.width - (c + 1) * grid.cellWidth : c * grid.cellWidth
-            return Qt.rect(x + 20, Math.floor(i / grid.columns) * grid.cellHeight + 12,
-                           grid.cellWidth - 40, grid.cellHeight - 24)
+            return Qt.rect(x + 14, Math.floor(i / grid.columns) * grid.cellHeight + 12,
+                           grid.cellWidth - 28, grid.cellHeight - 24)
         }
     }
 

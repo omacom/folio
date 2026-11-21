@@ -146,9 +146,9 @@ Item {
     // Presses take only the picture and name, the area the band hits (see
     // FolderGrid): the padding around them is empty space to start a band.
     Item {
-        x: 20
+        x: 14
         y: 12
-        width: tile.width - 40
+        width: tile.width - 28
         height: tile.height - 24
 
         // A plugin's item isn't a file to hand anywhere.
