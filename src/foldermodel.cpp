@@ -418,12 +418,35 @@ struct SearchFilter {
     }
 
     bool matches(const QFileInfo &info) const {
-        const QString name = info.fileName();
-        if (!extensions.isEmpty() && (info.isDir() || !extensions.contains(info.suffix().toLower())))
+        return matches(info.fileName(), info.isDir(), info.suffix());
+    }
+
+    bool matches(const QString &name, bool isDir, const QString &suffix) const {
+        if (!extensions.isEmpty() && (isDir || !extensions.contains(suffix.toLower())))
             return false;
         return name.contains(text, Qt::CaseInsensitive);
     }
+
+    // Whether what this matches, `other` matches too: its text holds ours,
+    // and it takes no extension we don't (or we take any).
+    bool narrowedBy(const SearchFilter &other) const {
+        if (!other.text.contains(text, Qt::CaseInsensitive))
+            return false;
+        if (extensions.isEmpty())
+            return true;
+        if (other.extensions.isEmpty())
+            return false;
+        return std::all_of(other.extensions.begin(), other.extensions.end(),
+                           [&](const QString &ext) { return extensions.contains(ext); });
+    }
 };
+
+// How many matches a search of a folder shows before it stops looking.
+static constexpr int searchLimit = 1000;
+
+bool FolderModel::narrows(const QString &from, const QString &to) {
+    return SearchFilter(from).narrowedBy(SearchFilter(to));
+}
 
 QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QString &query, bool showHidden,
                                                 const QString &sort, const std::function<bool()> &stop,
@@ -681,6 +704,7 @@ void FolderModel::reload() {
         return;
     }
     m_shownQuery.clear();
+    m_complete = false;
     const auto latest = m_latest;
     auto *watcher = new QFutureWatcher<std::tuple<QVector<Entry>, QString, QStringList, QHash<QString, QVector<Entry>>, QHash<QString, QString>>>(this);
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation] {
@@ -907,6 +931,28 @@ void FolderModel::searchHere(quint64 generation) {
     const bool fresh = query != m_shownQuery;
     m_shownQuery = query;
     m_staleClear.stop();
+    // What's shown is all the previous search found, and this one only asks
+    // for less of it: keep what still matches, with no walk.
+    const QString key = path + QLatin1Char('\n') + (showHidden ? "h" : "") + QLatin1Char('\n') + filter.join(QLatin1Char('\n'));
+    if (fresh && m_complete && key == m_completeKey && narrows(m_completeQuery, query)) {
+        const SearchFilter wanted(query);
+        QVector<Entry> kept;
+        for (const Entry &e : std::as_const(m_entries))
+            if (wanted.matches(QFileInfo(e.path).fileName(), e.isDir, e.extension))
+                kept.push_back(e);
+        m_completeQuery = query;
+        setError({});
+        setEntries(kept);
+        QSet<QString> still;
+        for (const Entry &e : std::as_const(m_entries))
+            if (m_selected.contains(e.path))
+                still.insert(e.path);
+        setSelected(still);
+        setLoading(false);
+        emit loaded();
+        return;
+    }
+    m_complete = false;
     if (fresh)
         clearEntries();
     setError({});
@@ -923,7 +969,7 @@ void FolderModel::searchHere(quint64 generation) {
             emit loaded();
         }
     });
-    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, fresh, announced] {
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, fresh, announced, query, key] {
         watcher->deleteLater();
         if (generation != m_generation)
             return;
@@ -941,12 +987,17 @@ void FolderModel::searchHere(quint64 generation) {
                     still.insert(e.path);
             setSelected(still);
         }
+        // Unless it was cut short by the limit, this is all there is to
+        // narrow by a longer query.
+        m_complete = m_entries.size() < searchLimit;
+        m_completeQuery = query;
+        m_completeKey = key;
         setLoading(false);
         emit loaded();
         countFolders(generation);
     });
     watcher->setFuture(QtConcurrent::run(&FolderModel::listingPool(), [path, query, showHidden, sort, filter, locale, latest, generation](QPromise<QVector<Entry>> &promise) {
-        search(path, query, showHidden, sort, [&] { return *latest != generation; }, 1000, locale, filter,
+        search(path, query, showHidden, sort, [&] { return *latest != generation; }, searchLimit, locale, filter,
                [&](const QVector<Entry> &found) { promise.addResult(found); });
     }));
 }
