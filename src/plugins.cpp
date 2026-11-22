@@ -935,7 +935,7 @@ QString Plugins::perform(const QString &plugin, const QString &action, const QSt
 QVariantList Plugins::details(const QString &path, const QDateTime &modified) const {
     QVariantList rows;
     for (const Manifest &m : m_manifests)
-        rows << rowsOf(m, m_details.value(detailsKey(m.id, path, modified)));
+        rows << rowsOf(m, m_details.value(detailsKey(m.id, path, modified)).rows);
     return rows;
 }
 
@@ -944,8 +944,10 @@ bool Plugins::describe(const QString &path, const QString &mime, const QDateTime
     bool asking = false;
     for (const Manifest &m : std::as_const(m_manifests)) {
         const QString key = detailsKey(m.id, path, modified);
-        // An early answer is asked for again, and shown until the next comes.
-        const bool known = m_details.contains(key) && !m_askAgain.contains(key);
+        // An early answer is asked for again, and shown until the next
+        // comes, by everyone who shows the file and not only the first to ask.
+        const auto answer = m_details.constFind(key);
+        const bool known = answer != m_details.constEnd() && !answer->early;
         if (m.details.isEmpty() || known || !fits(m.detailsUnder, m.detailsTypes, path, mime))
             continue;
         asking = true;
@@ -960,8 +962,6 @@ bool Plugins::describe(const QString &path, const QString &mime, const QDateTime
 }
 
 void Plugins::ask(const Manifest &plugin, const QString &path, const QString &key) {
-    // Its plugin's state as it is now is what this run tells of.
-    m_askAgain.remove(key);
     auto *watcher = new QFutureWatcher<std::optional<Run>>(this);
     connect(watcher, &QFutureWatcherBase::finished, this,
             [this, watcher, id = plugin.id, path, key, generation = m_detailsGeneration] {
@@ -970,6 +970,9 @@ void Plugins::ask(const Manifest &plugin, const QString &path, const QString &ke
         // be older than the one that replaces it.
         if (generation != m_detailsGeneration)
             return;
+        // Its plugin's state changed while it ran, so it may have been too
+        // early to see the change.
+        const bool early = m_askAgain.remove(key);
         const std::optional<Run> run = watcher->result();
         if (!run) {
             // Its first caller moved on before its turn; the next, if any,
@@ -995,15 +998,14 @@ void Plugins::ask(const Manifest &plugin, const QString &path, const QString &ke
         // with every file ever looked at.
         if (m_details.size() >= 5000)
             m_details.clear();
-        m_details.insert(key, said.array());
+        m_details.insert(key, {said.array(), early});
         for (const Asker &asker : m_asking.take(key))
             asker.done();
-        // Its plugin's state changed while it ran, so it may have been too
-        // early to see the change. The answer is shown all the same, or a
-        // state that keeps changing would leave the file with none, and
-        // whoever still shows the file asks again; nobody does about a file
-        // they've left, until it's shown again.
-        if (m_askAgain.contains(key))
+        // An early answer is shown all the same, or a state that keeps
+        // changing would leave the file with none, and whoever still shows
+        // the file asks again; nobody does about a file they've left, until
+        // it's shown again.
+        if (early)
             emit detailsChanged();
     });
     // Stepping through files faster than they're answered for queues
@@ -1030,13 +1032,11 @@ void Plugins::forgetDetails(const QString &plugin) {
         return;
     }
     // One plugin's: a command still running is left to finish, and its
-    // answer marked as early. Dropping it each time would leave nothing to
+    // answer taken as early. Dropping it each time would leave nothing to
     // show while the plugin's state keeps changing.
-    const auto its = [&](const QString &key) { return key.startsWith(plugin + '\n'); };
-    m_details.removeIf([&](const auto &it) { return its(it.key()); });
-    m_askAgain.removeIf(its);
+    m_details.removeIf([&](const auto &it) { return it.key().startsWith(plugin + '\n'); });
     for (auto it = m_asking.cbegin(); it != m_asking.cend(); ++it)
-        if (its(it.key()))
+        if (it.key().startsWith(plugin + '\n'))
             m_askAgain.insert(it.key());
 }
 

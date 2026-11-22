@@ -264,17 +264,23 @@ private:
     // Plugins whose watch ended since it last printed a line.
     QSet<QString> m_failingWatch;
     QSet<QString> m_failing, m_failingDetails;
-    // What details commands printed, by plugin, path and modification time;
-    // who waits for those still running, the first deciding whether its
-    // command runs; those whose plugin's state changed while their command
-    // ran, so the answer came early and is asked for again by whoever still
-    // shows the file; and how often everything has been forgotten, so
-    // answers on their way then are dropped.
+    // What details commands printed, by plugin, path and modification time,
+    // and whether that came early: its plugin's state changed while the
+    // command ran, so it's shown until whoever shows the file has asked
+    // again and been answered. Then who waits for the commands still
+    // running, the first deciding whether its command runs; those of them
+    // whose plugin's state changed since they started; and how often
+    // everything has been forgotten, so answers on their way then are
+    // dropped.
+    struct Answer {
+        QJsonArray rows;
+        bool early = false;
+    };
     struct Asker {
         std::function<bool()> wanted;
         std::function<void()> done;
     };
-    QHash<QString, QJsonArray> m_details;
+    QHash<QString, Answer> m_details;
     QHash<QString, QList<Asker>> m_asking;
     QSet<QString> m_askAgain;
     quint64 m_detailsGeneration = 0;

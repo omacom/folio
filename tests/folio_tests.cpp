@@ -6133,6 +6133,49 @@ private slots:
         disconnect(&plugins, &Plugins::detailsChanged, this, nullptr);
     }
 
+    void pluginWatchTellsEveryWindowShowingAFile()
+    {
+        // Its details command says how many times it has run, and takes long
+        // enough for a line from its watch to come while it does.
+        QTemporaryDir folder, files;
+        write(files.filePath("a.txt"), "x");
+        writePlugin(folder.path(), "sync", R"({"folio": 1, "details": {"command": ["./describe"]},
+            "watch": {"command": ["./watch"]}})",
+                    {{"describe", "#!/bin/sh\necho asked >> asked\nrun=$(($(wc -l < asked)))\nsleep 0.6\n"
+                                  "echo \"[[\\\"Run\\\", \\\"$run\\\"]]\"\n"},
+                     {"watch", "#!/bin/sh\nwhile :; do\n  [ -e go ] && rm go && echo changed\n  sleep 0.1\ndone\n"}});
+        Plugins plugins("en", {folder.path()}, files.filePath("folio.conf"));
+        QSignalSpy changed(&plugins, &Plugins::detailsChanged);
+        QVERIFY(changed.wait(5000));
+        const QString path = files.filePath("a.txt");
+        const QDateTime when = QFileInfo(path).lastModified();
+        // Two windows showing the same file, as the details column does:
+        // each asks again whenever it's told to, and shows what it's given.
+        QVariantList first, second;
+        auto window = [&](QVariantList &shown) {
+            return [&plugins, &shown, path, when] {
+                plugins.describe(path, "text/plain", when, [] { return true; },
+                                 [&plugins, &shown, path, when] { shown = plugins.details(path, when); });
+            };
+        };
+        const auto one = window(first), two = window(second);
+        connect(&plugins, &Plugins::detailsChanged, this, one);
+        connect(&plugins, &Plugins::detailsChanged, this, two);
+        one();
+        two();
+
+        // A line while the command runs makes its answer an early one, shown
+        // in both windows; so is the answer of the run that follows.
+        QTest::qWait(200);
+        write(folder.filePath("sync/go"), "");
+        const QVariantList early{QVariantList{"Run", "1"}}, fresh{QVariantList{"Run", "2"}};
+        QTRY_COMPARE_WITH_TIMEOUT(first, early, 3000);
+        QCOMPARE(second, early);
+        QTRY_COMPARE_WITH_TIMEOUT(first, fresh, 3000);
+        QCOMPARE(second, fresh);
+        disconnect(&plugins, &Plugins::detailsChanged, this, nullptr);
+    }
+
     void pluginWatchStopsAskingAboutAFileLeft()
     {
         // Its watch keeps printing while `go` is there, and its details
