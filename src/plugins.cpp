@@ -23,6 +23,7 @@
 #include <QtConcurrent>
 #include <algorithm>
 #include <cstdio>
+#include <utility>
 #include <signal.h>
 #include <unistd.h>
 
@@ -32,6 +33,26 @@ namespace {
 // whoever writes one looks; the window says nothing about it.
 void complain(const QString &plugin, const QString &what) {
     fprintf(stderr, "folio: plugin %s: %s\n", qPrintable(plugin), qPrintable(what));
+}
+
+// The lines of standard error that `read` ends, the first of them begun by
+// `line`, which is left holding the start of the next. A line is cut short
+// at maxErrorLine bytes and the rest of it dropped, so one that never ends
+// can't fill memory.
+QStringList errorLines(QByteArray &line, const QByteArray &read) {
+    QStringList lines;
+    // Each piece but the last ends a line; the last is the start of one.
+    const QList<QByteArray> pieces = read.split('\n');
+    for (qsizetype i = 0; i < pieces.size(); ++i) {
+        line += pieces[i].left(std::max<qsizetype>(0, Plugins::maxErrorLine - line.size()));
+        if (i + 1 == pieces.size())
+            break;
+        const QString said = QString::fromUtf8(line).trimmed();
+        line.clear();
+        if (!said.isEmpty())
+            lines << said;
+    }
+    return lines;
 }
 
 // A list of strings, where a missing one is an empty list.
@@ -389,28 +410,14 @@ Plugins::Run Plugins::execute(const Manifest &plugin, const QStringList &command
     const qint64 group = process.processId();
 
     // Standard error goes to Folio's, a line at a time, marked with the
-    // plugin's id; its last line can say why an action failed. A line
-    // is cut short at maxErrorLine bytes and the rest of it dropped, so one
-    // that never ends can't fill memory.
+    // plugin's id; its last line can say why an action failed, and may not
+    // have ended.
     QByteArray line;
-    auto flush = [&] {
-        const QString said = QString::fromUtf8(line).trimmed();
-        line.clear();
-        if (!said.isEmpty()) {
+    auto readErrors = [&](bool all) {
+        for (const QString &said : errorLines(line, process.readAllStandardError() + (all ? "\n" : ""))) {
             complain(plugin.id, said);
             run.lastError = said;
         }
-    };
-    auto readErrors = [&](bool all) {
-        // Each piece but the last ends a line; the last is the start of one.
-        const QList<QByteArray> pieces = process.readAllStandardError().split('\n');
-        for (qsizetype i = 0; i < pieces.size(); ++i) {
-            line += pieces[i].left(std::max<qsizetype>(0, maxErrorLine - line.size()));
-            if (i + 1 < pieces.size())
-                flush();
-        }
-        if (all)
-            flush();
     };
 
     // Output is taken as it comes, a pipe's worth at a time, in an event
@@ -561,13 +568,10 @@ void Plugins::apply(const QList<Manifest> &manifests) {
         watch.settle = new QTimer(this);
         watch.settle->setSingleShot(true);
         watch.settle->setInterval(watchSettle);
+        // Lines held while it ran are acted on now, and the next held.
         connect(watch.settle, &QTimer::timeout, this, [this, id = m.id] {
-            const auto held = m_watches.find(id);
-            if (held == m_watches.end() || !held->pending)
-                return;
-            held->pending = false;
-            held->settle->start();
-            askAgain(id);
+            if (std::exchange(m_watches[id].pending, false))
+                noticed(id);
         });
         watch.restart = new QTimer(this);
         watch.restart->setSingleShot(true);
@@ -683,16 +687,8 @@ void Plugins::startWatch(const QString &plugin) {
     // Standard error goes to Folio's, a line at a time, as other commands'.
     connect(process, &QProcess::readyReadStandardError, this, [plugin, process, current] {
         Watch *watch = current();
-        const QList<QByteArray> pieces = process->readAllStandardError().split('\n');
-        for (qsizetype i = 0; watch && i < pieces.size(); ++i) {
-            watch->error += pieces[i].left(std::max<qsizetype>(0, maxErrorLine - watch->error.size()));
-            if (i + 1 == pieces.size())
-                break;
-            const QString said = QString::fromUtf8(watch->error).trimmed();
-            watch->error.clear();
-            if (!said.isEmpty())
-                complain(plugin, said);
-        }
+        for (const QString &said : watch ? errorLines(watch->error, process->readAllStandardError()) : QStringList())
+            complain(plugin, said);
     });
     // One that can't be started isn't tried again until the plugins are
     // read again; one that ends (what it watches went away) is, in a while.
@@ -712,8 +708,7 @@ void Plugins::startWatch(const QString &plugin) {
         if (watch->group > 0)
             ::kill(-pid_t(watch->group), SIGKILL);
         // Its last line may not have ended, and can say why it stopped.
-        const QString said = QString::fromUtf8(watch->error).trimmed();
-        if (!said.isEmpty())
+        for (const QString &said : errorLines(watch->error, "\n"))
             complain(plugin, said);
         // Said once each time the watch goes from working to ending.
         if (!m_failingWatch.contains(plugin))
@@ -721,7 +716,6 @@ void Plugins::startWatch(const QString &plugin) {
         m_failingWatch.insert(plugin);
         watch->process = nullptr;
         watch->group = 0;
-        watch->error.clear();
         process->deleteLater();
         watch->restart->start();
     });
@@ -950,44 +944,38 @@ bool Plugins::describe(const QString &path, const QString &mime, const QDateTime
     bool asking = false;
     for (const Manifest &m : std::as_const(m_manifests)) {
         const QString key = detailsKey(m.id, path, modified);
-        if (m.details.isEmpty() || m_details.contains(key) || !fits(m.detailsUnder, m.detailsTypes, path, mime))
+        // An early answer is asked for again, and shown until the next comes.
+        const bool known = m_details.contains(key) && !m_askAgain.contains(key);
+        if (m.details.isEmpty() || known || !fits(m.detailsUnder, m.detailsTypes, path, mime))
             continue;
         asking = true;
         // Asked again while its command runs (another window, or the
         // folder read again), the caller waits for the same answer.
-        const bool running = m_asking.contains(key);
-        m_asking[key] << Asker{wanted, done};
-        if (!running)
+        QList<Asker> &askers = m_asking[key];
+        askers << Asker{wanted, done};
+        if (askers.size() == 1)
             ask(m, path, key);
     }
     return asking;
 }
 
-void Plugins::ask(const Manifest &plugin, const QString &path, const QString &key,
-                  const QList<std::function<bool()>> &wanted) {
-    const bool again = !wanted.isEmpty();
+void Plugins::ask(const Manifest &plugin, const QString &path, const QString &key) {
+    // Its plugin's state as it is now is what this run tells of.
+    m_askAgain.remove(key);
     auto *watcher = new QFutureWatcher<std::optional<Run>>(this);
     connect(watcher, &QFutureWatcherBase::finished, this,
-            [this, watcher, id = plugin.id, path, key, wanted, again, generation = m_detailsGeneration] {
+            [this, watcher, id = plugin.id, path, key, generation = m_detailsGeneration] {
         watcher->deleteLater();
         // Everything said was forgotten meanwhile (F5), so this answer may
         // be older than the one that replaces it.
         if (generation != m_detailsGeneration)
             return;
-        // Its plugin's state changed while it ran, so it may have been too
-        // early to see the change.
-        const bool early = m_askAgain.remove(key);
         const std::optional<Run> run = watcher->result();
         if (!run) {
-            // Its first caller moved on before its turn, or, run once more,
-            // everyone who showed the file has; the next, if any, has it
-            // run for them. The early answer kept isn't what the plugin
-            // says now, so the file is asked about when it's shown again.
+            // Its first caller moved on before its turn; the next, if any,
+            // has it run for them.
             QList<Asker> &askers = m_asking[key];
-            if (again)
-                m_details.remove(key);
-            else
-                askers.removeFirst();
+            askers.removeFirst();
             if (askers.isEmpty())
                 m_asking.remove(key);
             else if (const Manifest *m = manifest(id))
@@ -1008,38 +996,24 @@ void Plugins::ask(const Manifest &plugin, const QString &path, const QString &ke
         if (m_details.size() >= 5000)
             m_details.clear();
         m_details.insert(key, said.array());
-        // An early answer is shown all the same, or a state that keeps
-        // changing would leave the file with none.
-        const QList<Asker> askers = m_asking.take(key);
-        for (const Asker &asker : askers)
+        for (const Asker &asker : m_asking.take(key))
             asker.done();
-        // A command run once more had nobody waiting, unless they asked
-        // since; whoever shows the file is told to read it again.
-        if (askers.isEmpty())
+        // Its plugin's state changed while it ran, so it may have been too
+        // early to see the change. The answer is shown all the same, or a
+        // state that keeps changing would leave the file with none, and
+        // whoever still shows the file asks again; nobody does about a file
+        // they've left, until it's shown again.
+        if (m_askAgain.contains(key))
             emit detailsChanged();
-        // After an early answer its command runs once more. Its callers
-        // have their answer and aren't kept, only whether they still show
-        // the file; those who ask meanwhile wait for the next.
-        const Manifest *m = early ? manifest(id) : nullptr;
-        if (m && !m_asking.contains(key)) {
-            QList<std::function<bool()>> stillWanted = wanted;
-            if (!askers.isEmpty()) {
-                stillWanted.clear();
-                for (const Asker &asker : askers)
-                    stillWanted << asker.wanted;
-            }
-            m_asking.insert(key, {});
-            ask(*m, path, key, stillWanted);
-        }
     });
     // Stepping through files faster than they're answered for queues
     // commands; those overtaken before their turn aren't run, so they
     // don't hold up the polls behind them.
     watcher->setFuture(QtConcurrent::run(&m_pool, [plugin, command = plugin.details + QStringList{path},
                                                    environment = environment(plugin),
-                                                   wanted = again ? wanted : QList{m_asking.value(key).value(0).wanted},
+                                                   wanted = m_asking.value(key).first().wanted,
                                                    stop = m_stop]() -> std::optional<Run> {
-        if (std::none_of(wanted.cbegin(), wanted.cend(), [](const auto &shows) { return !shows || shows(); }))
+        if (!wanted())
             return {};
         return execute(plugin, command, environment, detailsTimeout, stop.get());
     }));
@@ -1055,12 +1029,14 @@ void Plugins::forgetDetails(const QString &plugin) {
         ++m_detailsGeneration;
         return;
     }
-    // One plugin's: a command still running is left to finish and run once
-    // more after, as a poll is. Dropping its answer each time would leave
-    // nothing to show while the plugin's state keeps changing.
-    m_details.removeIf([&](const auto &it) { return it.key().startsWith(plugin + '\n'); });
+    // One plugin's: a command still running is left to finish, and its
+    // answer marked as early. Dropping it each time would leave nothing to
+    // show while the plugin's state keeps changing.
+    const auto its = [&](const QString &key) { return key.startsWith(plugin + '\n'); };
+    m_details.removeIf([&](const auto &it) { return its(it.key()); });
+    m_askAgain.removeIf(its);
     for (auto it = m_asking.cbegin(); it != m_asking.cend(); ++it)
-        if (it.key().startsWith(plugin + '\n'))
+        if (its(it.key()))
             m_askAgain.insert(it.key());
 }
 

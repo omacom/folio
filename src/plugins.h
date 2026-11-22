@@ -224,11 +224,7 @@ private:
     QString icon(const Manifest &plugin, const QString &name) const;
     QVariantMap itemMap(const Manifest &plugin, const Item &item) const;
     // Runs a plugin's details command for `path`, for those waiting on `key`.
-    // A run once more after an early answer has nobody waiting; `wanted` is
-    // then what the callers of the run before it asked, and it runs only
-    // while one of them still shows the file.
-    void ask(const Manifest &plugin, const QString &path, const QString &key,
-             const QList<std::function<bool()>> &wanted = {});
+    void ask(const Manifest &plugin, const QString &path, const QString &key);
     // Forgets what one plugin's details commands said, or every plugin's.
     void forgetDetails(const QString &plugin);
     // Runs an action, one at a time per `key`; later ones wait their turn.
@@ -270,9 +266,10 @@ private:
     QSet<QString> m_failing, m_failingDetails;
     // What details commands printed, by plugin, path and modification time;
     // who waits for those still running, the first deciding whether its
-    // command runs; those whose plugin's state changed while they ran, so
-    // they're run once more when done; and how often everything has been
-    // forgotten, so answers on their way then are dropped.
+    // command runs; those whose plugin's state changed while their command
+    // ran, so the answer came early and is asked for again by whoever still
+    // shows the file; and how often everything has been forgotten, so
+    // answers on their way then are dropped.
     struct Asker {
         std::function<bool()> wanted;
         std::function<void()> done;
