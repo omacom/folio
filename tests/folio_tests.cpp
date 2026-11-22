@@ -6133,6 +6133,63 @@ private slots:
         disconnect(&plugins, &Plugins::detailsChanged, this, nullptr);
     }
 
+    void pluginWatchStopsAskingAboutAFileLeft()
+    {
+        // Its watch keeps printing while `go` is there, and its details
+        // command takes longer than the lines are apart, so every answer
+        // comes early and is followed by another run.
+        QTemporaryDir folder, files;
+        write(files.filePath("a.txt"), "x");
+        write(files.filePath("b.txt"), "x");
+        writePlugin(folder.path(), "sync", R"({"folio": 1, "details": {"command": ["./describe"]},
+            "watch": {"command": ["./watch"]}})",
+                    {{"describe", "#!/bin/sh\nbasename \"$1\" >> asked\nsleep 0.6\n"
+                                  "echo \"[[\\\"State\\\", \\\"$(cat word 2>/dev/null || echo waiting)\\\"]]\"\n"},
+                     {"watch", "#!/bin/sh\nwhile :; do\n  [ -e go ] && echo changed\n  sleep 0.2\ndone\n"}});
+        auto asked = [&](const QByteArray &name) {
+            return contents(folder.filePath("sync/asked")).split('\n').count(name);
+        };
+        Plugins plugins("en", {folder.path()}, files.filePath("folio.conf"));
+        QSignalSpy changed(&plugins, &Plugins::detailsChanged);
+        QVERIFY(changed.wait(5000));
+        const QString a = files.filePath("a.txt"), b = files.filePath("b.txt");
+        const QDateTime whenA = QFileInfo(a).lastModified(), whenB = QFileInfo(b).lastModified();
+        // As the details column does: it asks about the file it shows,
+        // again whenever it's told to.
+        auto showing = std::make_shared<QString>(a);
+        int answered = 0;
+        auto describe = [&] {
+            const QDateTime when = *showing == a ? whenA : whenB;
+            plugins.describe(*showing, "text/plain", when, [showing, shown = *showing] { return *showing == shown; },
+                             [&] { ++answered; });
+        };
+        connect(&plugins, &Plugins::detailsChanged, this, describe);
+
+        write(folder.filePath("sync/go"), "");
+        describe();
+        QTRY_VERIFY_WITH_TIMEOUT(answered > 0 && asked("a.txt") >= 2, 5000);
+
+        // Moving on to another file leaves at most the run already under
+        // way for the one left.
+        *showing = b;
+        describe();
+        const int left = asked("a.txt");
+        QTest::qWait(3000);
+        QVERIFY2(asked("a.txt") <= left + 1,
+                 qPrintable(QString("a.txt asked about %1 more times after it was left").arg(asked("a.txt") - left)));
+        QVERIFY(asked("b.txt") > 0);
+
+        // Coming back once the lines stop shows what the plugin says now,
+        // not the early answer kept from before.
+        QFile::remove(folder.filePath("sync/go"));
+        write(folder.filePath("sync/word"), "synced");
+        QTest::qWait(1500);
+        *showing = a;
+        describe();
+        QTRY_COMPARE_WITH_TIMEOUT(plugins.details(a, whenA), QVariantList({QVariantList{"State", "synced"}}), 5000);
+        disconnect(&plugins, &Plugins::detailsChanged, this, nullptr);
+    }
+
     void pluginWatchSaysWhyItEndedWithoutANewline()
     {
         // Folio's standard error, read back from a file.

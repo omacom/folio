@@ -963,10 +963,12 @@ bool Plugins::describe(const QString &path, const QString &mime, const QDateTime
     return asking;
 }
 
-void Plugins::ask(const Manifest &plugin, const QString &path, const QString &key) {
+void Plugins::ask(const Manifest &plugin, const QString &path, const QString &key,
+                  const QList<std::function<bool()>> &wanted) {
+    const bool again = !wanted.isEmpty();
     auto *watcher = new QFutureWatcher<std::optional<Run>>(this);
     connect(watcher, &QFutureWatcherBase::finished, this,
-            [this, watcher, id = plugin.id, path, key, generation = m_detailsGeneration] {
+            [this, watcher, id = plugin.id, path, key, wanted, again, generation = m_detailsGeneration] {
         watcher->deleteLater();
         // Everything said was forgotten meanwhile (F5), so this answer may
         // be older than the one that replaces it.
@@ -977,10 +979,15 @@ void Plugins::ask(const Manifest &plugin, const QString &path, const QString &ke
         const bool early = m_askAgain.remove(key);
         const std::optional<Run> run = watcher->result();
         if (!run) {
-            // Its first caller moved on before its turn; the next, if any,
-            // has it run for them.
+            // Its first caller moved on before its turn, or, run once more,
+            // everyone who showed the file has; the next, if any, has it
+            // run for them. The early answer kept isn't what the plugin
+            // says now, so the file is asked about when it's shown again.
             QList<Asker> &askers = m_asking[key];
-            askers.removeFirst();
+            if (again)
+                m_details.remove(key);
+            else
+                askers.removeFirst();
             if (askers.isEmpty())
                 m_asking.remove(key);
             else if (const Manifest *m = manifest(id))
@@ -1011,12 +1018,18 @@ void Plugins::ask(const Manifest &plugin, const QString &path, const QString &ke
         if (askers.isEmpty())
             emit detailsChanged();
         // After an early answer its command runs once more. Its callers
-        // have their answer and aren't kept; those who ask meanwhile wait
-        // for the next.
+        // have their answer and aren't kept, only whether they still show
+        // the file; those who ask meanwhile wait for the next.
         const Manifest *m = early ? manifest(id) : nullptr;
         if (m && !m_asking.contains(key)) {
+            QList<std::function<bool()>> stillWanted = wanted;
+            if (!askers.isEmpty()) {
+                stillWanted.clear();
+                for (const Asker &asker : askers)
+                    stillWanted << asker.wanted;
+            }
             m_asking.insert(key, {});
-            ask(*m, path, key);
+            ask(*m, path, key, stillWanted);
         }
     });
     // Stepping through files faster than they're answered for queues
@@ -1024,10 +1037,9 @@ void Plugins::ask(const Manifest &plugin, const QString &path, const QString &ke
     // don't hold up the polls behind them.
     watcher->setFuture(QtConcurrent::run(&m_pool, [plugin, command = plugin.details + QStringList{path},
                                                    environment = environment(plugin),
-                                                   wanted = m_asking.value(key).value(0).wanted,
+                                                   wanted = again ? wanted : QList{m_asking.value(key).value(0).wanted},
                                                    stop = m_stop]() -> std::optional<Run> {
-        // One run once more after an early answer has no caller to ask.
-        if (wanted && !wanted())
+        if (std::none_of(wanted.cbegin(), wanted.cend(), [](const auto &shows) { return !shows || shows(); }))
             return {};
         return execute(plugin, command, environment, detailsTimeout, stop.get());
     }));

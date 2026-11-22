@@ -224,7 +224,11 @@ private:
     QString icon(const Manifest &plugin, const QString &name) const;
     QVariantMap itemMap(const Manifest &plugin, const Item &item) const;
     // Runs a plugin's details command for `path`, for those waiting on `key`.
-    void ask(const Manifest &plugin, const QString &path, const QString &key);
+    // A run once more after an early answer has nobody waiting; `wanted` is
+    // then what the callers of the run before it asked, and it runs only
+    // while one of them still shows the file.
+    void ask(const Manifest &plugin, const QString &path, const QString &key,
+             const QList<std::function<bool()>> &wanted = {});
     // Forgets what one plugin's details commands said, or every plugin's.
     void forgetDetails(const QString &plugin);
     // Runs an action, one at a time per `key`; later ones wait their turn.
