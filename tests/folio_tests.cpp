@@ -6551,6 +6551,90 @@ private slots:
                  QString("Couldn't get a Dropbox link for nope.pdf: Couldn't get link: not in Dropbox"));
     }
 
+    void dropboxPluginWatchSaysWhenDropboxTouchesAFile()
+    {
+        QTemporaryDir home, dir;
+        const auto plugin = bundledPlugin("dropbox");
+        QCOMPARE(plugin.watch, QStringList({"./watch"}));
+        // Its watch, run as Folio runs it, in a process group of its own.
+        auto start = [&](QProcess &watch, bool python) {
+            const QString bin = binWith(dir.filePath(python ? "bin" : "bin-no-python"), {});
+            for (const char *tool : {"python3", "sleep"})
+                if (python || QByteArray(tool) != "python3")
+                    QFile::link(QStandardPaths::findExecutable(tool), bin + "/" + tool);
+            QProcessEnvironment env;
+            env.insert("PATH", bin);
+            env.insert("HOME", home.path());
+            watch.setProcessEnvironment(env);
+            watch.setWorkingDirectory(plugin.dir);
+            watch.setChildProcessModifier([] { ::setpgid(0, 0); });
+            watch.start(QDir(plugin.dir).filePath("watch"), {});
+            QVERIFY(watch.waitForStarted());
+        };
+        auto stop = [](QProcess &watch) {
+            ::kill(-pid_t(watch.processId()), SIGTERM);
+            watch.waitForFinished(2000);
+        };
+        QProcess watch;
+        start(watch, true);
+        auto stopped = qScopeGuard([&] { stop(watch); });
+        QByteArray said;
+        auto lines = [&] {
+            said += watch.readAllStandardOutput();
+            return said.count('\n');
+        };
+
+        // Without Dropbox it says nothing, and doesn't end either, so Folio
+        // doesn't start it again and again.
+        QTest::qWait(1000);
+        QCOMPARE(lines(), 0);
+        QCOMPARE(watch.state(), QProcess::Running);
+
+        // Dropbox starting changes how every file stands.
+        QVERIFY(QDir(home.path()).mkpath("Dropbox") && QDir(home.path()).mkpath(".dropbox"));
+        const QString socket = home.filePath(".dropbox/iface_socket");
+        QLocalServer dropbox;
+        QVERIFY(dropbox.listen(socket));
+        QVERIFY(dropbox.waitForNewConnection(8000));
+        QLocalSocket *hooks = dropbox.nextPendingConnection();
+        QTRY_COMPARE(lines(), 1);
+
+        // Each file Dropbox says it touched is a line; anything else it
+        // sends isn't.
+        hooks->write("shell_touch\npath\t" + QFile::encodeName(home.filePath("Dropbox/a.txt")) + "\ndone\n");
+        hooks->flush();
+        QTRY_COMPARE(lines(), 2);
+        hooks->write("something_else\npath\t/x\ndone\n");
+        hooks->flush();
+        QTest::qWait(500);
+        QCOMPARE(lines(), 2);
+
+        // So does its stopping, and its starting again.
+        hooks->disconnectFromServer();
+        dropbox.close();
+        QTRY_COMPARE(lines(), 3);
+        QTest::qWait(1000);
+        QCOMPARE(lines(), 3);
+        QVERIFY(dropbox.listen(socket));
+        QTRY_COMPARE_WITH_TIMEOUT(lines(), 4, 8000);
+
+        // Dropbox already running when Folio starts is nothing new.
+        QProcess fresh;
+        start(fresh, true);
+        auto freshStopped = qScopeGuard([&] { stop(fresh); });
+        QVERIFY(dropbox.waitForNewConnection(3000));
+        QTest::qWait(500);
+        QCOMPARE(fresh.readAllStandardOutput(), QByteArray());
+
+        // Without python3 there's no reading the socket; it stays quiet.
+        QProcess bare;
+        start(bare, false);
+        auto bareStopped = qScopeGuard([&] { stop(bare); });
+        QTest::qWait(1000);
+        QCOMPARE(bare.readAllStandardOutput(), QByteArray());
+        QCOMPARE(bare.state(), QProcess::Running);
+    }
+
     void dropboxPluginSaysHowAFileStands()
     {
         QTemporaryDir dir;

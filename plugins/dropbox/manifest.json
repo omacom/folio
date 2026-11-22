@@ -6,5 +6,6 @@
       "under": ["~/Dropbox/"], "single": true,
       "busy": "Getting a Dropbox link for %1…" }
   ],
-  "details": { "command": ["./filestatus"], "under": ["~/Dropbox/"] }
+  "details": { "command": ["./filestatus"], "under": ["~/Dropbox/"] },
+  "watch": { "command": ["./watch"] }
 }
