@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QCache>
 #include <QHash>
 #include <QDateTime>
 #include <QImage>
@@ -83,6 +84,11 @@ private:
     void save(QImage image, const QString &target, const QString &path, const QDateTime &modified) const;
     static bool madeFor(const QImage &image, const QDateTime &modified);
 
+    struct SharpEntry {
+        QDateTime modified;
+        QImage image;
+    };
+
     QString m_cache;
     QString m_sharpRoot;
     QString m_remoteRoot;
@@ -90,6 +96,8 @@ private:
     QStringList m_thumbnailerDirs;
     mutable std::once_flag m_thumbnailersOnce;
     mutable QHash<QString, QString> m_thumbnailers;
+    mutable std::mutex m_sharpMemoryMutex;
+    mutable QCache<QString, SharpEntry> m_sharpMemory{8};
 };
 
 // Serves image://thumb/<size>/<modified>/<mime>/<path> to QML on a thread
