@@ -519,9 +519,10 @@ FocusScope {
 
             // Ctrl+scroll over the grid or the list steps its size, as Ctrl+=
             // and Ctrl+- do. It's the view's own, so it's asked before the
-            // view scrolls.
+            // view scrolls. Between views it stays on the loader: with no
+            // parent at all, the garbage collector can take it.
             WheelHandler {
-                parent: view.item
+                parent: view.item ? view.item : view
                 enabled: pane.viewMode !== "columns"
                 acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                 acceptedModifiers: Qt.ControlModifier
