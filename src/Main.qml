@@ -66,6 +66,13 @@ ApplicationWindow {
     // Columns on a first launch; after that, whichever view was used last.
     property string viewMode: "columns"
     property real zoom: 1
+    // The widths the lines between panes were dragged to; 0 is the default.
+    // Each is kept within its limits where it is read, so a setting edited
+    // by hand can't make a pane vanish.
+    property int sidebarWidth: 0
+    property int columnWidth: 0
+    // The left pane's part of the room a split's two panes have.
+    property real splitShare: 0
 
     // The pane keys, the sidebar and the details go to.
     property var activePane: leftPane
@@ -85,6 +92,9 @@ ApplicationWindow {
     Settings {
         property alias viewMode: win.viewMode
         property alias zoom: win.zoom
+        property alias sidebarWidth: win.sidebarWidth
+        property alias columnWidth: win.columnWidth
+        property alias splitShare: win.splitShare
     }
 
     // Ctrl+Alt+N: a second pane on the right, starting where the active
@@ -170,9 +180,12 @@ ApplicationWindow {
         }
 
         RowLayout {
+            id: panes
             anchors.fill: parent
             anchors.bottomMargin: chooserBar.item ? chooserBar.item.barHeight : 0
             spacing: 0
+            // What a split's two panes share: all but the sidebar and the lines.
+            readonly property real room: width - sidebar.width - 2
 
             Sidebar {
                 id: sidebar
@@ -184,15 +197,30 @@ ApplicationWindow {
                 onTrashRequested: (path) => win.activePane.paneFileOps.trash([path])
                 onFormatRequested: (disk) => win.activePane.formatDrive(disk)
                 Layout.topMargin: parent.parent.barHeight
-                Layout.preferredWidth: 190
+                Layout.preferredWidth: win.sidebarWidth > 0 ? Math.max(140, Math.min(400, win.sidebarWidth)) : 190
                 Layout.fillHeight: true
             }
-            Rectangle { Layout.topMargin: parent.parent.barHeight; Layout.fillHeight: true; implicitWidth: 1; color: Qt.alpha(theme.foreground, 0.12) }
+            // Each line is drawn over the pane after it, which its grip reaches into.
+            Rectangle {
+                Layout.topMargin: parent.parent.barHeight; Layout.fillHeight: true; implicitWidth: 1; color: Qt.alpha(theme.foreground, 0.12)
+                z: 1
+                PaneDivider {
+                    objectName: "sidebarDivider"
+                    height: parent.height
+                    paneWidth: sidebar.width
+                    onDragged: (width) => win.sidebarWidth = width
+                    onReset: win.sidebarWidth = 0
+                }
+            }
 
             FolderPane {
                 id: leftPane
                 barLeft: sidebar.width + 1
-                Layout.fillWidth: true
+                // An undragged split shares the room evenly, as fillWidth does;
+                // so does one too narrow for each pane to keep its 240 px.
+                readonly property bool sized: win.split && win.splitShare > 0 && panes.room >= 480
+                Layout.fillWidth: !sized
+                Layout.preferredWidth: sized ? Math.max(240, Math.min(panes.room - 240, Math.round(win.splitShare * panes.room))) : -1
                 Layout.fillHeight: true
                 focus: true
             }
@@ -200,7 +228,19 @@ ApplicationWindow {
             // openSplit() puts the right pane of a split here. Between the
             // panes the divider runs up through the top bar, so each path
             // reads as belonging to the files below it.
-            Rectangle { visible: win.split; Layout.fillHeight: true; implicitWidth: 1; color: Qt.alpha(theme.foreground, 0.12) }
+            Rectangle {
+                visible: win.split; Layout.fillHeight: true; implicitWidth: 1; color: Qt.alpha(theme.foreground, 0.12)
+                z: 1
+                // The grip starts below the top bar, where the paths are.
+                PaneDivider {
+                    objectName: "splitDivider"
+                    y: parent.parent.parent.barHeight
+                    height: parent.height - y
+                    paneWidth: leftPane.width
+                    onDragged: (width) => win.splitShare = width / panes.room
+                    onReset: win.splitShare = 0
+                }
+            }
             Item {
                 id: splitHost
                 visible: win.split

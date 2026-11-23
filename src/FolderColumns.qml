@@ -10,7 +10,10 @@ Item {
     id: view
 
     property alias currentIndex: here.currentIndex
-    readonly property int columnWidth: 260
+    // Every column is as wide as the window's columnWidth setting, once a
+    // column's line has been dragged.
+    readonly property var host: ApplicationWindow.window
+    readonly property int columnWidth: host && host.columnWidth > 0 ? Math.max(180, Math.min(480, host.columnWidth)) : 260
     // The pane whose selected file the details column describes.
     property var detailsPane: null
     readonly property var details: detailsColumn.item
@@ -93,13 +96,32 @@ Item {
     // Where the first column shown starts, from the side the columns grow
     // from: past the hidden ones and their separators.
     readonly property int hiddenWidth: hidden * (columnWidth + 1)
-    // Keeps the newest columns in view as the trail grows, and the hidden
-    // ones out of it: on the left, when mirrored.
-    function revealEnd() {
-        const from = Math.max(view.hiddenWidth, row.width - flick.width)
+    // How far the columns are scrolled, and scrolling them, from the side
+    // they grow from: the right, when mirrored.
+    function scrolled() {
         const most = Math.max(0, flick.contentWidth - flick.width)
-        flick.contentX = view.LayoutMirroring.enabled ? most - from : from
+        return view.LayoutMirroring.enabled ? most - flick.contentX : flick.contentX
+    }
+    function scrollTo(offset) {
+        const most = Math.max(0, flick.contentWidth - flick.width)
+        offset = Math.max(0, Math.min(most, offset))
+        flick.contentX = view.LayoutMirroring.enabled ? most - offset : offset
         Qt.callLater(view.loadColumns)
+    }
+    // Keeps the newest columns in view as the trail grows, and the hidden
+    // ones out of it.
+    function revealEnd() { scrollTo(Math.max(view.hiddenWidth, row.width - flick.width)) }
+    // While a column's line is held, the columns scrolled past the starting
+    // edge stay scrolled past as they change width, rather than the view
+    // jumping to the end; -1 otherwise.
+    property real heldAt: -1
+    function hold(divider) {
+        heldAt = scrolled() / (columnWidth + 1)
+        // Every column before the line grows, so the pointer's travel is
+        // shared among those in view for the line to stay under it.
+        const x = divider.parent.mapToItem(flick, 0, 0).x
+        const offset = view.LayoutMirroring.enabled ? flick.width - x : x + 1
+        divider.share = offset > 0 ? Math.min(1, (columnWidth + 1) / offset) : 1
     }
     LayoutMirroring.onEnabledChanged: revealEnd()
     function enter() {
@@ -107,7 +129,24 @@ Item {
             backend.navigate(view.selected.path)
     }
 
-    component Separator: Rectangle { width: 1; height: parent ? parent.height : 0; color: Qt.alpha(theme.foreground, 0.1) }
+    // The line after a column. Dragged, it sizes every column at once; it is
+    // drawn over the column after it, which its grip reaches into.
+    component Separator: Rectangle {
+        required property var columns
+        width: 1; height: parent ? parent.height : 0; color: Qt.alpha(theme.foreground, 0.1)
+        z: 1
+        PaneDivider {
+            id: grip
+            objectName: "columnDivider"
+            height: parent.height
+            paneWidth: columns.columnWidth
+            onPressed: columns.hold(grip)
+            onReleased: columns.heldAt = -1
+            onCanceled: columns.heldAt = -1
+            onDragged: (width) => columns.host.columnWidth = width
+            onReset: columns.host.columnWidth = 0
+        }
+    }
     // Files dropped in a column land in the folder it shows. It lies over
     // the whole column, under its items, rather than in the list's content,
     // which ends at its last item.
@@ -127,7 +166,7 @@ Item {
         maximumFlickVelocity: 5000
         KineticScroll { target: flick; horizontal: true }
         onContentXChanged: Qt.callLater(view.loadColumns)
-        onContentWidthChanged: view.revealEnd()
+        onContentWidthChanged: view.heldAt >= 0 ? view.scrollTo(view.heldAt * (view.columnWidth + 1)) : view.revealEnd()
         onWidthChanged: view.revealEnd()
         ScrollBar.horizontal: FolioScrollBar { }
 
@@ -147,8 +186,11 @@ Item {
                     id: ancestor
                     required property string path
                     required property string next
+                    required property int index
                     property bool shown: false
                     height: row.height
+                    // Above the next one, which its line's grip reaches into.
+                    z: ancestors.count - index
 
                     FileListView {
                         id: column
@@ -194,7 +236,7 @@ Item {
                             onActivated: backend.open(path)
                         }
                     }
-                    Separator { }
+                    Separator { columns: view }
                 }
             }
 
@@ -252,7 +294,7 @@ Item {
                     color: theme.secondaryForeground
                 }
             }
-            Separator { }
+            Separator { columns: view }
 
             // A look inside the selected folder; clicking in it goes there.
             FileListView {
