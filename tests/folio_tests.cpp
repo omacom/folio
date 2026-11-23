@@ -10646,25 +10646,15 @@ private slots:
         QVERIFY(pane);
 
         root->setProperty("currentItem", itemA);
-        const auto visibleSharpCount = [&] {
-            int count = 0;
+        const auto visibleSharpSources = [&] {
+            QStringList sources;
             for (QQuickItem *child : pane->findChildren<QQuickItem *>()) {
                 if (child->inherits("QQuickImage") && child->isVisible()
                     && child->property("source").toUrl().toString().contains("/sharp/"))
-                    ++count;
+                    sources << child->property("source").toUrl().toString();
             }
-            return count;
+            return sources;
         };
-        QTRY_COMPARE(visibleSharpCount(), 1);
-        // Switch to B, let it settle, then switch back to A and verify A stays
-        // visible immediately with zero blank frame.
-        root->setProperty("currentItem", itemB);
-        QTRY_COMPARE(backend.details().value("width").toInt(), 400);
-        QTRY_COMPARE(visibleSharpCount(), 1);
-        root->setProperty("currentItem", itemA);
-        QCOMPARE(visibleSharpCount(), 1);
-
-        // Verify the Open button fits inside the pane height (not clipped off bottom).
         QQuickItem *openBtn = nullptr;
         for (QQuickItem *child : pane->findChildren<QQuickItem *>()) {
             if (child->inherits("QQuickAbstractButton") && child->property("text").toString().contains("Viewer")) {
@@ -10673,6 +10663,25 @@ private slots:
             }
         }
         QVERIFY(openBtn);
+        const auto buttonY = [&] { return openBtn->mapToItem(pane, QPointF(0, 0)).y(); };
+
+        QTRY_VERIFY(visibleSharpSources().size() == 1 && visibleSharpSources().first().contains("a.png"));
+        QTRY_COMPARE(backend.details().value("width").toInt(), 320);
+        const qreal settledButtonY = buttonY();
+
+        // Switch to B, verify B's own sharp image actually appears and the Open
+        // button doesn't jump vertically while details update.
+        root->setProperty("currentItem", itemB);
+        QTRY_VERIFY(visibleSharpSources().size() == 1 && visibleSharpSources().first().contains("b.png"));
+        QTRY_COMPARE(backend.details().value("width").toInt(), 400);
+        QCOMPARE(buttonY(), settledButtonY);
+
+        // Switch back to A: A's sharp image swaps in synchronously (0-frame
+        // swap, no blank flash) and the Open button stays in place inside bounds.
+        root->setProperty("currentItem", itemA);
+        QCOMPARE(visibleSharpSources().size(), 1);
+        QVERIFY(visibleSharpSources().first().contains("a.png"));
+        QCOMPARE(buttonY(), settledButtonY);
         const QPointF bottomRight = openBtn->mapToItem(pane, QPointF(openBtn->width(), openBtn->height()));
         QVERIFY2(bottomRight.y() <= pane->height(),
                  qPrintable(QString("openButton bottom %1 exceeds pane height %2").arg(bottomRight.y()).arg(pane->height())));

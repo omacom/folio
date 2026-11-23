@@ -289,8 +289,11 @@ QImage Thumbnails::sharpCached(const QString &path, int pixels) const {
         const QFileInfo cached(candidate);
         if (cached.exists() && cached.lastModified() == modified) {
             if (QImage image(candidate); !image.isNull()) {
-                std::lock_guard lock(m_sharpMemoryMutex);
-                m_sharpMemory.insert(memKey, new SharpEntry{modified, image});
+                const qsizetype bytes = image.sizeInBytes();
+                if (bytes > 0 && bytes <= m_sharpMemory.maxCost()) {
+                    std::lock_guard lock(m_sharpMemoryMutex);
+                    m_sharpMemory.insert(memKey, new SharpEntry{modified, image}, int(bytes));
+                }
                 return image;
             }
         }
@@ -310,9 +313,10 @@ QImage Thumbnails::sharp(const QString &path, const QString &mime, int pixels, b
     *read = modified;
     const QString memKey = path + '\n' + QString::number(pixels);
     const auto rememberMem = [&](const QImage &image) {
-        if (!image.isNull()) {
+        const qsizetype bytes = image.sizeInBytes();
+        if (!image.isNull() && bytes > 0 && bytes <= m_sharpMemory.maxCost()) {
             std::lock_guard lock(m_sharpMemoryMutex);
-            m_sharpMemory.insert(memKey, new SharpEntry{modified, image});
+            m_sharpMemory.insert(memKey, new SharpEntry{modified, image}, int(bytes));
         }
     };
     {

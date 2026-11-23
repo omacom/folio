@@ -97,7 +97,8 @@ private:
     mutable std::once_flag m_thumbnailersOnce;
     mutable QHash<QString, QString> m_thumbnailers;
     mutable std::mutex m_sharpMemoryMutex;
-    mutable QCache<QString, SharpEntry> m_sharpMemory{8};
+    // Bounded by decoded pixel bytes (32 MB) so large HiDPI previews never grow unboundedly.
+    mutable QCache<QString, SharpEntry> m_sharpMemory{32 * 1024 * 1024};
 };
 
 // Serves image://thumb/<size>/<modified>/<mime>/<path> to QML on a thread
