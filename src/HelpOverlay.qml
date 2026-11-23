@@ -81,6 +81,7 @@ Rectangle {
             [qsTr("New window"), [["Ctrl", "N"]]],
             [qsTr("Split into two panes"), [["Ctrl", "Alt", "N"]]],
             [qsTr("Close the right pane"), [["Ctrl", "W"]]],
+            [qsTr("Size a pane, or reset it"), [["~" + qsTr("drag its line")], ["~" + qsTr("double-click it")]]],
             [qsTr("Unpin from the sidebar"), [["Delete"]]],
             [qsTr("Show these shortcuts"), [["?"]]],
             [qsTr("Close the window"), [["Q"]]]
