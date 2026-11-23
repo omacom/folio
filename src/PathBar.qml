@@ -52,14 +52,14 @@ Rectangle {
         searchField.forceActiveFocus()
         searchField.selectAll()
     }
-    // Each sort order, for the toolbar button and S / Shift+S without loading
-    // the sort menu until it's clicked.
+    // Each sort order, shared with SortMenu once it's loaded, so the toolbar
+    // button and S / Shift+S work without creating the menu at startup.
     readonly property var sortOrders: [
-        { mode: "name", glyph: "sort-name", tip: qsTr("Sorted by name") },
-        { mode: "kind", glyph: "sort-kind", tip: qsTr("Sorted by kind") },
-        { mode: "modified", glyph: "sort-newest", tip: qsTr("Newest first") },
-        { mode: "oldest", glyph: "sort-oldest", tip: qsTr("Oldest first") },
-        { mode: "size", glyph: "sort-size", tip: qsTr("Biggest first") }
+        { mode: "name", label: qsTr("Name"), glyph: "sort-name", tip: qsTr("Sorted by name") },
+        { mode: "kind", label: qsTr("Kind"), glyph: "sort-kind", tip: qsTr("Sorted by kind") },
+        { mode: "modified", label: qsTr("Newest"), glyph: "sort-newest", tip: qsTr("Newest first") },
+        { mode: "oldest", label: qsTr("Oldest"), glyph: "sort-oldest", tip: qsTr("Oldest first") },
+        { mode: "size", label: qsTr("Size"), glyph: "sort-size", tip: qsTr("Biggest first") }
     ]
     readonly property var currentSort: sortOrders.find(o => o.mode === backend.folder.sortMode) || sortOrders[0]
     // S and Shift+S, through the sort orders.
@@ -338,6 +338,7 @@ Rectangle {
         visible: false
         source: "SortMenu.qml"
         onLoaded: {
+            item.orders = Qt.binding(() => bar.sortOrders)
             // A press on the button it opens under is left to the button's
             // click, which closes it.
             item.closePolicy = Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
