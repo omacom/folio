@@ -66,6 +66,17 @@ ApplicationWindow {
     // Columns on a first launch; after that, whichever view was used last.
     property string viewMode: "columns"
     property real zoom: 1
+    // The list's hierarchy lines, as stored, even a style this build doesn't
+    // know; such a style is off in effect.
+    property string lineStyle: "off"
+    // In the order the menu shows them and L steps through them.
+    readonly property var lineStyles: [
+        { style: "off", label: qsTr("No lines") },
+        { style: "quiet", label: qsTr("Quiet") },
+        { style: "graph", label: qsTr("Git graph") },
+        { style: "trace", label: qsTr("Trace") }
+    ]
+    readonly property string effectiveLineStyle: lineStyles.some(entry => entry.style === lineStyle) ? lineStyle : "off"
 
     // The pane keys, the sidebar and the details go to.
     property var activePane: leftPane
@@ -85,6 +96,7 @@ ApplicationWindow {
     Settings {
         property alias viewMode: win.viewMode
         property alias zoom: win.zoom
+        property alias lineStyle: win.lineStyle
     }
 
     // Ctrl+Alt+N: a second pane on the right, starting where the active

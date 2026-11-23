@@ -39,6 +39,16 @@ FileListView {
         ]
     }
 
+    // The hierarchy lines, if the window shows them: in the list's content
+    // so they scroll with the rows, over the rows' fills, taking no clicks.
+    TreeLines {
+        objectName: "treeLines"
+        parent: list.contentItem
+        view: list
+        z: 2
+        enabled: false
+    }
+
     // → opens the selected folder in place, and on one open already steps
     // to its first item; ← closes it, or steps out to the folder the item
     // is in, and from the top goes up a folder. Where nothing opens in

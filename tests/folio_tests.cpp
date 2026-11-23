@@ -1328,6 +1328,25 @@ private slots:
         QCOMPARE(names(), QStringList({"alpha", "beta", "top.txt"}));
     }
 
+    void folderOutlineGivesEachRowsDepthAndKind()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("alpha/inner");
+        write(dir.filePath("alpha/x.txt"), "x");
+        write(dir.filePath("top.txt"), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        model.setExpanded(0, true);
+        QTRY_COMPARE(model.count(), 4);
+
+        // alpha, inner and x.txt inside it, then top.txt.
+        const QVariantMap outline = model.outline();
+        QCOMPARE(outline.value("depths").value<QList<int>>(), QList<int>({0, 1, 1, 0}));
+        QCOMPARE(outline.value("folders").value<QList<bool>>(), QList<bool>({true, true, false, false}));
+    }
+
     void folderListsDirectoriesFirstWithoutHidden()
     {
         QTemporaryDir dir;

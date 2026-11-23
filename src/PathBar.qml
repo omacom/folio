@@ -67,6 +67,13 @@ Rectangle {
         const i = sortOrders.findIndex(o => o.mode === backend.folder.sortMode)
         backend.chooseSort(sortOrders[(i + by + sortOrders.length) % sortOrders.length].mode)
     }
+    // The window, whose line style both panes of a split follow.
+    readonly property var host: ApplicationWindow.window
+    // L and Shift+L, through the window's line styles in the menu's order.
+    function stepLines(by) {
+        const styles = host.lineStyles.map(entry => entry.style)
+        host.lineStyle = styles[(styles.indexOf(host.effectiveLineStyle) + by + styles.length) % styles.length]
+    }
     function endSearch() {
         searchDelay.stop()
         searchField.text = ""
@@ -300,6 +307,26 @@ Rectangle {
                 : qsTr("Show as columns")
             onClicked: bar.cycleView()
         }
+        // The list's hierarchy lines, beside the view they belong to: a menu
+        // of their styles, shown only while the files are a list.
+        IconButton {
+            id: linesButton
+            objectName: "linesButton"
+            visible: bar.viewMode === "list"
+            glyph: "lines"
+            text: qsTr("Hierarchy lines")
+            readonly property FolioMenu menu: linesMenuLoader.item as FolioMenu
+            active: !!menu && menu.visible
+            // A second click closes it.
+            onClicked: {
+                if (menu && menu.visible) {
+                    menu.close()
+                } else {
+                    linesMenuLoader.active = true
+                    bar.openMenu(linesMenuLoader.item, linesButton)
+                }
+            }
+        }
         IconButton {
             id: sortButton
             // Shows the order in use, and says it on hover.
@@ -342,6 +369,35 @@ Rectangle {
             // A press on the button it opens under is left to the button's
             // click, which closes it.
             item.closePolicy = Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
+        }
+    }
+    // The lines menu, made on its first opening as the sort menu is; L and
+    // Shift+L step the style without it.
+    Loader {
+        id: linesMenuLoader
+        active: false
+        visible: false
+        sourceComponent: FolioMenu {
+            id: menu
+            // The window, whose line styles it lists.
+            readonly property var host: ApplicationWindow.window
+            objectName: "linesMenu"
+            // A press on the button it opens under is left to the button's
+            // click, which closes it.
+            closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
+            Repeater {
+                model: menu.host ? menu.host.lineStyles : []
+                FolioMenuItem {
+                    required property var modelData
+                    // The window again: in a delegate `menu` is typed as a
+                    // plain Menu, which has no host.
+                    readonly property var host: ApplicationWindow.window
+                    objectName: "lines-" + modelData.style
+                    text: modelData.label
+                    checked: !!host && host.effectiveLineStyle === modelData.style
+                    onTriggered: host.lineStyle = modelData.style
+                }
+            }
         }
     }
 

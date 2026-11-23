@@ -235,6 +235,9 @@ FocusScope {
     // S steps through the sort orders, Shift+S back.
     Shortcut { sequence: "S"; enabled: pane.keys; onActivated: pathBar.stepSort(1) }
     Shortcut { sequence: "Shift+S"; enabled: pane.keys; onActivated: pathBar.stepSort(-1) }
+    // In the list, L steps through the hierarchy lines' styles, Shift+L back.
+    Shortcut { sequence: "L"; enabled: pane.keys && pane.viewMode === "list"; onActivated: pathBar.stepLines(1) }
+    Shortcut { sequence: "Shift+L"; enabled: pane.keys && pane.viewMode === "list"; onActivated: pathBar.stepLines(-1) }
     Shortcut { sequences: ["F5", "Refresh"]; enabled: pane.active; onActivated: { backend.folder.reload(); places.refresh(); plugins.refresh() } }
 
     // A drive being ejected can't be in use: a pane showing a folder on it

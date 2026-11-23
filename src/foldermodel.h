@@ -133,6 +133,8 @@ public:
     Q_INVOKABLE void collapseAll();
     // The row of the folder `row` is listed under, or -1 at the top.
     Q_INVOKABLE int parentRow(int row) const;
+    // Every row's depth and whether it's a folder, read in one call.
+    Q_INVOKABLE QVariantMap outline() const;
     // A folder's items with the open folders' own under them, `depth` deep.
     static QVector<Entry> flatten(const QVector<Entry> &entries, const QHash<QString, QVector<Entry>> &open, int depth = 0);
 
