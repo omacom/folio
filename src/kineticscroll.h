@@ -53,6 +53,5 @@ private:
     qreal m_wheelTarget = 0;
     qreal m_lastAnimatedValue = 0;
     bool m_animatingHorizontal = false;
-    bool m_applyingAnim = false;
     bool m_coasting = false;
 };

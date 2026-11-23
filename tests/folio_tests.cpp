@@ -10325,6 +10325,22 @@ private slots:
 
         sendWheel(QPoint(), QPoint(0, -120), Qt::NoScrollPhase, Qt::NoModifier, 600);
         QTRY_VERIFY(flick->property("contentY").toReal() >= 90.0);
+
+        // 4) Reversing wheel direction mid-animation scrolls immediately in the new direction.
+        flick->setProperty("contentY", 500);
+        sendWheel(QPoint(), QPoint(0, -120), Qt::NoScrollPhase, Qt::NoModifier, 700);
+        sendWheel(QPoint(), QPoint(0, -120), Qt::NoScrollPhase, Qt::NoModifier, 705);
+        sendWheel(QPoint(), QPoint(0, -120), Qt::NoScrollPhase, Qt::NoModifier, 710);
+        const qreal beforeReverse = flick->property("contentY").toReal();
+        sendWheel(QPoint(), QPoint(0, 120), Qt::NoScrollPhase, Qt::NoModifier, 715);
+        QTRY_VERIFY(flick->property("contentY").toReal() < beforeReverse - 80.0);
+
+        // 5) Shrinking contentHeight mid-animation clamps to the new bottom instead of overshooting.
+        flick->setProperty("contentY", 1500);
+        sendWheel(QPoint(), QPoint(0, -240), Qt::NoScrollPhase, Qt::NoModifier, 800);
+        flick->setProperty("contentHeight", 1700);
+        QTest::qWait(150);
+        QVERIFY(flick->property("contentY").toReal() <= 1500.0 + 0.5);
     }
 
     void columnsBandSelectsFromEmptySpaceWithoutNegativeScroll()

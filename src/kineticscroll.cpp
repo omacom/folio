@@ -27,6 +27,9 @@ KineticScroll::KineticScroll(QObject *parent) : QObject(parent) {
             return;
         }
         const char *prop = m_animatingHorizontal ? "contentX" : "contentY";
+        const char *sizeProp = m_animatingHorizontal ? "contentWidth" : "contentHeight";
+        const char *viewProp = m_animatingHorizontal ? "width" : "height";
+        const char *originProp = m_animatingHorizontal ? "originX" : "originY";
         const qreal current = propReal(m_target, prop);
         // If something else moved the view (scrollbar drag, keyboard navigation,
         // programmatic jump), yield immediately instead of pulling it back.
@@ -34,11 +37,16 @@ KineticScroll::KineticScroll(QObject *parent) : QObject(parent) {
             m_wheelAnim.stop();
             return;
         }
-        const qreal next = value.toReal();
-        m_applyingAnim = true;
+        const qreal origin = propReal(m_target, originProp);
+        const qreal maxPos = origin + qMax<qreal>(0.0, propReal(m_target, sizeProp) - propReal(m_target, viewProp));
+        const qreal raw = value.toReal();
+        const qreal next = qBound(origin, raw, maxPos);
         m_lastAnimatedValue = next;
         m_target->setProperty(prop, next);
-        m_applyingAnim = false;
+        if (next != raw) {
+            m_wheelTarget = next;
+            m_wheelAnim.stop();
+        }
     });
 }
 
@@ -121,7 +129,10 @@ bool KineticScroll::handleDiscreteWheel(const QPoint &angleDelta) {
 
     const qreal current = propReal(m_target, posProp);
     const qreal step = -(qreal(delta) / 120.0) * kWheelStepPixels;
-    const bool continuing = m_wheelAnim.state() == QAbstractAnimation::Running && m_animatingHorizontal == horiz;
+    const qreal remaining = m_wheelTarget - current;
+    const bool sameDirection = (remaining > 0 && step > 0) || (remaining < 0 && step < 0);
+    const bool continuing = m_wheelAnim.state() == QAbstractAnimation::Running
+                            && m_animatingHorizontal == horiz && sameDirection;
     const qreal base = continuing ? m_wheelTarget : current;
     const qreal target = qBound(origin, base + step, maxPos);
 
