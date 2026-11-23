@@ -384,10 +384,19 @@ QImage Thumbnails::generate(const QString &path, const QString &mime, int pixels
         return runThumbnailer(command, path, pixels);
     }
     // Without a PDF thumbnailer installed, Poppler's pdftoppm (there with
-    // CUPS) draws the first page.
+    // CUPS) draws the first page. Cache a found path (verifying it still
+    // exists), never caching a miss so installing Poppler later works at once.
     if (mime == "application/pdf") {
-        static const QString pdftoppm = QStandardPaths::findExecutable("pdftoppm");
-        if (!pdftoppm.isEmpty()) {
+        static std::mutex pdftoppmMutex;
+        static QString pdftoppm;
+        QString executable;
+        {
+            std::lock_guard lock(pdftoppmMutex);
+            if (pdftoppm.isEmpty() || !QFileInfo::exists(pdftoppm))
+                pdftoppm = QStandardPaths::findExecutable("pdftoppm");
+            executable = pdftoppm;
+        }
+        if (!executable.isEmpty()) {
             attempted = true;
             return pdfPage(path, pixels, m_patience);
         }

@@ -2112,10 +2112,8 @@ static void appendStatStamp(QByteArray &out, const QString &path) {
 static AppCache &appCache() {
     static AppCache cache;
     const QString home = QDir::homePath();
-    const QString config = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
-    const QString data = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
     QByteArray stamp;
-    stamp.reserve(256);
+    stamp.reserve(512);
     stamp += QByteArray::number(s_appCacheEpoch);
     stamp += '|';
     stamp += qgetenv("HOME");
@@ -2129,10 +2127,12 @@ static AppCache &appCache() {
     stamp += qgetenv("XDG_DATA_DIRS");
     stamp += '|';
     appendStatStamp(stamp, home + "/.local/state/omarchy/defaults/editor");
-    appendStatStamp(stamp, config + "/mimeapps.list");
-    appendStatStamp(stamp, data + "/applications");
-    appendStatStamp(stamp, data + "/applications/mimeapps.list");
-    appendStatStamp(stamp, QStringLiteral("/usr/share/applications"));
+    for (const QString &dir : QStandardPaths::standardLocations(QStandardPaths::GenericConfigLocation))
+        appendStatStamp(stamp, dir + "/mimeapps.list");
+    for (const QString &dir : QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation)) {
+        appendStatStamp(stamp, dir + "/applications");
+        appendStatStamp(stamp, dir + "/applications/mimeapps.list");
+    }
     if (cache.stamp != stamp) {
         cache.stamp = stamp;
         cache.editorName.clear();
@@ -2224,7 +2224,7 @@ QString FileOps::openInDefaultApp(const QString &path) {
 }
 
 QVariantList FileOps::appsFor(const QString &path, const QString &knownMime) const {
-    const QString mime = !knownMime.isEmpty() && knownMime != "application/octet-stream" ? knownMime : mimeFor(path);
+    const QString mime = knownMime.isEmpty() ? mimeFor(path) : knownMime;
     AppCache &cache = appCache();
     if (const auto it = cache.appsByMime.constFind(mime); it != cache.appsByMime.cend())
         return *it;
