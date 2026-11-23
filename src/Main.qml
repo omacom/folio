@@ -216,10 +216,11 @@ ApplicationWindow {
             FolderPane {
                 id: leftPane
                 barLeft: sidebar.width + 1
-                // An undragged split shares the room evenly, as fillWidth does.
-                readonly property bool sized: win.split && win.splitShare > 0
+                // An undragged split shares the room evenly, as fillWidth does;
+                // so does one too narrow for each pane to keep its 240 px.
+                readonly property bool sized: win.split && win.splitShare > 0 && panes.room >= 480
                 Layout.fillWidth: !sized
-                Layout.preferredWidth: sized ? Math.round(Math.max(0.25, Math.min(0.75, win.splitShare)) * panes.room) : -1
+                Layout.preferredWidth: sized ? Math.max(240, Math.min(panes.room - 240, Math.round(win.splitShare * panes.room))) : -1
                 Layout.fillHeight: true
                 focus: true
             }
