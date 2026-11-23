@@ -52,8 +52,21 @@ Rectangle {
         searchField.forceActiveFocus()
         searchField.selectAll()
     }
-    // S and Shift+S, through the sort menu's orders.
-    function stepSort(by) { sortMenu.step(by) }
+    // Each sort order, for the toolbar button and S / Shift+S without loading
+    // the sort menu until it's clicked.
+    readonly property var sortOrders: [
+        { mode: "name", glyph: "sort-name", tip: qsTr("Sorted by name") },
+        { mode: "kind", glyph: "sort-kind", tip: qsTr("Sorted by kind") },
+        { mode: "modified", glyph: "sort-newest", tip: qsTr("Newest first") },
+        { mode: "oldest", glyph: "sort-oldest", tip: qsTr("Oldest first") },
+        { mode: "size", glyph: "sort-size", tip: qsTr("Biggest first") }
+    ]
+    readonly property var currentSort: sortOrders.find(o => o.mode === backend.folder.sortMode) || sortOrders[0]
+    // S and Shift+S, through the sort orders.
+    function stepSort(by) {
+        const i = sortOrders.findIndex(o => o.mode === backend.folder.sortMode)
+        backend.chooseSort(sortOrders[(i + by + sortOrders.length) % sortOrders.length].mode)
+    }
     function endSearch() {
         searchDelay.stop()
         searchField.text = ""
@@ -290,12 +303,19 @@ Rectangle {
         IconButton {
             id: sortButton
             // Shows the order in use, and says it on hover.
-            glyph: sortMenu.current.glyph
-            text: sortMenu.current.tip
-            active: sortMenu.visible
+            glyph: bar.currentSort.glyph
+            text: bar.currentSort.tip
+            active: !!sortMenuLoader.item && sortMenuLoader.item.visible
             // Under the button, reaching toward the files.
             // A second click closes it.
-            onClicked: sortMenu.visible ? sortMenu.close() : bar.openMenu(sortMenu, sortButton)
+            onClicked: {
+                if (sortMenuLoader.item && sortMenuLoader.item.visible) {
+                    sortMenuLoader.item.close()
+                } else {
+                    sortMenuLoader.active = true
+                    bar.openMenu(sortMenuLoader.item, sortButton)
+                }
+            }
         }
         // Ctrl+F opens the filters from the keyboard, the name field
         // included: the funnel, like the buttons beside it, takes no Tab.
@@ -304,17 +324,23 @@ Rectangle {
             enabled: filterButton.visible && !filterMenu.visible
             onActivated: bar.openMenu(filterMenu, filterButton)
         }
-        SortMenu {
-            id: sortMenu
-            // A press on the button it opens under is left to the button's
-            // click, which closes it.
-            closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
-        }
         IconButton {
             visible: bar.closable
             glyph: "close"
             text: qsTr("Close this pane")
             onClicked: bar.closeRequested()
+        }
+    }
+
+    Loader {
+        id: sortMenuLoader
+        active: false
+        visible: false
+        source: "SortMenu.qml"
+        onLoaded: {
+            // A press on the button it opens under is left to the button's
+            // click, which closes it.
+            item.closePolicy = Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
         }
     }
 
