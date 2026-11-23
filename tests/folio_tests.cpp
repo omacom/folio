@@ -7694,6 +7694,23 @@ private slots:
         // Cancelled work must not leave failure markers behind.
         for (const QString &clip : clips)
             QVERIFY(!QFile::exists(dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(clip))));
+
+        // A thumbnailer executable removed after discovery must return immediately
+        // instead of waiting out the full patience timeout.
+        const QString goneScript = dir.filePath("gone.sh");
+        write(goneScript, "#!/bin/sh\nexit 0\n");
+        QFile::setPermissions(goneScript, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+        write(dir.filePath("gone.thumbnailer"),
+              "[Thumbnailer Entry]\nExec=\"" + goneScript.toUtf8() + "\" %i %o\nMimeType=application/x-gone-helper;\n");
+        Thumbnails withGone(dir.filePath("cache_gone"), {dir.path()}, {}, 10000);
+        QVERIFY(!withGone.thumbnailerFor("application/x-gone-helper").isEmpty());
+        QVERIFY(QFile::remove(goneScript));
+        const QString sample = dir.filePath("sample.gone");
+        write(sample, "x");
+        QElapsedTimer goneTimer;
+        goneTimer.start();
+        QVERIFY(withGone.load(sample, "application/x-gone-helper", 128).isNull());
+        QVERIFY2(goneTimer.elapsed() < 1000, qPrintable(QString("missing helper waited %1 ms").arg(goneTimer.elapsed())));
     }
 
     void thumbnailsServeCachedImagesWhileGeneratorsAreBusy()

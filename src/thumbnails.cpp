@@ -143,6 +143,8 @@ bool run(QProcess &process, const QString &program, const QStringList &args, int
         }
         if (process.waitForFinished(int(qMin<qint64>(50, left))))
             break;
+        if (process.state() == QProcess::NotRunning)
+            return false;
     }
     return process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0;
 }
