@@ -6,7 +6,8 @@ import QtCore
 // GVfs's password request while connecting to another machine whose keys
 // aren't set up, or its question about a server it can't vouch for (a key
 // seen for the first time, a certificate that can't be verified), put to
-// the user in the window. The wording comes from GVfs, already translated.
+// the user in the window, as is an encrypted drive's passphrase. The
+// wording comes from GVfs, already translated.
 FolioDialog {
     id: prompt
 
@@ -19,7 +20,9 @@ FolioDialog {
         property alias rememberPassword: prompt.remember
     }
 
-    title: question ? qsTr("Check the server") : qsTr("Sign in")
+    readonly property bool drive: mounter.drive
+    title: question ? (drive ? qsTr("Check the drive") : qsTr("Check the server"))
+                    : drive ? qsTr("Unlock") : qsTr("Sign in")
     cardWidth: 600
     spacing: 18
     visible: mounter.asking
@@ -34,8 +37,8 @@ FolioDialog {
         if (visible && question) {
             forceActiveFocus()
         } else if (visible) {
-            user.text = mounter.user
-            domain.text = mounter.domain
+            user.text = drive ? "" : mounter.user
+            domain.text = drive ? "" : mounter.domain
             rememberBox.checked = prompt.remember
             password.forceActiveFocus()
         }
@@ -64,7 +67,8 @@ FolioDialog {
 
     PlainField {
         id: user
-        visible: !prompt.question
+        // A drive's passphrase has no user to go with it.
+        visible: !prompt.question && !prompt.drive
         Layout.fillWidth: true
         placeholderText: qsTr("User")
     }
@@ -79,7 +83,7 @@ FolioDialog {
         id: password
         visible: !prompt.question
         Layout.fillWidth: true
-        placeholderText: qsTr("Password")
+        placeholderText: prompt.drive ? qsTr("Passphrase") : qsTr("Password")
         echoMode: TextInput.Password
         onAccepted: prompt.submit()
     }
@@ -144,7 +148,7 @@ FolioDialog {
         }
         PlainButton {
             visible: !prompt.question
-            text: qsTr("Connect")
+            text: prompt.drive ? qsTr("Unlock") : qsTr("Connect")
             primary: true
             onClicked: prompt.submit()
         }

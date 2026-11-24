@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <memory>
 
+#include "backend.h"
 #include "chooser.h"
 #include "dragpicture.h"
 #include "filemanager1.h"
@@ -142,6 +143,25 @@ struct Session {
         engine.rootContext()->setContextProperty("theme", &theme);
         engine.rootContext()->setContextProperty("places", &places);
         engine.rootContext()->setContextProperty("plugins", &plugins);
+
+        if (Drives *drives = places.drives()) {
+            // A drive plugged in mounts through the last window used, which can
+            // ask for an encrypted drive's passphrase; with none free, it mounts
+            // without asking.
+            QObject::connect(drives, &Drives::plugged, &windows, [this, drives](const QString &id, const QString &name) {
+                Backend *backend = windows.latest();
+                if (!backend || !backend->mountVolume(id, name))
+                    drives->mountQuietly(id);
+            });
+            QObject::connect(drives, &Drives::notice, &windows, [this](const QString &notice) {
+                if (Backend *backend = windows.latest())
+                    backend->showNotice(notice);
+            });
+            QObject::connect(drives, &Drives::failed, &windows, [this](const QString &message) {
+                if (Backend *backend = windows.latest())
+                    backend->showMessage(message);
+            });
+        }
     }
 };
 
