@@ -1,0 +1,35 @@
+#!/bin/sh
+# Says when Dropbox changes how a file stands, from the socket its own file
+# manager extension listens on: Dropbox sends "shell_touch" and the file's
+# path there when a sync of it starts, for the files it was asked about
+# (filestatus asks about the one whose details are shown). Also says when
+# Dropbox stops or starts, which changes how every file stands. Without
+# Dropbox, or without the python3 dropbox-cli comes with to read the socket,
+# it looks again in a while.
+socket="$HOME/.dropbox/iface_socket"
+first=1
+while :; do
+  if [ -d "$HOME/Dropbox" ] && [ -S "$socket" ] && command -v python3 >/dev/null 2>&1; then
+    python3 - "$socket" "$first" <<'EOF'
+import socket
+import sys
+
+dropbox = socket.socket(socket.AF_UNIX)
+try:
+    dropbox.connect(sys.argv[1])
+except OSError:
+    sys.exit(3)
+# Dropbox found running when Folio starts is nothing new.
+if sys.argv[2] != "1":
+    print("started", flush=True)
+# Each message is its name, then a line per argument, then "done".
+for line in dropbox.makefile(encoding="utf-8", errors="replace"):
+    if line.rstrip("\n") == "shell_touch":
+        print("changed", flush=True)
+EOF
+    # 3: nothing listening on the socket, so nothing changed.
+    [ $? -ne 3 ] && echo stopped
+  fi
+  first=
+  sleep 5
+done
