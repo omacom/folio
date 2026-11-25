@@ -91,11 +91,15 @@ GridView {
     highlightFollowsCurrentItem: false
     ScrollBar.vertical: FolioScrollBar { }
 
+    // Use configured paths, not names: another folder named Pictures is just a folder.
+    readonly property var standardFolderIcons: (typeof places !== "undefined" && places.standardFolderIcons) || ({})
+
     delegate: FileTile {
         width: grid.cellWidth
         height: grid.cellHeight
         zoom: grid.tileZoom
         current: selected
+        folderGlyph: isDir ? (grid.standardFolderIcons[path] || "") : ""
         onClicked: (modifiers) => { selecting.click(index, modifiers); grid.forceActiveFocus() }
         onActivated: backend.open(path)
     }

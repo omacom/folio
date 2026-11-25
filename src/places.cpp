@@ -147,10 +147,11 @@ void Places::refresh() {
     // Told only when a list changed: each time it's told, the sidebar
     // makes all its rows again, and the poll mostly finds nothing new.
     const QVariantList places = m_places, pinned = m_pinned, views = m_views;
+    const QVariantMap icons = m_standardFolderIcons;
     refreshPlaces();
     refreshPinned();
     refreshDevices();
-    if (m_places != places || m_pinned != pinned || m_views != views)
+    if (m_places != places || m_pinned != pinned || m_views != views || m_standardFolderIcons != icons)
         emit changed();
 }
 
@@ -173,7 +174,7 @@ void Places::refreshPlaces() {
         places << QVariantMap{{"name", name}, {"path", path}, {"icon", icon}};
     };
     // The XDG folders keep their own glyphs, wherever user-dirs points.
-    const QHash<QString, QString> icons{
+    m_standardFolderIcons = {
         {userDirectory(QStandardPaths::DocumentsLocation, "Documents"), "documents"},
         {userDirectory(QStandardPaths::DownloadLocation, "Downloads"), "downloads"},
         {userDirectory(QStandardPaths::PicturesLocation, "Pictures"), "pictures"},
@@ -192,7 +193,7 @@ void Places::refreshPlaces() {
             continue;
         const QString path = m_home + "/" + name;
         // Omarchy's own folder shows Omarchy's mark.
-        add(homeName(name), path, icons.value(path, name == "omarchy" ? QStringLiteral(":/omarchy.svg") : QStringLiteral("folder")));
+        add(homeName(name), path, m_standardFolderIcons.value(path, name == "omarchy" ? QStringLiteral(":/omarchy.svg") : QStringLiteral("folder")).toString());
     }
 
     m_places = places;

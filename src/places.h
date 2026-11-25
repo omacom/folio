@@ -12,6 +12,7 @@ class Places : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString home READ home CONSTANT)
     Q_PROPERTY(QVariantList places READ places NOTIFY changed)
+    Q_PROPERTY(QVariantMap standardFolderIcons READ standardFolderIcons NOTIFY changed)
     Q_PROPERTY(QVariantList pinned READ pinned NOTIFY changed)
     Q_PROPERTY(QVariantList views READ views NOTIFY changed)
     Q_PROPERTY(QVariantList devices READ devices NOTIFY changed)
@@ -23,6 +24,7 @@ public:
 
     QString home() const { return m_home; }
     QVariantList places() const { return m_places; }
+    QVariantMap standardFolderIcons() const { return m_standardFolderIcons; }
     QVariantList pinned() const { return m_pinned; }
     QVariantList views() const { return m_views; }
     QVariantList devices() const { return m_devices; }
@@ -99,6 +101,7 @@ private:
     QString m_home;
     bool m_realHome;
     QVariantList m_places, m_pinned, m_views, m_devices;
+    QVariantMap m_standardFolderIcons;
     // The names of home's folders left out of its section.
     QStringList m_hidden;
     QTimer m_poll;
