@@ -8726,6 +8726,58 @@ private slots:
         }
     }
 
+    void gridMarksOnlyStandardFolderPaths()
+    {
+        QTemporaryDir home;
+        const QByteArray oldHome = qgetenv("HOME"), oldConfig = qgetenv("XDG_CONFIG_HOME");
+        qputenv("HOME", QFile::encodeName(home.path()));
+        qputenv("XDG_CONFIG_HOME", QFile::encodeName(home.filePath(".config")));
+        const auto restore = qScopeGuard([&] {
+            oldHome.isNull() ? qunsetenv("HOME") : qputenv("HOME", oldHome);
+            oldConfig.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", oldConfig);
+        });
+        for (const char *name : {".config", "Album", "Documents", "Pictures"})
+            QVERIFY(QDir(home.path()).mkpath(name));
+        write(home.filePath(".config/user-dirs.dirs"), "XDG_PICTURES_DIR=\"$HOME/Album\"\n");
+
+        Places places;
+        Backend backend(home.path());
+        backend.navigate(home.path());
+        QTRY_COMPARE(backend.folder()->rowCount(), 3);
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("places", &places);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("plugins", QVariantMap{{"views", QVariantMap{}}});
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window { width: 800; height: 450; visible: true\n"
+                          "    FolderGrid { id: grid; anchors.fill: parent }\n"
+                          "    function tileAt(i) { return grid.itemAtIndex(i) }\n"
+                          "}\n", QUrl::fromLocalFile(sourceFolder() + "/GridGlyphTest.qml"));
+        const std::unique_ptr<QObject> window(component.create());
+        QVERIFY2(window, qPrintable(component.errorString()));
+        auto tileAt = [&](int row) {
+            QVariant tile;
+            QMetaObject::invokeMethod(window.get(), "tileAt", Q_RETURN_ARG(QVariant, tile), Q_ARG(QVariant, row));
+            return tile.value<QObject *>();
+        };
+        for (int row = 0; row < 3; ++row)
+            QTRY_VERIFY(tileAt(row));
+        const auto glyphOf = [&](int row) { return tileAt(row)->findChild<QObject *>("folderGlyph"); };
+        QCOMPARE(tileAt(0)->property("path").toString(), home.filePath("Album"));
+        QTRY_VERIFY(glyphOf(0));
+        QCOMPARE(glyphOf(0)->property("name").toString(), QString("pictures"));
+        QTRY_VERIFY(glyphOf(1));
+        QCOMPARE(glyphOf(1)->property("name").toString(), QString("documents"));
+        QCOMPARE(tileAt(2)->property("path").toString(), home.filePath("Pictures"));
+        QVERIFY(!glyphOf(2));
+    }
+
     void gridBandHitsTheTilesBothWays()
     {
         // The rubber band's hit areas sit where the grid put the tiles, also

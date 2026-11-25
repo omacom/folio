@@ -26,6 +26,7 @@ Item {
     required property bool selected
 
     property bool current: false
+    property string folderGlyph: ""
     // Cut and not yet pasted: its picture faded and its name in the colour of
     // a disabled menu entry.
     readonly property bool cut: fileOps.cutCount > 0 && fileOps.isCut(path)
@@ -196,7 +197,7 @@ Item {
              + "Q4.5 88.5 4.5 " + (88.5 - r) + "Z"
     }
 
-    // Folders are a plain card, nothing on it; the name below says the rest.
+    // Standard folders wear the same glyph as in the sidebar.
     Component {
         id: folderArt
 
@@ -212,6 +213,18 @@ Item {
                 strokeWidth: folderDrop.containsDrag ? 2.5 : 1.5
                 joinStyle: tile.iconRadius > 0 ? ShapePath.RoundJoin : ShapePath.MiterJoin
                 PathSvg { path: tile.folderPath(tile.iconRadius) }
+            }
+
+            Loader {
+                anchors.centerIn: parent
+                anchors.verticalCenterOffset: 3
+                active: tile.folderGlyph !== ""
+                sourceComponent: Glyph {
+                    objectName: "folderGlyph"
+                    name: tile.folderGlyph
+                    size: 26
+                    color: theme.secondaryForeground
+                }
             }
         }
     }
