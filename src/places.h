@@ -70,10 +70,6 @@ public:
     // says how it's let go of ("release": "eject", "unmount", or empty when
     // it can't be) and how much is free.
     static QVariantList physicalDrives(const QList<Mount> &mounts, const QString &systemDevice);
-    // What the drive mounted at `root` is called: GIO's name for it (its
-    // label, or its size when it has none: "2.0 TB Volume"), else its
-    // folder's name. On the UI thread, where GIO's volume monitor lives.
-    static QString driveName(const QString &root);
 
 signals:
     void changed();
