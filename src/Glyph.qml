@@ -77,6 +77,9 @@ Item {
         case "grid": return box(4, 4, 6, 6, r / 2) + box(14, 4, 6, 6, r / 2) + box(4, 14, 6, 6, r / 2) + box(14, 14, 6, 6, r / 2)
         case "list": return "M4 6h16M4 12h16M4 18h16"
         case "columns": return box(3, 4, 18, 16, r) + "M9 4v16M15 4v16"
+        // The list's hierarchy lines: a row, and a guide under it turning
+        // into the two rows it holds.
+        case "lines": return "M4 5h16M14 11.5h6M14 18h6" + (r > 0 ? "M7 5v11Q7 18 9 18h2M7 9.5Q7 11.5 9 11.5h2" : "M7 5v13h4M7 11.5h4")
         // One per sort order: a slim arrow on the left (down for the usual
         // direction, up for oldest first), and what it sorts by on the right,
         // kept apart so both read at toolbar size.

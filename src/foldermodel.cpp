@@ -1465,6 +1465,18 @@ int FolderModel::parentRow(int row) const {
     return -1;
 }
 
+QVariantMap FolderModel::outline() const {
+    QList<int> depths;
+    QList<bool> folders;
+    depths.reserve(m_entries.size());
+    folders.reserve(m_entries.size());
+    for (const Entry &e : m_entries) {
+        depths.append(e.depth);
+        folders.append(e.isDir);
+    }
+    return {{"depths", QVariant::fromValue(depths)}, {"folders", QVariant::fromValue(folders)}};
+}
+
 void FolderModel::setExpanded(int row, bool expanded) {
     if (row < 0 || row >= m_entries.size() || !m_entries[row].isDir || !expandable()
         || expanded == m_expanded.contains(m_entries[row].path))

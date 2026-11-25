@@ -235,6 +235,9 @@ FocusScope {
     // S steps through the sort orders, Shift+S back.
     Shortcut { sequence: "S"; enabled: pane.keys; onActivated: pathBar.stepSort(1) }
     Shortcut { sequence: "Shift+S"; enabled: pane.keys; onActivated: pathBar.stepSort(-1) }
+    // In the list, L steps through the hierarchy lines' styles, Shift+L back.
+    Shortcut { sequence: "L"; enabled: pane.keys && pane.viewMode === "list"; onActivated: pathBar.stepLines(1) }
+    Shortcut { sequence: "Shift+L"; enabled: pane.keys && pane.viewMode === "list"; onActivated: pathBar.stepLines(-1) }
     Shortcut { sequences: ["F5", "Refresh"]; enabled: pane.active; onActivated: { backend.folder.reload(); places.refresh(); plugins.refresh() } }
 
     // A drive being ejected can't be in use: a pane showing a folder on it
@@ -519,9 +522,10 @@ FocusScope {
 
             // Ctrl+scroll over the grid or the list steps its size, as Ctrl+=
             // and Ctrl+- do. It's the view's own, so it's asked before the
-            // view scrolls.
+            // view scrolls. Between views it stays on the loader: with no
+            // parent at all, the garbage collector can take it.
             WheelHandler {
-                parent: view.item
+                parent: view.item ? view.item : view
                 enabled: pane.viewMode !== "columns"
                 acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                 acceptedModifiers: Qt.ControlModifier
