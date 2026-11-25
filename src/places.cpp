@@ -365,6 +365,17 @@ void Places::unpin(const QString &path) {
     }
 }
 
+QString Places::driveName(const QString &root) {
+    QString name;
+    if (GMount *mount = mountAt(root)) {
+        char *gioName = g_mount_get_name(mount);
+        name = QString::fromUtf8(gioName);
+        g_free(gioName);
+        g_object_unref(mount);
+    }
+    return name.isEmpty() ? QFileInfo(root).fileName() : name;
+}
+
 QVariantList Places::physicalDrives(const QList<Mount> &mounts, const QString &systemDevice) {
     static const QStringList pseudo{"tmpfs", "devtmpfs", "squashfs", "overlay", "ramfs", "fuse.portal",
                                     "fuse.gvfsd-fuse", "efivarfs", "autofs"};
@@ -454,6 +465,13 @@ void Places::mountsRead() {
             if (GMount *gmount = byRoot.value(mount.root)) {
                 mount.canEject = g_mount_can_eject(gmount);
                 mount.canUnmount = g_mount_can_unmount(gmount);
+                // Unlabeled, it goes by GIO's name ("2.0 TB Volume") rather
+                // than the UUID udisks mounts it under.
+                if (mount.label.isEmpty()) {
+                    char *name = g_mount_get_name(gmount);
+                    mount.label = QString::fromUtf8(name);
+                    g_free(name);
+                }
             }
         }
         g_list_free_full(gmounts, g_object_unref);
