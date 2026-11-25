@@ -92,17 +92,13 @@ public:
         return failure(call(encrypted, prefix + "Encrypted", "Lock", {QVariantMap()}));
     }
 
+    QString wipe(const QString &partition) override {
+        return failure(call(partition, prefix + "Block", "Format", {QString("empty"), QVariantMap{{"tear-down", true}}}));
+    }
+
     QString makeTable(const Disk &disk) override {
         // Tearing down also locks anything unlocked on it, which unmounting
-        // alone leaves open. Each partition's own signatures go first: the
-        // new partition starts where the old first one did, and would come
-        // up still looking like its filesystem, for an automounter to mount
-        // before udisks could wipe it.
-        for (const QString &partition : disk.partitions)
-            if (const QString error = failure(call(partition, prefix + "Block", "Format",
-                                                   {QString("empty"), QVariantMap{{"tear-down", true}}}));
-                !error.isEmpty())
-                return error;
+        // alone leaves open.
         return failure(call(disk.block, prefix + "Block", "Format", {QString("gpt"), QVariantMap{{"tear-down", true}}}));
     }
 
