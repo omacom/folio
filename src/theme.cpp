@@ -488,13 +488,17 @@ qreal Theme::effectiveTextScale(qreal fixedPoints) const {
 
 void Theme::readSystemFont(bool reloadConfig) {
     const QFont fixed = QFontDatabase::systemFont(QFontDatabase::FixedFont);
-    QString family;
-    if (!reloadConfig) {
+    // A size-only update keeps the family last resolved: the configuration
+    // Qt started with may predate a fonts.conf change resolved since.
+    QString family = !reloadConfig && fixed.family() == m_requestedFamily ? m_resolvedFamily : QString();
+    if (family.isEmpty() && !reloadConfig) {
         if (FcConfig *current = FcConfigGetCurrent())
             family = matchFamily(current, fixed.family());
     }
     if (family.isEmpty())
         family = resolveFamily(fixed.family());
+    m_requestedFamily = fixed.family();
+    m_resolvedFamily = family;
     const qreal scale = effectiveTextScale(fixed.pointSizeF());
     QFont font(family);
     font.setStyleHint(QFont::Monospace);

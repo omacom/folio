@@ -9310,6 +9310,13 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(theme.fontFamily(), other, 3000);
         QCOMPARE(QGuiApplication::font().family(), other);
         QVERIFY(changed.count() >= 1);
+
+        // A text size change afterwards keeps that font, rather than
+        // resolving monospace again as fontconfig had it at startup.
+        QDir(config.path()).mkpath("omarchy");
+        write(config.filePath("omarchy/shell.toml"), "[font]\nbase-size = 15\n");
+        QTRY_COMPARE_WITH_TIMEOUT(theme.textScale(), 1.25, 3000);
+        QCOMPARE(theme.fontFamily(), other);
     }
 
     // `omarchy display text size` writes `[font] base-size` to

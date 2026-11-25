@@ -130,6 +130,8 @@ private:
     bool m_roundingAgain = false;
     QLocalSocket m_events;
     QString m_fontFamily;
+    // The fixed font's family as last asked for, and what it resolved to.
+    QString m_requestedFamily, m_resolvedFamily;
     qreal m_textScale = 1;
     qreal m_portalTextScale = 0;
     bool m_followingFont = false;
