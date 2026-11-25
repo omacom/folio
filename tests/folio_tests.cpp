@@ -6537,6 +6537,7 @@ private slots:
         QVERIFY(system.mounts.contains("/boot"));
         QVERIFY(Disks::holdsSystem(system));
         QCOMPARE(system.unlocked, QStringList{at + "nvme0n1p2"});
+        QCOMPARE(system.partitions, (QStringList{at + "nvme0n1p1", at + "nvme0n1p2"}));
         const Disk &stick = disks.at(1);
         QCOMPARE(stick.device, QString("/dev/sda"));
         QCOMPARE(stick.label, QString("OMARCHY_202611"));

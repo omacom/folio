@@ -45,6 +45,8 @@ struct Disk {
     // Encrypted volumes on it that are unlocked, which hold it until
     // they're locked again.
     QStringList unlocked;
+    // Its partitions' block devices.
+    QStringList partitions;
 };
 
 // Folio's way to udisks2: listing disks and the few changes it makes to

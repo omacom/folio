@@ -94,7 +94,15 @@ public:
 
     QString makeTable(const Disk &disk) override {
         // Tearing down also locks anything unlocked on it, which unmounting
-        // alone leaves open.
+        // alone leaves open. Each partition's own signatures go first: the
+        // new partition starts where the old first one did, and would come
+        // up still looking like its filesystem, for an automounter to mount
+        // before udisks could wipe it.
+        for (const QString &partition : disk.partitions)
+            if (const QString error = failure(call(partition, prefix + "Block", "Format",
+                                                   {QString("empty"), QVariantMap{{"tear-down", true}}}));
+                !error.isEmpty())
+                return error;
         return failure(call(disk.block, prefix + "Block", "Format", {QString("gpt"), QVariantMap{{"tear-down", true}}}));
     }
 
@@ -128,7 +136,9 @@ public:
     }
 
     QString mount(const QString &filesystem) override {
-        return failure(call(filesystem, prefix + "Filesystem", "Mount", {QVariantMap()}));
+        const QDBusMessage reply = call(filesystem, prefix + "Filesystem", "Mount", {QVariantMap()});
+        // Mounted meanwhile (an automounter got there first) is what was wanted.
+        return reply.errorName() == "org.freedesktop.UDisks2.Error.AlreadyMounted" ? QString() : failure(reply);
     }
 
     QString open(const Disk &disk, int *fd) override {
@@ -292,6 +302,8 @@ QList<Disk> Disks::parse(const Objects &objects) {
         if (disk == disks.end())
             continue;
         const QVariantMap block = it.value().value("Block");
+        if (it.value().contains("Partition"))
+            disk->partitions << it.key();
         // What's unlocked comes and goes with its key (burning locks it),
         // so it's no part of which disk this is.
         if (const QString backing = block.value("CryptoBackingDevice").toString(); !backing.isEmpty() && backing != "/")
