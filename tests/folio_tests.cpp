@@ -1075,7 +1075,7 @@ private slots:
         };
         QTRY_VERIFY(findFile());
         const QPointF at = fileRow->mapToItem(window->contentItem(), QPointF(100, fileRow->height() / 2));
-        QDragEnterEvent enter(at, Qt::MoveAction, &data, Qt::LeftButton, Qt::NoModifier);
+        QDragEnterEvent enter(at.toPoint(), Qt::MoveAction, &data, Qt::LeftButton, Qt::NoModifier);
         QGuiApplication::sendEvent(window, &enter);
         QDropEvent drop(at, Qt::MoveAction, &data, Qt::LeftButton, Qt::NoModifier);
         QGuiApplication::sendEvent(window, &drop);
@@ -2778,7 +2778,7 @@ private slots:
         QMimeData data;
         data.setUrls({QUrl::fromLocalFile(home.filePath("project/install"))});
         const auto dropAt = [&](QPointF at) {
-            QDragEnterEvent enter(at, Qt::MoveAction, &data, Qt::LeftButton, Qt::NoModifier);
+            QDragEnterEvent enter(at.toPoint(), Qt::MoveAction, &data, Qt::LeftButton, Qt::NoModifier);
             QGuiApplication::sendEvent(window, &enter);
             QDropEvent drop(at, Qt::MoveAction, &data, Qt::LeftButton, Qt::NoModifier);
             QGuiApplication::sendEvent(window, &drop);
