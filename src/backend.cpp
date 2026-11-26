@@ -217,6 +217,70 @@ const QHash<QString, QString> &cachedSorts(const QString &file) {
     }
     return cache.sorts;
 }
+
+// What `path` takes from the folders above it for its view. Empty means the
+// window's last-chosen view is used.
+QString inheritedView(const QHash<QString, QString> &views, QString path) {
+    if (FolderModel::isView(path) || !path.startsWith('/'))
+        return {};
+    while (path != "/") {
+        path = QFileInfo(path).path();
+        if (views.contains(path))
+            return views.value(path);
+    }
+    return {};
+}
+
+QHash<QString, QString> readViews(QSettings &settings) {
+    QHash<QString, QString> views;
+    const int count = settings.beginReadArray("views");
+    for (int i = 0; i < count; ++i) {
+        settings.setArrayIndex(i);
+        const QString view = settings.value("view").toString();
+        if (view == "columns" || view == "list" || view == "grid")
+            views.insert(settings.value("path").toString(), view);
+    }
+    settings.endArray();
+    return views;
+}
+
+struct ViewsCache {
+    QString file;
+    bool existed = false;
+    qint64 mtimeSec = 0;
+    qint64 mtimeNsec = 0;
+    qint64 size = 0;
+    QHash<QString, QString> views;
+};
+
+ViewsCache &viewsCache() {
+    static ViewsCache cache;
+    return cache;
+}
+
+const QHash<QString, QString> &cachedViews(const QString &file) {
+    static const QString defaultPath = QSettings().fileName();
+    const QString path = file.isEmpty() ? defaultPath : file;
+    struct stat st{};
+    const bool exists = ::stat(QFile::encodeName(path).constData(), &st) == 0;
+    auto &cache = viewsCache();
+    if (cache.file == path && cache.existed == exists
+        && (!exists || (cache.mtimeSec == st.st_mtim.tv_sec && cache.mtimeNsec == st.st_mtim.tv_nsec
+                        && cache.size == st.st_size)))
+        return cache.views;
+    cache.file = path;
+    cache.existed = exists;
+    cache.mtimeSec = exists ? st.st_mtim.tv_sec : 0;
+    cache.mtimeNsec = exists ? st.st_mtim.tv_nsec : 0;
+    cache.size = exists ? st.st_size : 0;
+    if (exists) {
+        QSettings settings = sortSettings(file);
+        cache.views = readViews(settings);
+    } else {
+        cache.views.clear();
+    }
+    return cache.views;
+}
 }
 
 QString Backend::sortFor(const QString &path) {
@@ -272,6 +336,61 @@ void Backend::chooseSort(const QString &sort) {
         rememberSort(path(), sort);
     ++m_sortsRevision;
     emit sortsChanged();
+}
+
+QStringList Backend::viewModes() {
+    return {"columns", "list", "grid"};
+}
+
+QString Backend::viewFor(const QString &path) {
+    const auto &views = cachedViews(s_settingsFile);
+    return views.contains(path) ? views.value(path) : inheritedView(views, path);
+}
+
+void Backend::rememberView(const QString &path, const QString &view) {
+    if (!viewModes().contains(view))
+        return;
+    QSettings settings = sortSettings(s_settingsFile);
+    QLockFile lock(settings.fileName() + ".views.lock");
+    if (!lock.lock())
+        return;
+    settings.sync();
+    auto views = readViews(settings);
+    // A view the folder would take from its parent is left to the parent,
+    // so changing the parent's later changes it too. With no parent view,
+    // the choice is kept as this folder's own.
+    if (view == inheritedView(views, path))
+        views.remove(path);
+    else
+        views.insert(path, view);
+    QStringList paths = views.keys();
+    paths.sort();
+    settings.remove("views");
+    settings.beginWriteArray("views", paths.size());
+    for (int i = 0; i < paths.size(); ++i) {
+        settings.setArrayIndex(i);
+        settings.setValue("path", paths[i]);
+        settings.setValue("view", views.value(paths[i]));
+    }
+    settings.endArray();
+    settings.sync();
+    const QString filePath = settings.fileName();
+    struct stat st{};
+    const bool exists = ::stat(QFile::encodeName(filePath).constData(), &st) == 0;
+    auto &cache = viewsCache();
+    cache.file = filePath;
+    cache.existed = exists;
+    cache.mtimeSec = exists ? st.st_mtim.tv_sec : 0;
+    cache.mtimeNsec = exists ? st.st_mtim.tv_nsec : 0;
+    cache.size = exists ? st.st_size : 0;
+    cache.views = std::move(views);
+}
+
+void Backend::chooseView(const QString &view) {
+    if (!viewModes().contains(view))
+        return;
+    if (!path().isEmpty())
+        rememberView(path(), view);
 }
 
 void Backend::navigate(const QString &path) {

@@ -23,11 +23,12 @@ FocusScope {
     // The columns' details column, while it shows a file, for Tab to reach.
     readonly property var details: view.item && view.item.details ? view.item.details : null
 
-    // Each pane has its own view. The window's own pane is the one
-    // remembered between launches; the right pane of a split starts with
-    // the view of the pane it was split from.
+    // Each pane has its own view. A folder can keep one of its own (and
+    // folders below inherit it); otherwise the window's last-chosen view
+    // is used. Applying a folder's view must not overwrite that last choice.
+    property bool applyingView: false
     property string viewMode: host ? host.viewMode : "columns"
-    onViewModeChanged: if (host && !closable) host.viewMode = viewMode
+    onViewModeChanged: if (host && !closable && !applyingView) host.viewMode = viewMode
     // How big the grid's tiles are, in steps (Ctrl+= / Ctrl+- / Ctrl+0, or
     // Ctrl+scroll), shared and remembered the same way as the view.
     property real zoom: host ? host.zoom : 1
@@ -37,9 +38,29 @@ FocusScope {
         const at = zoomSteps.indexOf(zoom)
         zoom = zoomSteps[Math.max(0, Math.min(zoomSteps.length - 1, (at < 0 ? 1 : at) + step))]
     }
-    function cycleView() {
-        viewMode = viewMode === "columns" ? "list" : viewMode === "list" ? "grid" : "columns"
+    function setView(mode) {
+        viewMode = mode
+        backend.chooseView(mode)
     }
+    function cycleView() {
+        setView(viewMode === "columns" ? "list" : viewMode === "list" ? "grid" : "columns")
+    }
+    function applyFolderView() {
+        if (!backend.path)
+            return
+        const saved = backend.viewOf(backend.path)
+        const next = saved || (host ? host.viewMode : "columns")
+        if (viewMode === next)
+            return
+        applyingView = true
+        viewMode = next
+        applyingView = false
+    }
+    Connections {
+        target: backend
+        function onPathChanged() { pane.applyFolderView() }
+    }
+    Component.onCompleted: applyFolderView()
 
     // The cursor's item, carried across a switch of view and a re-read of
     // the folder. By path: Recents can list two files of the same name.
@@ -220,9 +241,9 @@ FocusScope {
     // Pins the selected folder, or the folder being shown when a file is
     // selected; pressed again, unpins it.
     Shortcut { sequence: "Ctrl+P"; enabled: pane.active && !pane.inView; onActivated: pane.togglePin(pane.current.isDir ? pane.current.path : backend.path) }
-    Shortcut { sequence: "Ctrl+1"; enabled: pane.active; onActivated: pane.viewMode = "columns" }
-    Shortcut { sequence: "Ctrl+2"; enabled: pane.active; onActivated: pane.viewMode = "list" }
-    Shortcut { sequence: "Ctrl+3"; enabled: pane.active; onActivated: pane.viewMode = "grid" }
+    Shortcut { sequence: "Ctrl+1"; enabled: pane.active; onActivated: pane.setView("columns") }
+    Shortcut { sequence: "Ctrl+2"; enabled: pane.active; onActivated: pane.setView("list") }
+    Shortcut { sequence: "Ctrl+3"; enabled: pane.active; onActivated: pane.setView("grid") }
     Shortcut { sequences: [StandardKey.ZoomIn, "Ctrl+="]; enabled: pane.active; onActivated: pane.zoomBy(1) }
     Shortcut { sequences: [StandardKey.ZoomOut]; enabled: pane.active; onActivated: pane.zoomBy(-1) }
     Shortcut { sequence: "Ctrl+0"; enabled: pane.active; onActivated: pane.zoom = 1 }

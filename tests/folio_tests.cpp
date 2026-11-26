@@ -821,6 +821,49 @@ private slots:
         QTRY_VERIFY(!picture(index).isEmpty() && picture(index) != before);
     }
 
+    void foldersRememberTheirViewAndPassItDown()
+    {
+        QTemporaryDir home;
+        for (const char *dir : {"Downloads/monkey/deep", "Downloads/zebra", "Music"})
+            QDir(home.path()).mkpath(dir);
+        const QString downloads = home.filePath("Downloads"), monkey = home.filePath("Downloads/monkey");
+        Backend backend(home.path());
+        backend.navigate(downloads);
+        QCOMPARE(Backend::viewFor(downloads), QString());
+        backend.chooseView("grid");
+
+        // The folders inside take it; the ones beside don't.
+        QCOMPARE(Backend::viewFor(monkey), QString("grid"));
+        QCOMPARE(Backend::viewFor(monkey + "/deep"), QString("grid"));
+        QCOMPARE(Backend::viewFor(home.filePath("Music")), QString());
+        QCOMPARE(Backend::viewFor(home.path()), QString());
+
+        // A folder inside can have its own, which its parent's doesn't undo.
+        backend.navigate(monkey);
+        backend.chooseView("list");
+        QCOMPARE(Backend::viewFor(downloads), QString("grid"));
+        QCOMPARE(Backend::viewFor(monkey), QString("list"));
+        QCOMPARE(Backend::viewFor(monkey + "/deep"), QString("list"));
+        QCOMPARE(Backend::viewFor(home.filePath("Downloads/zebra")), QString("grid"));
+
+        // Kept for the next launch, and for every window.
+        Backend other(home.path());
+        QCOMPARE(Backend::viewFor(monkey + "/deep"), QString("list"));
+        other.navigate(monkey + "/deep");
+        other.chooseView("columns");
+        QCOMPARE(Backend::viewFor(monkey + "/deep"), QString("columns"));
+        QCOMPARE(Backend::viewFor(monkey), QString("list"));
+
+        // Put back in its parent's view, a folder follows the parent again.
+        backend.navigate(monkey + "/deep");
+        backend.chooseView("list");
+        QCOMPARE(Backend::viewFor(monkey + "/deep"), QString("list"));
+        backend.navigate(monkey);
+        backend.chooseView("columns");
+        QCOMPARE(Backend::viewFor(monkey), QString("columns"));
+        QCOMPARE(Backend::viewFor(monkey + "/deep"), QString("columns"));
+    }
+
     void foldersRememberTheirOrderAndPassItDown()
     {
         QTemporaryDir home;

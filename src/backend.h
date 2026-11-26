@@ -57,6 +57,12 @@ public:
     // Tests keep theirs in a file of their own.
     static QString sortFor(const QString &path);
     static void rememberSort(const QString &path, const QString &sort);
+    // The view (columns, list or grid) each folder was last put in, kept
+    // the same way. A folder without one of its own takes its nearest
+    // parent's; with none above, the window's last-chosen view is used.
+    static QStringList viewModes();
+    static QString viewFor(const QString &path);
+    static void rememberView(const QString &path, const QString &view);
     static void setSettingsFile(const QString &file) { s_settingsFile = file; }
     // The order chosen for the folder shown, from the sort menu or S:
     // remembered even when it's the one already in use, which can free
@@ -64,6 +70,10 @@ public:
     Q_INVOKABLE void chooseSort(const QString &sort);
     // Each column of the columns view in its own folder's order.
     Q_INVOKABLE QString sortOf(const QString &path) const { return sortFor(path); }
+    // The view chosen for the folder shown, from Ctrl+1/2/3 or the toolbar.
+    Q_INVOKABLE void chooseView(const QString &view);
+    // The view a folder keeps, or empty when it follows the window's last choice.
+    Q_INVOKABLE QString viewOf(const QString &path) const { return viewFor(path); }
     Mounter *mounter() { return &m_mounter; }
     QString path() const { return m_folder.path(); }
     QString title() const;
