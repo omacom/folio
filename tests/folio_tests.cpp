@@ -2925,7 +2925,8 @@ private slots:
         };
         QCOMPARE(order("name"), QString("Zeta a.png b.txt c.txt"));
         QCOMPARE(order("kind"), QString("Zeta a.png b.txt c.txt"));
-        QCOMPARE(order("modified"), QString("Zeta b.txt c.txt a.png"));
+        // Newest and Oldest mix folders in by date; Name, Kind and Size keep them first.
+        QCOMPARE(order("modified"), QString("b.txt c.txt a.png Zeta"));
         QCOMPARE(order("oldest"), QString("Zeta a.png c.txt b.txt"));
         QCOMPARE(order("size"), QString("Zeta a.png c.txt b.txt"));
     }

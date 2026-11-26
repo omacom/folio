@@ -812,8 +812,9 @@ struct Order {
     // given true, their extensions) as a collator does.
     template <typename Collate>
     bool operator()(const FolderModel::Entry &a, const FolderModel::Entry &b, const Collate &collate) const {
-        // Folders first in every order, as everywhere else on the desktop.
-        if (a.isDir != b.isDir)
+        // Folders first by name, kind and size. By date they sit with files
+        // of their age, so a just-unzipped folder lands next to its archive.
+        if (!newest && !oldest && a.isDir != b.isDir)
             return a.isDir;
         if (newest && a.modified != b.modified)
             return a.modified > b.modified;
