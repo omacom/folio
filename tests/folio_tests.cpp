@@ -10267,6 +10267,36 @@ private slots:
         window->close();
         QTRY_COMPARE(replies, (QList<std::pair<uint, QStringList>>{{1, {}}}));
 
+        // Saving goes into the one folder selected, as it's drawn: its
+        // name taken there asks first. A cursor alone, a file or several
+        // items leave it in the folder shown.
+        QCOMPARE(ChooserDialog::destination(home.path(), {home.filePath("sub")}), home.filePath("sub"));
+        QCOMPARE(ChooserDialog::destination(home.path(), {home.filePath("a.txt")}), home.path());
+        QCOMPARE(ChooserDialog::destination(home.path(), {home.filePath("sub"), home.filePath("pick")}), home.path());
+        QCOMPARE(ChooserDialog::destination(home.path(), {}), home.path());
+
+        replies.clear();
+        request.title = "Save into the selected folder";
+        window = open(request);
+        QVERIFY(window);
+        QTRY_VERIFY(listed(window).contains("sub"));
+        paneOf(window)->showItem(home.filePath("sub"));
+        QTRY_COMPARE(cursor(window), home.filePath("sub"));
+        QTest::keyClick(window, Qt::Key_Return, Qt::ControlModifier);
+        QCOMPARE(replies, (QList<std::pair<uint, QStringList>>{{0, {uri("sub/a.txt")}}}));
+
+        replies.clear();
+        request.title = "Save beside a deselected folder";
+        request.name = "fresh.txt";
+        window = open(request);
+        QVERIFY(window);
+        QTRY_VERIFY(listed(window).contains("sub"));
+        paneOf(window)->showItem(home.filePath("sub"));
+        QTRY_COMPARE(cursor(window), home.filePath("sub"));
+        paneOf(window)->folder()->selectOnly(-1);
+        QTest::keyClick(window, Qt::Key_Return, Qt::ControlModifier);
+        QCOMPARE(replies, (QList<std::pair<uint, QStringList>>{{0, {uri("fresh.txt")}}}));
+
         // With nothing in the way, the files go into the folder shown.
         replies.clear();
         files.title = "Save more files";

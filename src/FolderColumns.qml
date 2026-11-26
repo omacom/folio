@@ -30,6 +30,10 @@ Item {
     signal contextMenu(var item, string folder, point at)
 
     readonly property var crumbs: backend.crumbs
+    // A file chooser that answers with the folder shown (saving, or picking
+    // a folder) draws that folder, in the column before, as chosen while
+    // nothing in it is selected.
+    readonly property bool answersHere: !!chooser && chooser.mode !== "open"
 
     // The folders on the way here, kept as a list model that is only trimmed
     // and extended: moving one folder deeper or back out adds or drops one
@@ -191,6 +195,7 @@ Item {
                             width: column.width
                             chevron: true
                             trail: name === ancestor.next
+                            current: view.answersHere && path === backend.path && backend.folder.selectedCount === 0
                             onClicked: isDir ? backend.navigate(path) : backend.showItem(path)
                             onActivated: backend.open(path)
                         }
