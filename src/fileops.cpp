@@ -2471,6 +2471,23 @@ void FileOps::format(const QString &id, const QString &label, const QString &typ
         Lane::Drive);
 }
 
+bool FileOps::onRemovable(const QStringList &paths) const {
+    if (paths.isEmpty())
+        return false;
+    const auto udisks = Disks::instance();
+    const QList<Disk> disks = udisks->list();
+    return std::all_of(paths.begin(), paths.end(), [&](const QString &path) {
+        if (!path.startsWith('/'))
+            return false;
+        // What goes is the item in its folder, so it's that folder's
+        // filesystem, wherever links on the way lead, and not what a link
+        // points at. A path under a drive's mount can be another drive
+        // altogether (mounted inside it, or reached through a link).
+        const QString folder = QFileInfo(QFileInfo(path).absolutePath()).canonicalFilePath();
+        return !folder.isEmpty() && Disks::pluggedAt(disks, udisks->mountOf(folder));
+    });
+}
+
 bool FileOps::canBurn(const QString &path) const {
     const QFileInfo info(path);
     if (!info.isFile())

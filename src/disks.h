@@ -85,6 +85,9 @@ public:
     virtual QString open(const Disk &disk, int *fd) = 0;
     // Lets the disk go for good, so it's safe to pull out.
     virtual QString eject(const Disk &disk) = 0;
+    // Where the filesystem holding `folder` (a canonical path) is mounted,
+    // from the system's mount table.
+    virtual QString mountOf(const QString &folder);
 
     // udisks' objects as GetManagedObjects lists them: object path, then
     // interface (without "org.freedesktop.UDisks2."), then its properties.
@@ -97,6 +100,12 @@ public:
     // (/, /boot, /home…), which no drive menu may touch.
     static bool isSystemMount(const QString &root);
     static bool holdsSystem(const Disk &disk);
+    // Whether the disk is plugged into the computer (a USB stick, an SD
+    // card) rather than part of it.
+    static bool plugged(const Disk &disk);
+    // Whether the filesystem mounted at `root` is on a disk plugged in
+    // that isn't the system's.
+    static bool pluggedAt(const QList<Disk> &disks, const QString &root);
 
     // How a person knows the disk: its maker and model ("SanDisk Ultra"),
     // or its label, and with its size ("SanDisk Ultra · 32 GB").

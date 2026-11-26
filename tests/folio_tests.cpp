@@ -157,6 +157,17 @@ public:
         return {};
     }
     QString eject(const Disk &disk) override { return made("eject " + disk.block, "eject"); }
+    // Folders standing in for mount points, with where each is said to be
+    // mounted (a temporary folder is under /tmp, a system mount); what's
+    // outside them all is on "/".
+    QMap<QString, QString> mountPoints;
+    QString mountOf(const QString &folder) override {
+        QString found;
+        for (auto it = mountPoints.begin(); it != mountPoints.end(); ++it)
+            if ((folder == it.key() || folder.startsWith(it.key() + '/')) && it.key().size() > found.size())
+                found = it.key();
+        return found.isEmpty() ? QStringLiteral("/") : mountPoints.value(found);
+    }
 
 private:
     QString made(const QString &call, const QString &method) {
@@ -6953,6 +6964,58 @@ private slots:
         QVERIFY(ops.canBurn(dir.filePath("raspios.img")));
         QVERIFY(!ops.canBurn(dir.filePath("notes.txt")));
         QVERIFY(!ops.canBurn(dir.path()));
+    }
+
+    void deletingOnARemovableDriveSkipsTheTrash()
+    {
+        // A stick or card plugged in has no trash for Delete to fill; the
+        // computer's own drives do, even one mounted under /run/media.
+        Disk stick = sanDisk();
+        Disk internal = sanDisk();
+        internal.block = "/org/freedesktop/UDisks2/block_devices/nvme1n1";
+        internal.bus.clear();
+        internal.removable = internal.canPowerOff = internal.ejectable = false;
+        internal.mounts = {"/run/media/me/DATA"};
+        Disk system = stick;
+        system.mounts = {"/run/media/me/SYSTEM"};
+        system.hintSystem = true;
+        const QList<Disk> disks{stick, internal, system};
+        QVERIFY(Disks::pluggedAt(disks, "/run/media/me/STICK"));
+        QVERIFY(!Disks::pluggedAt(disks, "/run/media/me/STICKS"));
+        QVERIFY(!Disks::pluggedAt(disks, "/run/media/me/DATA"));
+        QVERIFY(!Disks::pluggedAt(disks, "/run/media/me/SYSTEM"));
+        QVERIFY(!Disks::pluggedAt(disks, "/"));
+    }
+
+    void deletingGoesByTheFilesystemThatHoldsTheItem()
+    {
+        // What's on the stick skips the trash, a link on it included (it's
+        // the link that goes). What's reached through a link on it, or on
+        // a drive mounted inside it, is elsewhere and goes to the trash, as
+        // do views' items and a selection reaching off the stick.
+        QTemporaryDir dir;
+        const QString root = QFileInfo(dir.path()).canonicalFilePath();
+        QDir(root).mkpath("stick/photos");
+        QDir(root).mkpath("stick/inner/docs");
+        QDir(root).mkpath("home/photos");
+        QVERIFY(QFile::link(root + "/home", root + "/stick/home"));
+        Disk stick = sanDisk();
+        Disk inner = sanDisk();
+        inner.block = "/org/freedesktop/UDisks2/block_devices/nvme1n1";
+        inner.bus.clear();
+        inner.removable = inner.canPowerOff = inner.ejectable = false;
+        inner.mounts = {"/run/media/me/inner"};
+        const auto fake = fakeDisks({stick, inner});
+        fake->mountPoints = {{root + "/stick", "/run/media/me/STICK"}, {root + "/stick/inner", "/run/media/me/inner"}};
+        FileOps ops;
+        QVERIFY(ops.onRemovable({root + "/stick/a.jpg"}));
+        QVERIFY(ops.onRemovable({root + "/stick/photos", root + "/stick/photos/b.jpg"}));
+        QVERIFY(ops.onRemovable({root + "/stick/home"}));
+        QVERIFY(!ops.onRemovable({root + "/stick/home/photos"}));
+        QVERIFY(!ops.onRemovable({root + "/stick/inner/docs"}));
+        QVERIFY(!ops.onRemovable({root + "/stick/a.jpg", root + "/home/photos"}));
+        QVERIFY(!ops.onRemovable({"recent:"}));
+        QVERIFY(!ops.onRemovable({}));
     }
 
     void burningListsTheDrivesThatCanTakeTheImage()
