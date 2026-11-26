@@ -192,9 +192,9 @@ QStringList ChooserRequest::answer(const QString &folder, const QStringList &pic
             if (directory ? info.isDir() : info.isFile())
                 paths << path;
         }
-        // The cursor always rests on some folder, so one under it isn't a
-        // choice: the answer is the folder shown, unless several are picked.
-        if (directory && !(multiple && paths.size() > 1))
+        // In directory mode an explicit folder selection is the choice. With
+        // nothing selected, choose the folder being shown instead.
+        if (directory && paths.isEmpty())
             return QFileInfo(folder).isDir() ? QStringList{folder} : QStringList{};
         return multiple ? paths : paths.mid(0, 1);
     }
