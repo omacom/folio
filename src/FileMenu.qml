@@ -1,7 +1,8 @@
 import QtQuick
 
-// The right-click menu. On an item: Open, Open With (each app that can),
-// Preview, Rename, Duplicate, Copy, Cut, Paste Into, Copy Path, Compress,
+// The right-click menu. On an item: Open, Run (for programs and scripts),
+// Open With (each app that can), Preview, Rename, Duplicate, Copy, Cut,
+// Paste Into, Copy Path, Compress,
 // Extract (for archives), Make Executable (for one's own files), Burn (for
 // disk images), plugins' own actions for it, Share (whatever plugins offer
 // for it), Pin, Terminal, Trash. On empty space: Undo, Paste, New Folder,
@@ -50,6 +51,9 @@ FolioMenu {
     // whether they all run now, asked as the menu opens.
     property bool canRun: false
     property bool runs: false
+    // One program or script that runs from here (see FileOps::runKind),
+    // asked as the menu opens. Not in a file chooser, where Open picks.
+    property bool runnable: false
 
     // Opens at the pointer (`at`, in the window), or (from the keyboard,
     // Alt+Return) beside the item it's about. Mirrored, it opens leftward,
@@ -68,6 +72,9 @@ FolioMenu {
         burnTargets = canBurn ? fileOps.burnTargets(target.path) : []
         canRun = forItem && forFiles && !trashView && fileOps.canSetExecutable(paths)
         runs = canRun && fileOps.executable(paths)
+        // A window that's no chooser has a null one; a bare menu, none.
+        runnable = forItem && forFiles && !trashView && !forSelection && !forFolder
+                   && !(typeof chooser !== "undefined" && chooser) && fileOps.runnable(target.path)
         // Submenus (Open With, Share, Burn) show only when they apply.
         // Menu makes their entries itself, so they're set here rather than
         // bound where they're declared. A plugin's own submenus are made
@@ -113,13 +120,26 @@ FolioMenu {
         onTriggered: fileMenu.emptyTrashRequested()
     }
     FolioMenuItem {
+        id: openEntry
         shown: fileMenu.forItem
-        // Names the app it opens in: "Open with Plain".
-        readonly property string app: fileMenu.forItem && !fileMenu.forFolder ? fileOps.defaultAppName(fileMenu.target.mime || "") : ""
+        // Names the app it opens in: "Open with Plain". For a file that runs,
+        // the app Open finds from what's in it, as a script with no
+        // extension opens in the editor rather than running.
+        readonly property string app: !fileMenu.forItem || fileMenu.forFolder ? ""
+            : !fileMenu.runnable ? fileOps.defaultAppName(fileMenu.target.mime || "")
+            : fileMenu.apps.length > 0 && fileMenu.apps[0].isDefault ? fileMenu.apps[0].name : ""
+        // A program no app opens runs on Open, so it says Run.
         //: %1 is the name of the app the file opens in, like "Plain".
-        text: fileMenu.forFolder ? qsTr("Open Folder") : app ? qsTr("Open With %1").arg(app) : qsTr("Open")
+        text: fileMenu.forFolder ? qsTr("Open Folder") : app ? qsTr("Open With %1").arg(app)
+            : fileMenu.runnable ? qsTr("Run") : qsTr("Open")
         keys: "⏎"
         onTriggered: backend.open(fileMenu.target.path)
+    }
+    // A script or an AppImage some app opens runs from here instead.
+    FolioMenuItem {
+        shown: fileMenu.runnable && openEntry.app.length > 0
+        text: qsTr("Run")
+        onTriggered: fileOps.run(fileMenu.target.path)
     }
     // Every app that says it can open this type, the default first.
     FolioMenu {

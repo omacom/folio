@@ -128,6 +128,18 @@ public:
     // Whether each of them runs as a program already.
     Q_INVOKABLE bool executable(const QStringList &paths) const;
     Q_INVOKABLE void setExecutable(const QStringList &paths, bool on);
+    // What a file is to run, as Nautilus has it: x set, and a type that can
+    // run, so a photo on a FAT stick, where every file has x, is neither.
+    // A script is text with a #! line, and runs in a terminal; a program
+    // (an AppImage too) starts on its own. Never in the trash or on a server.
+    enum class Runs { No, Program, Script };
+    static Runs runKind(const QString &path);
+    Q_INVOKABLE static bool runnable(const QString &path) { return runKind(path) != Runs::No; }
+    // Runs it in its own folder, detached, with its path as the one
+    // argument and no shell in between; a sentence saying why not when it
+    // can't. run() says it in the window.
+    static QString runFile(const QString &path);
+    Q_INVOKABLE void run(const QString &path);
 
     Q_INVOKABLE void trash(const QStringList &paths);
 

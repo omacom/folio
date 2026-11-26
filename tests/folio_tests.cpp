@@ -1990,6 +1990,148 @@ private slots:
         QTRY_VERIFY(ops.busy().isEmpty());
     }
 
+    void fileOpsRunsProgramsAndScripts()
+    {
+        // As Nautilus has it: x set, and a type that can run. A photo with
+        // x, as every file on a FAT stick has, a script without x and a
+        // folder don't; a link to a program is the program.
+        QTemporaryDir dir;
+        const auto data = dataHomeAt(dir.filePath("data"));
+        const QString program = dir.filePath("tool"), script = dir.filePath("hello.sh"),
+                      photo = dir.filePath("photo.png"), resting = dir.filePath("resting.sh"),
+                      link = dir.filePath("link"), made = dir.filePath("made"), trashed = dir.filePath("data/Trash/files/tool");
+        QVERIFY(QFile::copy(QStandardPaths::findExecutable("mktemp"), program));
+        write(script, "#!/bin/sh\necho hello\n");
+        write(photo, "\x89PNG\r\n\x1a\n");
+        write(resting, "#!/bin/sh\n");
+        QVERIFY(QDir().mkpath(made));
+        QVERIFY(QDir().mkpath(QFileInfo(trashed).absolutePath()));
+        QVERIFY(QFile::copy(program, trashed));
+        for (const QString &path : {program, script, photo, trashed})
+            QCOMPARE(::chmod(QFile::encodeName(path).constData(), 0755), 0);
+        QCOMPARE(::chmod(QFile::encodeName(resting).constData(), 0644), 0);
+        QVERIFY(QFile::link(program, link));
+        QCOMPARE(FileOps::runKind(program), FileOps::Runs::Program);
+        QCOMPARE(FileOps::runKind(link), FileOps::Runs::Program);
+        QCOMPARE(FileOps::runKind(script), FileOps::Runs::Script);
+        QCOMPARE(FileOps::runKind(photo), FileOps::Runs::No);
+        // Any text has x on an exFAT stick; only a #! line makes it a
+        // script, with or without an extension.
+        const QString notes = dir.filePath("notes.txt"), unnamed = dir.filePath("build");
+        write(notes, "echo this is prose\n");
+        write(unnamed, "#!/bin/sh\n");
+        for (const QString &path : {notes, unnamed})
+            QCOMPARE(::chmod(QFile::encodeName(path).constData(), 0755), 0);
+        QCOMPARE(FileOps::runKind(notes), FileOps::Runs::No);
+        QCOMPARE(FileOps::runKind(unnamed), FileOps::Runs::Script);
+        QCOMPARE(FileOps::runKind(resting), FileOps::Runs::No);
+        QCOMPARE(FileOps::runKind(made), FileOps::Runs::No);
+        QCOMPARE(FileOps::runKind(dir.filePath("gone")), FileOps::Runs::No);
+        // The trash is for getting things back.
+        QCOMPARE(FileOps::runKind(trashed), FileOps::Runs::No);
+        QVERIFY(FileOps::runnable(program));
+        QVERIFY(!FileOps::runnable(photo));
+        QCOMPARE(FileOps::runFile(photo), QString("photo.png can't be run."));
+
+        // A program starts on its own: mktemp, with no arguments, leaves a
+        // file in TMPDIR, which it gets from Folio.
+        const QByteArray oldTmp = qgetenv("TMPDIR");
+        qputenv("TMPDIR", QFile::encodeName(made));
+        const auto tmp = qScopeGuard([oldTmp] { qputenv("TMPDIR", oldTmp); });
+        QCOMPARE(FileOps::runFile(program), QString());
+        QTRY_COMPARE(QDir(made).entryList(QDir::Files).size(), 1);
+
+        // A script runs in the terminal, in its own folder, with its path
+        // after -- as the one command.
+        const auto path = pathAt(binWith(dir.filePath("bin"), {{"xdg-terminal-exec",
+                                         "#!/bin/sh\nprintf '%s\\n' \"$(pwd -P)\" \"$@\" > \"$0.mark\"\n"}}));
+        QCOMPARE(FileOps::runFile(script), QString());
+        const QString called = dir.filePath("bin/xdg-terminal-exec.mark");
+        QTRY_VERIFY(QFile::exists(called));
+        QFile calls(called);
+        QVERIFY(calls.open(QIODevice::ReadOnly));
+        QCOMPARE(QString::fromUtf8(calls.readAll()).split('\n', Qt::SkipEmptyParts),
+                 QStringList({QDir(dir.path()).canonicalPath(), "--dir=" + dir.path(), "--", script}));
+        QVERIFY(QFile::remove(called));
+
+        // An interpreter that isn't installed is said before any terminal
+        // opens, which would close before it could be read.
+        const QString lookedUp = dir.filePath("looked-up.py"), named = dir.filePath("named.sh");
+        write(lookedUp, "#!/usr/bin/env -S folio-no-such-python -u\nprint(1)\n");
+        write(named, "#!/folio/no/such/sh\n");
+        for (const QString &file : {lookedUp, named})
+            QCOMPARE(::chmod(QFile::encodeName(file).constData(), 0755), 0);
+        QCOMPARE(FileOps::runFile(lookedUp), QString("looked-up.py needs folio-no-such-python, which isn't installed."));
+        QCOMPARE(FileOps::runFile(named), QString("named.sh needs /folio/no/such/sh, which isn't installed."));
+        // An env that isn't there, or a folder, is no interpreter either.
+        for (const auto &[line, says] : {std::pair{QByteArray("#!/folio/no/such/env sh"), QString("/folio/no/such/env")},
+                                         std::pair{"#!" + QFile::encodeName(dir.path()), dir.path()}}) {
+            const QString missing = dir.filePath("missing.sh");
+            write(missing, line + "\n");
+            QCOMPARE(::chmod(QFile::encodeName(missing).constData(), 0755), 0);
+            QCOMPARE(FileOps::runFile(missing), "missing.sh needs " + says + ", which isn't installed.");
+        }
+        // A #! line Windows ended in \r names a program that can't exist.
+        const QString windows = dir.filePath("windows.sh");
+        write(windows, "#!/bin/sh\r\necho hello\r\n");
+        QCOMPARE(::chmod(QFile::encodeName(windows).constData(), 0755), 0);
+        QCOMPARE(FileOps::runFile(windows), QString("windows.sh has Windows line endings, so it can't run."));
+        QVERIFY(!QFile::exists(called));
+
+        // What the check can't be sure of is left to the terminal rather
+        // than called missing: env's options, the PATH it's given, quoted
+        // words, a program named from the script's folder.
+        for (const QByteArray &line : {QByteArray("#!/usr/bin/env -S -C / /bin/sh"), QByteArray("#!/usr/bin/env -S --unset FOO /bin/sh"),
+                                       QByteArray("#!/usr/bin/env -S --folio-unknown folio-no-such-python"),
+                                       // env looks in a PATH set on the line, not Folio's.
+                                       QByteArray("#!/usr/bin/env -S PATH=/folio/tools folio-no-such-python"),
+                                       // Quoted, a value's spaces aren't words.
+                                       QByteArray("#!/usr/bin/env -S FOO=\"a b c\" /bin/sh"),
+                                       // From the script's folder, where the terminal starts.
+                                       QByteArray("#!./folio-venv/bin/python"),
+                                       QByteArray("#!/usr/bin/env ./folio-venv/bin/python")}) {
+            const QString optioned = dir.filePath("optioned.sh");
+            write(optioned, line + "\n");
+            QCOMPARE(::chmod(QFile::encodeName(optioned).constData(), 0755), 0);
+            QCOMPARE(FileOps::runFile(optioned), QString());
+            QTRY_VERIFY(QFile::exists(called));
+            QVERIFY(QFile::remove(called));
+        }
+
+        // A program that can't start says so in the window.
+        const QString broken = dir.filePath("broken");
+        QByteArray elf("\x7f" "ELF\x02\x01\x01", 7);
+        elf.append(QByteArray(9, '\0')).append("\x02\x00\x3e\x00", 4).append(QByteArray(44, '\0'));
+        write(broken, elf);
+        QCOMPARE(::chmod(QFile::encodeName(broken).constData(), 0755), 0);
+        QCOMPARE(FileOps::runKind(broken), FileOps::Runs::Program);
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.run(broken);
+        QCOMPARE(failed.count(), 1);
+        QCOMPARE(failed.at(0).at(0).toString(), QString("broken couldn't be started."));
+    }
+
+    void backendRunsAProgramNoAppOpens()
+    {
+        // Opening a program no app opens runs it, rather than saying no
+        // app is set up for it.
+        QTemporaryDir dir;
+        const QString program = dir.filePath("tool"), made = dir.filePath("made");
+        QVERIFY(QFile::copy(QStandardPaths::findExecutable("mktemp"), program));
+        QCOMPARE(::chmod(QFile::encodeName(program).constData(), 0755), 0);
+        QVERIFY(QDir().mkpath(made));
+        if (!FileOps::defaultAppFor(program).isEmpty())
+            QSKIP("An app on this machine opens programs.");
+        const QByteArray oldTmp = qgetenv("TMPDIR");
+        qputenv("TMPDIR", QFile::encodeName(made));
+        const auto tmp = qScopeGuard([oldTmp] { qputenv("TMPDIR", oldTmp); });
+        Backend backend(dir.path());
+        backend.open(program);
+        QCOMPARE(backend.message(), QString());
+        QTRY_COMPARE(QDir(made).entryList(QDir::Files).size(), 1);
+    }
+
     void fileOpsDeleteForeverOutsideTheTrash()
     {
         // Shift+Delete deletes for good anywhere: the folder and what's in
@@ -4993,6 +5135,19 @@ private slots:
         QTRY_COMPARE(backend.details().value("permissions").toString(), QString("rw-r-----"));
         backend.describe({{"path", tools}, {"kind", "folder"}, {"mime", "inode/directory"}});
         QTRY_COMPARE(backend.details().value("permissions").toString(), QString("rwxr-xr-t"));
+        QVERIFY(!backend.details().contains("runs"));
+
+        // Whether Open runs a file, read with them, so the details' button
+        // can say Run: only for a program or script with x set.
+        const QString program = dir.filePath("tool");
+        QVERIFY(QFile::copy(QStandardPaths::findExecutable("mktemp"), program));
+        QCOMPARE(::chmod(QFile::encodeName(program).constData(), 0755), 0);
+        backend.describe({{"path", program}, {"kind", "file"}, {"mime", "application/x-executable"}});
+        QTRY_COMPARE(backend.details().value("permissions").toString(), QString("rwxr-xr-x"));
+        QCOMPARE(backend.details().value("runs"), QVariant(true));
+        backend.describe({{"path", report}, {"kind", "pdf"}, {"mime", "application/pdf"}});
+        QTRY_COMPARE(backend.details().value("permissions").toString(), QString("rw-r-----"));
+        QVERIFY(!backend.details().contains("runs"));
     }
 
     void backendReadsTrashNotesOffTheUiThread()
@@ -5978,6 +6133,74 @@ private slots:
         QCOMPARE(around("notes.txt", "text/plain"), QStringList({"Make Executable", "Copy Git Link", "Copy To"}));
         QCOMPARE(around("photo.png", "image/png"), QStringList({"Make Executable", "Copy To"}));
         QCOMPARE(around("notes.txt", "text/plain"), QStringList({"Make Executable", "Copy Git Link", "Copy To"}));
+    }
+
+    void fileMenuRunsProgramsInOpensPlace()
+    {
+        // A program no app opens says Run where Open would be, once; a photo
+        // with x, as on a FAT stick, gets no Run at all.
+        QTemporaryDir home, folder;
+        const QString program = home.filePath("tool"), photo = home.filePath("photo.png");
+        QVERIFY(QFile::copy(QStandardPaths::findExecutable("mktemp"), program));
+        write(photo, "\x89PNG\r\n\x1a\n");
+        for (const QString &path : {program, photo})
+            QCOMPARE(::chmod(QFile::encodeName(path).constData(), 0755), 0);
+        if (!FileOps::defaultAppFor(program).isEmpty())
+            QSKIP("An app on this machine opens programs.");
+        Plugins plugins("en", {folder.path()}, home.filePath("folio.conf"));
+        Backend backend(home.path());
+        backend.setPlugins(&plugins);
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("plugins", &plugins);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window {\n"
+                          "    width: 800; height: 600; visible: true\n"
+                          "    FileMenu { id: menu }\n"
+                          "    function entries(path, mime) {\n"
+                          "        menu.show({ path: path, name: path.split('/').pop(), isDir: false, mime: mime },\n"
+                          "                  path.replace(/\\/[^\\/]*$/, ''))\n"
+                          "        const shown = []\n"
+                          "        for (let i = 0; i < menu.count; ++i) {\n"
+                          "            const entry = menu.itemAt(i)\n"
+                          "            if (entry.visible && entry.text) shown.push(entry.text)\n"
+                          "        }\n"
+                          "        menu.close()\n"
+                          "        return shown\n"
+                          "    }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/FileMenuRunTest.qml"));
+        std::unique_ptr<QObject> window(component.create());
+        QVERIFY2(window, qPrintable(component.errorString()));
+        auto entries = [&](const QString &path, const QString &mime) {
+            QVariant shown;
+            QMetaObject::invokeMethod(window.get(), "entries", Q_RETURN_ARG(QVariant, shown),
+                                      Q_ARG(QVariant, path), Q_ARG(QVariant, mime));
+            return shown.toStringList();
+        };
+        const QStringList forProgram = entries(program, "application/x-executable");
+        QVERIFY(!forProgram.isEmpty());
+        QCOMPARE(forProgram.first(), QString("Run"));
+        QCOMPARE(forProgram.count("Run"), 1);
+        QVERIFY(!entries(photo, "image/png").contains("Run"));
+
+        // A script with no extension is told apart by what's in it, as Open
+        // does, though the folder lists it as just data: it opens in the
+        // app that opens scripts, if one does, and runs from Run.
+        const QString script = home.filePath("build");
+        write(script, "#!/bin/sh\n");
+        QCOMPARE(::chmod(QFile::encodeName(script).constData(), 0755), 0);
+        const QStringList forScript = entries(script, "application/octet-stream");
+        const QVariantList apps = fileOps.appsFor(script);
+        const bool opened = !apps.isEmpty() && apps.first().toMap().value("isDefault").toBool();
+        QCOMPARE(forScript.first(), opened ? "Open With " + apps.first().toMap().value("name").toString() : QString("Run"));
+        QCOMPARE(forScript.count("Run"), 1);
     }
 
     void pluginDetailsAreAskedForOnceAndKept()

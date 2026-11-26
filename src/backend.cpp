@@ -335,6 +335,14 @@ void Backend::open(const QString &path) {
         emit chosen(path);
         return;
     }
+    // A program no app opens (one's own build, a downloaded binary) runs;
+    // one some app opens, a script in the editor or an AppImage in Gear
+    // Lever, still opens there, and runs from the menu's Run.
+    if (FileOps::defaultAppFor(path).isEmpty() && FileOps::runnable(path)) {
+        if (const QString problem = FileOps::runFile(path); !problem.isEmpty())
+            setMessage(problem);
+        return;
+    }
     // The desktop's default app for the type, or for the nearest type it
     // belongs to.
     if (const QString problem = FileOps::openInDefaultApp(path); !problem.isEmpty())
@@ -664,6 +672,10 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
         if (::statx(AT_FDCWD, encoded.constData(), 0, STATX_MODE | (inTrash ? 0u : STATX_BTIME), &stx) == 0) {
             if (stx.stx_mask & STATX_MODE)
                 read.insert("permissions", permissionsText(stx.stx_mode));
+            // Whether Open runs it, read here as its type may have to be read
+            // from what it holds; only a file with x set can.
+            if (!inTrash && (stx.stx_mask & STATX_MODE) && S_ISREG(stx.stx_mode) && (stx.stx_mode & 0111))
+                read.insert("runs", FileOps::runnable(path));
             if (!inTrash && (stx.stx_mask & STATX_BTIME))
                 read.insert("created", QDateTime::fromMSecsSinceEpoch(stx.stx_btime.tv_sec * 1000LL
                                                                       + stx.stx_btime.tv_nsec / 1000000LL));

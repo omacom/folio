@@ -1,6 +1,7 @@
 #include "fileops.h"
 #include "disks.h"
 #include "foldermodel.h"
+#include "mounter.h"
 
 #include <QClipboard>
 #include <QDir>
@@ -18,6 +19,7 @@
 #include <QTemporaryDir>
 #include <QUrl>
 #include <QTimer>
+#include <QVarLengthArray>
 #include <QtConcurrent>
 #include <cerrno>
 #include <cstdio>
@@ -25,6 +27,7 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <unistd.h>
 
 // GIO's headers use `signals` as a struct member, which Qt defines as a
@@ -1123,6 +1126,136 @@ void FileOps::setExecutable(const QStringList &paths, bool on) {
     if (!failures.isEmpty())
         emit failed((on ? tr("Couldn't make %1 executable.") : tr("Couldn't make %1 not executable."))
                         .arg(QLocale().createSeparatedList(failures)));
+}
+
+static QString mimeFor(const QString &path);
+static QString trashFor(const QString &path);
+
+// A drive mounted noexec (some USB sticks, /tmp on some systems) refuses
+// to run anything on it, whatever its x says.
+static bool onNoExecDrive(const QByteArray &local) {
+    struct statvfs drive;
+    return ::statvfs(local.constData(), &drive) == 0 && (drive.f_flag & ST_NOEXEC);
+}
+
+// Whether the x that applies to us is set, as the kernel picks it: the
+// owner's for the owner, else the group's for its members, else everyone
+// else's. A noexec drive refuses everyone, so access() can't say there.
+static bool executableByUs(const struct stat &st) {
+    const uid_t user = ::geteuid();
+    if (user == 0)
+        return st.st_mode & 0111;
+    if (st.st_uid == user)
+        return st.st_mode & S_IXUSR;
+    bool member = st.st_gid == ::getegid();
+    if (const int count = ::getgroups(0, nullptr); !member && count > 0) {
+        QVarLengthArray<gid_t, 32> groups(count);
+        member = ::getgroups(count, groups.data()) == count && groups.contains(st.st_gid);
+    }
+    return st.st_mode & (member ? S_IXGRP : S_IXOTH);
+}
+
+FileOps::Runs FileOps::runKind(const QString &path) {
+    // A server's files run here as if they were local, which they aren't;
+    // the trash is for getting things back. Both are read from the path,
+    // before anything asks a drive that might not answer.
+    if (path.isEmpty() || QDir::cleanPath(path).startsWith(Mounter::root() + "/") || !trashFor(path).isEmpty())
+        return Runs::No;
+    const QByteArray local = QFile::encodeName(path);
+    struct stat st;
+    // Followed, so a link in ~/.local/bin to a program runs the program.
+    if (::stat(local.constData(), &st) != 0 || !S_ISREG(st.st_mode) || !(st.st_mode & 0111))
+        return Runs::No;
+    // x for someone else isn't x for us. On a noexec drive our own x still
+    // counts, so running says why it can't.
+    if (::access(local.constData(), X_OK) != 0 && !(errno == EACCES && onNoExecDrive(local) && executableByUs(st)))
+        return Runs::No;
+    char *type = g_content_type_from_mime_type(mimeFor(path).toUtf8().constData());
+    if (!type)
+        return Runs::No;
+    const bool canRun = g_content_type_can_be_executable(type), text = g_content_type_is_a(type, "text/plain");
+    g_free(type);
+    if (!canRun)
+        return Runs::No;
+    if (!text)
+        return Runs::Program;
+    // Any text can be executable to GIO, and an exFAT stick marks every
+    // file x: only one whose #! line names what runs it is a script.
+    // Without one, a terminal would hand its lines to sh.
+    QFile file(path);
+    return file.open(QIODevice::ReadOnly) && file.read(2) == "#!" ? Runs::Script : Runs::No;
+}
+
+// What would stop a script running, said before a terminal opens and closes
+// before it could be read: a #! line ending in the \r Windows leaves, which
+// the kernel takes as part of the name, or a program it names that isn't
+// installed (the interpreter, or for /usr/bin/env the command it looks up).
+// A line that isn't understood, or a program named from the script's own
+// folder, which the terminal starts in, is left for the terminal to try.
+static QString scriptProblem(const QString &path, const QString &name) {
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return {};
+    QByteArray line = file.readLine(512);
+    if (!line.startsWith("#!"))
+        return {};
+    if (line.endsWith('\n'))
+        line.chop(1);
+    if (line.endsWith('\r'))
+        return FileOps::tr("%1 has Windows line endings, so it can't run.").arg(name);
+    const auto needs = [&name](const QString &program) {
+        return FileOps::tr("%1 needs %2, which isn't installed.").arg(name, program);
+    };
+    QStringList words = QString::fromLocal8Bit(line.mid(2)).simplified().split(' ', Qt::SkipEmptyParts);
+    if (words.isEmpty())
+        return {};
+    const QString interpreter = words.takeFirst();
+    if (QDir::isRelativePath(interpreter))
+        return {};
+    if (const QFileInfo found(interpreter); !found.isFile() || !found.isExecutable())
+        return needs(interpreter);
+    if (QFileInfo(interpreter).fileName() != "env")
+        return {};
+    // For env, the plain forms only: env python3, env -S python3 -u. Its
+    // other options, NAME=value, quotes and paths are left to the terminal.
+    if (!words.isEmpty() && words.first() == "-S")
+        words.removeFirst();
+    if (words.isEmpty())
+        return {};
+    const QString command = words.first();
+    if (command.startsWith('-'))
+        return {};
+    for (const char special : {'=', '/', '"', '\'', '\\', '$'})
+        if (command.contains(QLatin1Char(special)))
+            return {};
+    return QStandardPaths::findExecutable(command).isEmpty() ? needs(command) : QString();
+}
+
+QString FileOps::runFile(const QString &path) {
+    const QFileInfo info(path);
+    const QString name = info.fileName(), folder = info.absolutePath();
+    const Runs kind = runKind(path);
+    if (kind == Runs::No)
+        return tr("%1 can't be run.").arg(name);
+    if (onNoExecDrive(QFile::encodeName(path)))
+        return tr("%1 is on a drive that doesn't let programs run.").arg(name);
+    if (kind == Runs::Script) {
+        if (const QString problem = scriptProblem(path, name); !problem.isEmpty())
+            return problem;
+        // The terminal Omarchy is set up with, closing when the script ends,
+        // as Nautilus's Run as a Program does.
+        if (!QProcess::startDetached("xdg-terminal-exec", {"--dir=" + folder, "--", info.absoluteFilePath()}, folder))
+            return tr("Couldn't start a terminal: xdg-terminal-exec isn't installed.");
+        return {};
+    }
+    if (!QProcess::startDetached(info.absoluteFilePath(), {}, folder))
+        return tr("%1 couldn't be started.").arg(name);
+    return {};
+}
+
+void FileOps::run(const QString &path) {
+    if (const QString problem = runFile(path); !problem.isEmpty())
+        emit failed(problem);
 }
 
 bool FileOps::canExtract(const QStringList &paths) const {

@@ -500,9 +500,10 @@ Rectangle {
                 opensWith.picked
                 return pane.hasItem && !pane.item.isDir && pane.folderPane ? pane.folderPane.paneFileOps.defaultAppName(pane.type) : ""
             }
+            // A program no app opens runs, as the menu's Run does.
             text: pane.trashed || pane.noting ? qsTr("Restore") : pane.hasItem && pane.item.isDir ? qsTr("Open folder")
                 //: %1 is the name of the app the file opens in, like "Plain".
-                : app ? qsTr("Open with %1").arg(app) : qsTr("Open")
+                : app ? qsTr("Open with %1").arg(app) : pane.info.runs === true ? qsTr("Run") : qsTr("Open")
             Accessible.name: text
             onClicked: pane.trashed ? pane.folderPane.paneFileOps.restore([pane.item.path]) : pane.folderPane.paneBackend.open(pane.item.path)
             background: Rectangle {
