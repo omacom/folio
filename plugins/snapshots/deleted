@@ -1,0 +1,28 @@
+#!/bin/sh
+# Lists what was deleted from home and an hourly snapshot still holds, latest
+# first; opening one puts it back. Older snapshots compared later go to a cache.
+files=$(omarchy-snapshot-files deleted --json --budget 5) || exit
+printf '%s\n' "$files" | jq -c --arg home "$HOME" '
+  def day: strflocaltime("%Y-%m-%d");
+  (now | floor) as $now | ($now | day) as $today
+  # Half a day before local midnight is yesterday, even on a day of 23 or 25 hours.
+  | ($now | localtime) as $t | ($now - ($t[3] * 3600 + $t[4] * 60 + ($t[5] | floor)) - 43200 | day) as $yesterday
+  # A record that is not an object is left out, and a time that is not a number is unknown.
+  | [[(.files // [])[] | select(type == "object" and (.path | type) == "string")][:500][]
+      | .seen |= (if type == "number" then . else null end) | .until |= (if type == "number" then . else null end)
+      | (.path | split("/")) as $parts
+      | {id: .path, name: $parts[-1], icon: (if .folder then "folder" else "file" end),
+         # Gone by the first snapshot without it; with none since, all that is
+         # known is that it went after the last one with it.
+         subtitle: (if .until then (.until | day) as $gone
+                      | if $gone == $today then "Deleted today" elif $gone == $yesterday then "Deleted yesterday" else ["Deleted on %1", $gone] end
+                    else ((.seen // $now) | day) as $since
+                      | if $since == $today then "Deleted today" elif $since == $yesterday then "Deleted since yesterday" else ["Deleted since %1", $since] end
+                    end),
+         details: ([["Folder", ($parts[:-1] | join("/") | if . == $home then "~" elif startswith($home + "/") then "~" + .[($home | length):] else . end)]]
+                   + if .seen then [["Copy from", (.seen | strflocaltime("%Y-%m-%d %H:%M"))]] else [] end),
+         open: {run: ["./restore", .path], label: "Restore"}}]
+  # Folio takes at most a megabyte, so long paths end the list before that.
+  | {items: (reduce .[] as $item ({list: [], size: 0, full: false};
+      ($item | tojson | utf8bytelength) as $size
+      | if .full or .size + $size > 900000 then .full = true else .list += [$item] | .size += $size + 1 end) | .list)}'

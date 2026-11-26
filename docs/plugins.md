@@ -2,8 +2,8 @@
 
 A plugin adds something Folio doesn't know about on its own: a section in the
 sidebar, a status on one of its rows, entries in the right-click menu, rows
-in the details column, or a view in the main pane. Tailscale, Dropbox and LocalSend come with
-Folio as plugins, and they use nothing that isn't described here, so a plugin
+in the details column, or a view in the main pane. Tailscale, Dropbox, LocalSend and Omarchy's
+snapshots come with Folio as plugins, and they use nothing that isn't described here, so a plugin
 you write sits on equal footing with them.
 
 A plugin is a folder holding a `manifest.json` and some commands. Folio never
@@ -23,7 +23,7 @@ in, or Folio won't run it.
 
 | Folder | What's there |
 | --- | --- |
-| `/usr/share/folio/plugins/<id>/` | Plugins installed by packages, including the three that come with Folio. |
+| `/usr/share/folio/plugins/<id>/` | Plugins installed by packages, including the four that come with Folio. |
 | `~/.local/share/folio/plugins/<id>/` (`$XDG_DATA_HOME`) | Your own. One with the same id replaces the packaged one entirely. |
 
 The folder's name is the plugin's id: lowercase letters, digits and dashes,
@@ -401,6 +401,8 @@ An item's `open` is one of:
 | `{"mount": "sftp://host/", "verified": true}` | Folio mounts the URL through GVfs (`sftp://`, `smb://`, `davs://`, anything GVfs mounts) and goes to the URL's folder. A URL naming only a server lands in the folder at your home's path on it when there is one (one person's machines tend to share a layout), or its top otherwise. A password request is asked in the window. `verified` says the plugin has already made sure who's on the other end, as Tailscale does, so Folio answers GVfs's host-key questions yes; without it, Folio asks you, as it does for an address typed in the path bar. |
 | `{"run": ["./wake", "studio"]}` | Folio runs the command as it runs an action, and acts on its [result](#results). |
 
+Any of them can carry a `label`, what the details column's button and the right-click menu call opening the item when it isn't just Open: `{"run": ["./restore", "/home/me/notes.md"], "label": "Restore"}`. Translated.
+
 ## Actions
 
 ```json
@@ -592,3 +594,18 @@ there.
   ]
 }
 ```
+
+**snapshots** lists the files and folders deleted from your home folder that Omarchy's hourly snapshots of `/home` still hold, latest first, and puts one back where it was when you open it.
+
+```json
+{
+  "folio": 1,
+  "requires": ["omarchy-snapshot-files", "jq"],
+  "poll": { "command": ["./deleted"], "every": 300 },
+  "section": { "title": "Snapshots", "rows": "opened" },
+  "view": { "title": "Deleted Files", "icon": "deleted.svg",
+            "empty": "Nothing deleted that a snapshot still holds" }
+}
+```
+
+`deleted` prints at most 500 items from `omarchy-snapshot-files deleted --json`, which compares each snapshot with the next and the newest with your home as it is, caching what it compared and stopping after 5 seconds so a poll never times out; whatever it hasn't compared yet comes in with the next poll. Each item opens with `{"run": ["./restore", path], "label": "Restore"}`, and `restore` runs `omarchy-snapshot-files restore`, then goes to the folder the file is back in. Since an item goes once it's restored, the sidebar section is mostly the row that opens the view; one whose restore failed stays there until it's no longer deleted, or is restored. Without Omarchy there's no `omarchy-snapshot-files`, so the plugin is off.

@@ -1,0 +1,16 @@
+{
+  "Copy from": "Copy from",
+  "Couldn't restore %1.": "Couldn't restore %1.",
+  "Couldn't restore %1: %2": "Couldn't restore %1: %2",
+  "Deleted Files": "Deleted Files",
+  "Deleted on %1": "Deleted on %1",
+  "Deleted since %1": "Deleted since %1",
+  "Deleted since yesterday": "Deleted since yesterday",
+  "Deleted today": "Deleted today",
+  "Deleted yesterday": "Deleted yesterday",
+  "Folder": "Folder",
+  "Nothing deleted that a snapshot still holds": "Nothing deleted that a snapshot still holds",
+  "Restore": "Restore",
+  "Restored %1.": "Restored %1.",
+  "Snapshots": "Snapshots"
+}

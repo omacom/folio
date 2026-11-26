@@ -556,11 +556,17 @@ QProcessEnvironment Plugins::environment(const Manifest &plugin) const {
     return environment;
 }
 
-void Plugins::poll(const QString &plugin) {
+void Plugins::poll(const QString &plugin, bool afterAction) {
     const Manifest *m = manifest(plugin);
-    // One at a time: a poll that's due while the last still runs is skipped.
-    if (!m || m->poll.isEmpty() || m_polling.contains(plugin))
+    if (!m || m->poll.isEmpty())
         return;
+    // One at a time: a poll that's due while the last still runs is skipped,
+    // but one after an action runs next, or its effect waits for the timer.
+    if (m_polling.contains(plugin)) {
+        if (afterAction)
+            m_pollAgain.insert(plugin);
+        return;
+    }
     m_polling.insert(plugin);
     // Read in the pool too: a megabyte of JSON takes long enough to parse
     // that the window would skip frames over it.
@@ -569,6 +575,8 @@ void Plugins::poll(const QString &plugin) {
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, plugin, dir = m->dir, command = m->poll] {
         watcher->deleteLater();
         m_polling.remove(plugin);
+        // Taken now: a poll that ends early, or starts another, has answered it.
+        const bool again = m_pollAgain.remove(plugin);
         const Manifest *now = manifest(plugin);
         if (!now)
             return;
@@ -599,6 +607,8 @@ void Plugins::poll(const QString &plugin) {
             emit detailsChanged();
         }
         rebuild();
+        if (again)
+            poll(plugin);
     });
     watcher->setFuture(QtConcurrent::run(&m_pool, [plugin = *m, environment = environment(*m), stop = m_stop] {
         const Run run = execute(plugin, plugin.poll, environment, pollTimeout, stop.get());
@@ -623,7 +633,8 @@ QVariantMap Plugins::itemMap(const Manifest &plugin, const Item &item) const {
     const QString root = item.open.contains("mount") ? Mounter::folderFor(item.open.value("mount").toString()) : folder;
     return {{"plugin", plugin.id}, {"id", item.id}, {"path", pathOf(plugin.id, item.id)}, {"name", item.name},
             {"icon", icon(plugin, item.icon)}, {"subtitle", item.subtitle.isUndefined() ? QString() : text(plugin, item.subtitle)},
-            {"details", rowsOf(plugin, item.details)}, {"root", root}, {"folder", folder}, {"forgettable", plugin.opened}};
+            {"details", rowsOf(plugin, item.details)}, {"root", root}, {"folder", folder}, {"forgettable", plugin.opened},
+            {"openLabel", item.open.contains("label") ? text(plugin, item.open.value("label")) : QString()}};
 }
 
 void Plugins::rebuild() {
@@ -897,7 +908,7 @@ void Plugins::act(const Manifest &plugin, const QString &key, const QString &lab
             watcher->deleteLater();
             done(watcher->result());
             // Whatever it changed shows at once.
-            poll(plugin.id);
+            poll(plugin.id, true);
             next(key);
         });
         // Work that was asked for takes as long as it takes.

@@ -1,0 +1,8 @@
+{
+  "folio": 1,
+  "requires": ["omarchy-snapshot-files", "jq"],
+  "poll": { "command": ["./deleted"], "every": 300 },
+  "section": { "title": "Snapshots", "rows": "opened" },
+  "view": { "title": "Deleted Files", "icon": "deleted.svg",
+            "empty": "Nothing deleted that a snapshot still holds" }
+}

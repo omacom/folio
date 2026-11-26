@@ -70,6 +70,8 @@ public:
         // A plugin item's glyph and its rows for the details column.
         QString icon;
         QVariantList details;
+        // What opening a plugin item does, when it isn't just Open: "Restore".
+        QString openLabel;
         int itemCount = -1;
         // The first pictures in a folder, for the preview window.
         QStringList peek;

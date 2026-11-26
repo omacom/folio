@@ -1,0 +1,15 @@
+#!/bin/sh
+# Puts a deleted file or folder back where it was, then goes to that folder;
+# omarchy-snapshot-files says why when it can't, in its last line.
+name=$(basename "$1")
+if ! why=$(omarchy-snapshot-files restore "$1" 2>&1 >/dev/null); then
+  why=$(printf '%s\n' "$why" | tail -n 1)
+  why=${why#omarchy-snapshot-files: }
+  if [ -n "$why" ]; then
+    jq -cn --arg name "$name" --arg why "$why" '{error: ["Couldn'\''t restore %1: %2", $name, $why]}'
+  else
+    jq -cn --arg name "$name" '{error: ["Couldn'\''t restore %1.", $name]}'
+  fi
+  exit 1
+fi
+jq -cn --arg name "$name" --arg path "$1" '{notice: ["Restored %1.", $name], path: ($path | sub("/[^/]*$"; ""))}'

@@ -500,7 +500,8 @@ Rectangle {
                 opensWith.picked
                 return pane.hasItem && !pane.item.isDir && pane.folderPane ? pane.folderPane.paneFileOps.defaultAppName(pane.type) : ""
             }
-            text: pane.trashed || pane.noting ? qsTr("Restore") : pane.hasItem && pane.item.isDir ? qsTr("Open folder")
+            text: pane.trashed || pane.noting ? qsTr("Restore") : pane.pluginItem && pane.item.openLabel ? pane.item.openLabel
+                : pane.hasItem && pane.item.isDir ? qsTr("Open folder")
                 //: %1 is the name of the app the file opens in, like "Plain".
                 : app ? qsTr("Open with %1").arg(app) : qsTr("Open")
             Accessible.name: text

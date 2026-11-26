@@ -107,7 +107,8 @@ bool FolderModel::sameListing(const QVector<Entry> &a, const QVector<Entry> &b) 
         // path (its id) when they change.
         if (a[i].path != b[i].path || a[i].size != b[i].size || a[i].modified != b[i].modified
             || a[i].isDir != b[i].isDir || a[i].name != b[i].name || a[i].extension != b[i].extension
-            || a[i].icon != b[i].icon || a[i].details != b[i].details || a[i].depth != b[i].depth)
+            || a[i].icon != b[i].icon || a[i].details != b[i].details || a[i].depth != b[i].depth
+            || a[i].openLabel != b[i].openLabel)
             return false;
     return true;
 }
@@ -943,6 +944,7 @@ QVector<FolderModel::Entry> FolderModel::listItems(const QVariantList &items, co
         e.icon = map.value("icon").toString();
         e.extension = map.value("subtitle").toString();
         e.details = map.value("details").toList();
+        e.openLabel = map.value("openLabel").toString();
         entries.push_back(e);
     }
     return entries;
@@ -1252,7 +1254,7 @@ QVariantMap FolderModel::toMap(const Entry &entry) {
         {"name", entry.name}, {"path", entry.path}, {"isDir", entry.isDir}, {"size", entry.size},
         {"modified", entry.modified}, {"kind", entry.kind}, {"mime", entry.mime},
         {"extension", entry.extension}, {"itemCount", entry.itemCount}, {"icon", entry.icon},
-        {"details", entry.details}, {"depth", entry.depth},
+        {"details", entry.details}, {"depth", entry.depth}, {"openLabel", entry.openLabel},
     };
 }
 

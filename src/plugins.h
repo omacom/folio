@@ -198,7 +198,7 @@ signals:
 private:
     void reload(bool pollAll);
     void apply(const QList<Manifest> &manifests);
-    void poll(const QString &plugin);
+    void poll(const QString &plugin, bool afterAction = false);
     void rebuild();
     const Manifest *manifest(const QString &plugin) const;
     bool available(const Manifest &plugin, const QString &action) const;
@@ -226,6 +226,8 @@ private:
     // The latest output of each plugin whose poll works.
     QHash<QString, Output> m_outputs;
     QSet<QString> m_polling;
+    // Asked for by an action while a poll ran, which may have read the state from before it.
+    QSet<QString> m_pollAgain;
     QSet<QString> m_failing, m_failingDetails;
     // What details commands printed, by plugin, path and modification time;
     // who waits for those still running, the first deciding whether its
