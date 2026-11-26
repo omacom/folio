@@ -5070,6 +5070,33 @@ private slots:
         QCOMPARE(backend.title(), QString("Trash"));
     }
 
+    void placesLeaveOutRecentsWhenTurnedOff()
+    {
+        // `recents=false` under [sidebar] in folio.conf takes Recents out of
+        // the sidebar; the next refresh notices, without a restart.
+        QTemporaryDir home;
+        auto paths = [](const Places &p) {
+            QStringList list;
+            for (const auto &v : p.views()) list << v.toMap().value("path").toString();
+            return list;
+        };
+        Places places(home.path());
+        QVERIFY(paths(places).contains(FolderModel::recentPath()));
+
+        const QString conf = home.filePath(".config/folio/folio.conf");
+        QDir().mkpath(QFileInfo(conf).absolutePath());
+        write(conf, "[General]\nviewMode=list\n\n[sidebar]\nrecents=false\n");
+        QSignalSpy changed(&places, &Places::changed);
+        places.refresh();
+        QCOMPARE(changed.count(), 1);
+        QVERIFY(!paths(places).contains(FolderModel::recentPath()));
+        QCOMPARE(places.views().size(), 1);
+
+        write(conf, "[sidebar]\nrecents=true\n");
+        places.refresh();
+        QVERIFY(paths(places).contains(FolderModel::recentPath()));
+    }
+
     void placesListEveryFolderInHome()
     {
         QTemporaryDir home;

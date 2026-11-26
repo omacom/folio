@@ -9,6 +9,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QSaveFile>
+#include <QSettings>
 #include <QUrl>
 #include <QFileInfo>
 #include <QStandardPaths>
@@ -198,9 +199,20 @@ void Places::refreshPlaces() {
     m_places = places;
 
     // Views: lists that aren't a folder of their own. The sidebar names
-    // them, so a language switch renames them at once.
-    m_views = {QVariantMap{{"path", FolderModel::recentPath()}, {"icon", "recent"}},
-               QVariantMap{{"path", QDir::cleanPath(FileOps::homeTrash() + "/files")}, {"icon", "trash"}}};
+    // them, so a language switch renames them at once. Recents can be
+    // turned off in the settings file.
+    m_views.clear();
+    if (showRecents())
+        m_views << QVariantMap{{"path", FolderModel::recentPath()}, {"icon", "recent"}};
+    m_views << QVariantMap{{"path", QDir::cleanPath(FileOps::homeTrash() + "/files")}, {"icon", "trash"}};
+}
+
+// `recents=false` under [sidebar] in ~/.config/folio/folio.conf leaves
+// Recents out of the sidebar. Read on every refresh, so an edit shows
+// without a restart.
+bool Places::showRecents() const {
+    const QSettings settings(configPath() + "/folio/folio.conf", QSettings::IniFormat);
+    return settings.value("sidebar/recents", true).toBool();
 }
 
 QString Places::configPath() const {

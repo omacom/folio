@@ -90,6 +90,7 @@ private:
     QString bookmarksPath() const;
     QString configPath() const;
     QString hiddenPath() const;
+    bool showRecents() const;
     QStringList readHidden() const;
     bool writeHidden(const QStringList &names);
     QStringList readBookmarkLines() const;
