@@ -9855,15 +9855,16 @@ private slots:
         QCOMPARE(request.answer(here, {sub}, {}), QStringList());
         QCOMPARE(request.answer(here, {}, {}), QStringList());
 
-        // Folders: the one shown, since the cursor always rests on one inside
-        // it; only several picked at once are a choice of their own.
+        // Folders: an explicit selection wins; with no folder selected, use
+        // the one shown. Files and other non-folders do not count as choices.
         request.directory = true;
         QCOMPARE(request.answer(here, {a, sub, dir.filePath("sub/deeper")}, {}), QStringList({sub, dir.filePath("sub/deeper")}));
-        QCOMPARE(request.answer(here, {sub}, {}), QStringList({here}));
+        QCOMPARE(request.answer(here, {sub}, {}), QStringList({sub}));
         request.multiple = false;
-        QCOMPARE(request.answer(here, {a, sub, dir.filePath("sub/deeper")}, {}), QStringList({here}));
-        QCOMPARE(request.answer(here, {sub}, {}), QStringList({here}));
+        QCOMPARE(request.answer(here, {a, sub, dir.filePath("sub/deeper")}, {}), QStringList({sub}));
+        QCOMPARE(request.answer(here, {sub}, {}), QStringList({sub}));
         QCOMPARE(request.answer(here, {a}, {}), QStringList({here}));
+        QCOMPARE(request.answer(here, {}, {}), QStringList({here}));
         QCOMPARE(request.answer("recent:", {}, {}), QStringList());
 
         // Saving: the folder shown and the name typed, which the user (only)
