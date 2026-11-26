@@ -81,6 +81,7 @@ Item {
         // direction, up for oldest first), and what it sorts by on the right,
         // kept apart so both read at toolbar size.
         case "sort-name": return "M6 4v16M3 17l3 3 3-3M12 11l3-7 3 7M13.2 8.4h3.6M12 14h6l-6 6h6"
+        case "sort-name-desc": return "M6 20V4M3 7l3-3 3 3M12 4h6l-6 6h6M12 20l3-7 3 7M13.2 17.4h3.6"
         case "sort-kind": return "M6 4v16M3 17l3 3 3-3" + circle(16.5, 7.5, 3) + box(13.5, 14, 6, 6, r / 2)
         case "sort-newest": return "M6 4v16M3 17l3 3 3-3" + circle(16.5, 12, 5) + "M16.5 9v3.2l2.2 1.4"
         case "sort-oldest": return "M6 20V4M3 7l3-3 3 3" + circle(16.5, 12, 5) + "M16.5 9v3.2l2.2 1.4"

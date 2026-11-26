@@ -55,7 +55,7 @@ static void setUp(QGuiApplication &app) {
     qmlRegisterType<KineticScroll>("Folio", 1, 0, "KineticScroll");
 }
 
-// `folio preview [--hidden] [--sort name|kind|modified|oldest|size] [--follow] FILE`:
+// `folio preview [--hidden] [--sort name|namedesc|kind|modified|oldest|size] [--follow] FILE`:
 // the large look at one file, stepping through its folder. Its own process,
 // so a file that crashes a decoder only closes this window.
 static int preview(QGuiApplication &app) {
@@ -84,7 +84,7 @@ static int preview(QGuiApplication &app) {
             path = QUrl(arg).isLocalFile() ? QUrl(arg).toLocalFile() : arg;
     }
     if (path.isEmpty() || !QFileInfo::exists(path)) {
-        fprintf(stderr, "usage: folio preview [--hidden] [--sort name|kind|modified|oldest|size] [--follow] FILE\n");
+        fprintf(stderr, "usage: folio preview [--hidden] [--sort name|namedesc|kind|modified|oldest|size] [--follow] FILE\n");
         return 1;
     }
 

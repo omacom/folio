@@ -792,7 +792,7 @@ QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QStri
 QStringList FolderModel::sortModes() {
     // "modified" is newest first; it keeps its name so saved settings
     // from before "oldest" existed still read right.
-    return {"name", "kind", "modified", "oldest", "size"};
+    return {"name", "namedesc", "kind", "modified", "oldest", "size"};
 }
 
 static QCollator collatorFor(const QLocale &locale) {
@@ -805,8 +805,9 @@ static QCollator collatorFor(const QLocale &locale) {
 // The order a sort mode names, read once rather than on every compare.
 struct Order {
     explicit Order(const QString &sort)
-        : newest(sort == "modified"), oldest(sort == "oldest"), size(sort == "size"), kind(sort == "kind") {}
-    bool newest, oldest, size, kind;
+        : newest(sort == "modified"), oldest(sort == "oldest"), size(sort == "size"), kind(sort == "kind"),
+          reverseName(sort == "namedesc") {}
+    bool newest, oldest, size, kind, reverseName;
 
     // Whether `a` comes before `b`, `collate` comparing their names (or,
     // given true, their extensions) as a collator does.
@@ -828,7 +829,8 @@ struct Order {
             if (a.extension != b.extension)
                 return collate(true) < 0;
         }
-        return collate(false) < 0;
+        // Name, Z–A: folders still first, then names in reverse.
+        return reverseName ? collate(false) > 0 : collate(false) < 0;
     }
 };
 

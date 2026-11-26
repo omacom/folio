@@ -253,6 +253,7 @@
   },
   "Moving around": "Moving around",
   "Name": "Name",
+  "Name, Z–A": "Name, Z–A",
   "New Folder": "New Folder",
   "New folder": "New folder",
   "New window": "New window",
@@ -386,6 +387,7 @@
   "Something is still using it.": "Something is still using it.",
   "Sorted by kind": "Sorted by kind",
   "Sorted by name": "Sorted by name",
+  "Sorted by name, Z–A": "Sorted by name, Z–A",
   "Split into two panes": "Split into two panes",
   "Stop the work under way": "Stop the work under way",
   "Stopped after %L1 of %Ln items.": {

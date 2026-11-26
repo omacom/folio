@@ -56,6 +56,7 @@ Rectangle {
     // button and S / Shift+S work without creating the menu at startup.
     readonly property var sortOrders: [
         { mode: "name", label: qsTr("Name"), glyph: "sort-name", tip: qsTr("Sorted by name") },
+        { mode: "namedesc", label: qsTr("Name, Z–A"), glyph: "sort-name-desc", tip: qsTr("Sorted by name, Z–A") },
         { mode: "kind", label: qsTr("Kind"), glyph: "sort-kind", tip: qsTr("Sorted by kind") },
         { mode: "modified", label: qsTr("Newest"), glyph: "sort-newest", tip: qsTr("Newest first") },
         { mode: "oldest", label: qsTr("Oldest"), glyph: "sort-oldest", tip: qsTr("Oldest first") },

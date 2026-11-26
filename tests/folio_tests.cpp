@@ -2928,6 +2928,17 @@ private slots:
         QCOMPARE(order("modified"), QString("Zeta b.txt c.txt a.png"));
         QCOMPARE(order("oldest"), QString("Zeta a.png c.txt b.txt"));
         QCOMPARE(order("size"), QString("Zeta a.png c.txt b.txt"));
+        QCOMPARE(order("namedesc"), QString("Zeta c.txt b.txt a.png"));
+
+        // Z–A puts the highest job number first, numbers compared as numbers.
+        QVector<FolderModel::Entry> jobs(4);
+        jobs[0].name = "240012 - Old"; jobs[1].name = "260098 - New";
+        jobs[2].name = "99 - Ancient"; jobs[3].name = "250087 - Mid";
+        for (auto &j : jobs) j.isDir = true;
+        FolderModel::sortEntries(jobs, "namedesc");
+        QStringList names;
+        for (const auto &x : jobs) names << x.name;
+        QCOMPARE(names.join('|'), QString("260098 - New|250087 - Mid|240012 - Old|99 - Ancient"));
     }
 
     void folderSortsAsTheCollatorCompares()
