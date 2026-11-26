@@ -7696,9 +7696,18 @@ private slots:
             QObject::connect(r, &QQuickImageResponse::finished, r, [&, i] { finished[i] = 1; });
             busy << r;
         }
-        // Wait for at least one helper process to start and record its child PID.
-        QTRY_VERIFY(QFile::exists(clips[0] + ".helper"));
-        QFile noted(clips[0] + ".helper");
+        // Wait for a helper process to start and record its child PID. Only
+        // as many run at once as the provider has slots, as few as two, and
+        // which requests get them first isn't fixed, so any clip's will do.
+        QString started;
+        QTRY_VERIFY([&] {
+            for (const QString &clip : clips) {
+                if (QFileInfo(clip + ".helper").size() > 0)
+                    started = clip + ".helper";
+            }
+            return !started.isEmpty();
+        }());
+        QFile noted(started);
         QVERIFY(noted.open(QIODevice::ReadOnly));
         const int childPid = QString::fromLatin1(noted.readAll()).trimmed().toInt();
         QVERIFY(childPid > 0);
