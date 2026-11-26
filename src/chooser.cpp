@@ -252,6 +252,10 @@ void ChooserDialog::setFilter(int filter) {
     emit filterChanged();
 }
 
+QString ChooserDialog::destination(const QString &folder, const QStringList &selected) {
+    return selected.size() == 1 && QFileInfo(selected.first()).isDir() ? selected.first() : folder;
+}
+
 QStringList ChooserDialog::existing(const QStringList &paths) {
     QStringList there;
     // A link that leads nowhere too: saving would write where it leads.

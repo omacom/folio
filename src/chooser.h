@@ -102,6 +102,9 @@ public:
     Q_INVOKABLE QStringList answer(const QString &folder, const QStringList &picked, const QString &typed) const {
         return m_request.answer(folder, picked, typed);
     }
+    // Where saving goes: the one folder selected in the folder shown, or
+    // that folder itself.
+    Q_INVOKABLE static QString destination(const QString &folder, const QStringList &selected);
     // Those of the paths that something is already at.
     Q_INVOKABLE static QStringList existing(const QStringList &paths);
     // Those of the paths that are folders, which no file can replace.

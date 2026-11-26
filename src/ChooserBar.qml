@@ -5,10 +5,10 @@ import QtQuick.Layouts
 // What a file chooser's window adds to a Folio window, along the bottom:
 // the name to save under, Cancel, and the button that answers. (The app's
 // filters are in the path bar, with the other ways of showing the files.)
-// The answer comes from the pane used last, with what's selected there;
-// Return on a file or a double click answers with it, and so does
-// Ctrl+Return from anywhere. It lies over the whole window, so that asking
-// before replacing a file covers it.
+// The answer comes from the pane used last, with what's selected there
+// (saving goes into a folder selected there); Return on a file or a double
+// click answers with it, and so does Ctrl+Return from anywhere. It lies over
+// the whole window, so that asking before replacing a file covers it.
 Item {
     id: root
 
@@ -28,7 +28,11 @@ Item {
 
     function answer(items) {
         const backend = pane.paneBackend
-        const paths = chooser.answer(backend.path, items, nameField.text)
+        // A folder selected when saving is where it goes. Only what's
+        // selected counts, not a cursor left on a row that isn't.
+        const into = chooser.mode.startsWith("save")
+                   ? chooser.destination(backend.path, backend.folder.selectedPaths()) : backend.path
+        const paths = chooser.answer(into, items, nameField.text)
         if (paths.length === 0) {
             // Nothing to answer with yet: a folder typed as the name is gone
             // into, and a folder picked to open is opened.
@@ -36,13 +40,13 @@ Item {
                 // Read the way answer() reads it: a bare name exactly as
                 // typed, and only a path the way the path bar does.
                 const name = nameField.text
-                const here = backend.path + "/" + name
+                const here = into + "/" + name
                 if (!name.includes("/") && !name.startsWith("~")) {
                     if (chooser.folders([here]).length > 0) {
                         backend.navigate(here)
                         nameField.text = ""
                     }
-                } else if (backend.goTyped(name)) {
+                } else if (backend.goTyped(name.startsWith("/") || name.startsWith("~") ? name : here)) {
                     nameField.text = ""
                 }
             } else if (pane.current.isDir) {
