@@ -2,7 +2,7 @@
 
 A plugin adds something Folio doesn't know about on its own: a section in the
 sidebar, a status on one of its rows, entries in the right-click menu, rows
-in the details column, or a view in the main pane. Tailscale, Dropbox and LocalSend come with
+in the details column, or a view in the main pane. Tailscale, Dropbox, LocalSend and Phones come with
 Folio as plugins, and they use nothing that isn't described here, so a plugin
 you write sits on equal footing with them.
 

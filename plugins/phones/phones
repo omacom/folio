@@ -1,0 +1,38 @@
+#!/bin/sh
+# List the phone and camera folders GVfs has already mounted. Folio puts them
+# in a "Phones" sidebar section; opening one goes straight to the mount.
+# Android is mtp:, iPhone is afc:, cameras are gphoto2:.
+
+quote() {
+  printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+}
+
+runtime="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+gvfs="$runtime/gvfs"
+
+printf '{"items":['
+sep=
+for d in "$gvfs"/mtp:* "$gvfs"/afc:* "$gvfs"/gphoto2:*; do
+  [ -d "$d" ] || continue
+
+  base=${d##*/}
+  protocol=${base%%:*}
+  case "$protocol" in
+    mtp)     label="MTP device" ;;
+    afc)     label="iPhone" ;;
+    gphoto2) label="Camera" ;;
+  esac
+
+  # mtp:host=Google_Pixel_7 -> Google Pixel 7
+  name=${base#*:}
+  name=${name#host=}
+  name=$(printf '%s' "$name" | sed 's/_/ /g; s/+/ /g')
+  [ -n "$name" ] || name=$label
+
+  printf '%s{"id":%s,"name":%s,"icon":"phone.svg","subtitle":%s,' \
+    "$sep" "$(quote "$base")" "$(quote "$name")" "$(quote "$label")"
+  printf '"details":[["Protocol",%s],["Folder",%s]],"open":{"path":%s}}' \
+    "$(quote "$protocol")" "$(quote "$d")" "$(quote "$d")"
+  sep=,
+done
+printf ']}\n'
