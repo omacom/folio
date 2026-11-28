@@ -15,6 +15,8 @@ Files (`folio`) is Omarchy's file manager. It's one quiet window that follows yo
 | --- | --- |
 | ![The column view, four folders deep](docs/columns.png) | ![A photo in the preview window](docs/preview.png) |
 
+The columns can also be three fixed ones, as in ranger or yazi. With `threeColumns=true` under `[General]` in `~/.config/folio/folio.conf`, the column view shows the parent folder, the current one and a look inside the selected item, sharing the width 1:3:4, and never scrolls sideways. Drag the lines between them to resize them, which is remembered; a double-click on a line shares the width 1:3:4 again.
+
 ## Keys
 
 | Key | Does |

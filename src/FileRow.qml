@@ -25,6 +25,8 @@ Item {
     required property bool expanded
 
     property bool current: false
+    // Off, the row isn't lit while the pointer is over it.
+    property bool hoverLit: true
     // Cut and not yet pasted: drawn in the colour of a disabled menu entry.
     readonly property bool cut: fileOps.cutCount > 0 && fileOps.isCut(path)
     // In a column to the left: the folder the next column is showing.
@@ -78,7 +80,7 @@ Item {
         border.color: theme.accent
         color: row.current || folderDrop.containsDrag ? Qt.alpha(theme.accent, 0.18)
              : row.trail ? Qt.alpha(theme.foreground, 0.08)
-             : hover.hovered ? Qt.alpha(theme.foreground, 0.05)
+             : hover.hovered && row.hoverLit ? Qt.alpha(theme.foreground, 0.05)
              : "transparent"
     }
 

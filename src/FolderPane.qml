@@ -32,6 +32,11 @@ FocusScope {
     // Ctrl+scroll), shared and remembered the same way as the view.
     property real zoom: host ? host.zoom : 1
     onZoomChanged: if (host && !closable) host.zoom = zoom
+    // How the three fixed columns share the width, remembered the same way.
+    property real parentShare: host ? host.parentShare : 1 / 8
+    onParentShareChanged: if (host && !closable) host.parentShare = parentShare
+    property real currentShare: host ? host.currentShare : 3 / 8
+    onCurrentShareChanged: if (host && !closable) host.currentShare = currentShare
     readonly property var zoomSteps: [0.75, 1, 1.25, 1.5, 2]
     function zoomBy(step) {
         const at = zoomSteps.indexOf(zoom)
@@ -479,7 +484,9 @@ FocusScope {
             }
         }
 
-        Item { implicitHeight: 16 }
+        // Three fixed columns reach up to the bar, their lines unbroken; the
+        // room above the first row is in the lists instead.
+        Item { implicitHeight: pane.viewMode === "columns" && !!pane.host && !!pane.host.threeColumns ? 0 : 16 }
 
         // Columns, list or grid: each takes the folder's model and keeps the
         // pane's one selection. Loaded by URL so unused views aren't compiled
@@ -496,15 +503,27 @@ FocusScope {
                   : "FolderGrid.qml"
             // A new view picks up the selection the old one had.
             onLoaded: {
-                if (pane.viewMode === "columns")
+                if (pane.viewMode === "columns") {
                     item.detailsPane = pane
-                else
+                    item.fixed = Qt.binding(() => !!pane.host && !!pane.host.threeColumns)
+                    item.parentShare = Qt.binding(() => pane.parentShare)
+                    item.currentShare = Qt.binding(() => pane.currentShare)
+                } else
                     item.zoom = Qt.binding(() => pane.zoom)
                 if (pane.cursorLetGo)
                     item.letGo()
                 else
                     item.select(backend.folder.indexOfPath(pane.lastPath), true)
                 item.focusView()
+            }
+
+            Connections {
+                target: view.item
+                ignoreUnknownSignals: true
+                function onResized(parentShare, currentShare) {
+                    pane.parentShare = parentShare
+                    pane.currentShare = currentShare
+                }
             }
 
             // Files dropped on empty space land in this folder. The columns

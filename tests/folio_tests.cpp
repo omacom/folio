@@ -1240,6 +1240,209 @@ private slots:
         QTRY_COMPARE(root->property("selected").toString(), QString("2025"));
     }
 
+    // Fixed, the columns are the parent, the folder and a preview, whatever
+    // the depth: the first column is always the parent's, and the third
+    // looks inside the selected folder, filling the rest of the width.
+    void columnsFixedShowParentFolderAndPreview()
+    {
+        QTemporaryDir home;
+        QDir(home.path()).mkpath("Documents/Archive");
+        QDir(home.path()).mkpath("Documents/Racing/2025/Le Mans");
+        Backend backend(home.path());
+        backend.navigate(home.filePath("Documents/Racing"));
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        Translator translator(home.filePath("language"), home.path());
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("plugins", QVariantMap{{"views", QVariantMap{}}});
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine);
+        component.setData(R"(
+            import QtQuick
+            Window {
+                width: 1200; height: 480; visible: true
+                property alias cursor: folderView.currentIndex
+                property alias fixed: folderView.fixed
+                readonly property string selected: folderView.selected.name || ""
+                FolderColumns { id: folderView; anchors.fill: parent; fixed: true; Component.onCompleted: focusView() }
+            }
+        )", QUrl::fromLocalFile(sourceFolder() + "/ColumnsFixedTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        QTRY_COMPARE(backend.folder()->rowCount(), 1);
+        root->setProperty("cursor", 0);
+        QTRY_COMPARE(root->property("selected").toString(), QString("2025"));
+        QTest::qWait(300);
+
+        // The first column is Documents, the parent, not home: its first
+        // row is Archive.
+        QTest::mouseClick(window, Qt::LeftButton, {}, QPoint(60, 20));
+        QTRY_COMPARE(backend.path(), home.filePath("Documents/Archive"));
+
+        // Back in Racing, the last column, at the window's right edge,
+        // shows what's in 2025.
+        backend.navigate(home.filePath("Documents/Racing"));
+        QTRY_COMPARE(backend.folder()->rowCount(), 1);
+        root->setProperty("cursor", 0);
+        QTRY_COMPARE(root->property("selected").toString(), QString("2025"));
+        QTest::qWait(300);
+        QTest::mouseClick(window, Qt::LeftButton, {}, QPoint(1200 - 60, 20));
+        QTRY_COMPARE(backend.path(), home.filePath("Documents/Racing/2025"));
+        QTRY_COMPARE(root->property("selected").toString(), QString("Le Mans"));
+
+        // A level deeper, the first column is still the parent's: Racing.
+        QTest::qWait(300);
+        QTest::mouseClick(window, Qt::LeftButton, {}, QPoint(60, 20));
+        QTRY_COMPARE(backend.path(), home.filePath("Documents/Racing/2025"));
+        QCOMPARE(root->property("selected").toString(), QString("Le Mans"));
+
+        // Off, the same spot is home's column, as in the Finder.
+        root->setProperty("fixed", false);
+        QTest::qWait(300);
+        QTest::mouseClick(window, Qt::LeftButton, {}, QPoint(60, 20));
+        QTRY_COMPARE(backend.path(), home.filePath("Documents"));
+    }
+    // Fixed, once the keys move the cursor, the row under a pointer left
+    // still isn't lit as hovered; moving the pointer lights it again.
+    void columnsFixedHoverWaitsForThePointer()
+    {
+        QTemporaryDir home;
+        for (const char *name : {"Documents/Racing/a", "Documents/Racing/b", "Documents/Racing/c"})
+            QDir(home.path()).mkpath(name);
+        Backend backend(home.path());
+        backend.navigate(home.filePath("Documents/Racing"));
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        Translator translator(home.filePath("language"), home.path());
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("plugins", QVariantMap{{"views", QVariantMap{}}});
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine);
+        component.setData(R"(
+            import QtQuick
+            Window {
+                width: 1200; height: 480; visible: true
+                property alias cursor: folderView.currentIndex
+                readonly property bool pointerStill: folderView.pointerStill
+                FolderColumns { id: folderView; anchors.fill: parent; fixed: true; Component.onCompleted: focusView() }
+            }
+        )", QUrl::fromLocalFile(sourceFolder() + "/ColumnsHoverTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        QTRY_COMPARE(backend.folder()->rowCount(), 3);
+
+        QTest::mouseMove(window, QPoint(400, 16 + 32 * 2 + 10));
+        QTRY_VERIFY(!root->property("pointerStill").toBool());
+
+        // The keys move the cursor: the row under the pointer goes dark.
+        root->setProperty("cursor", 0);
+        QTRY_VERIFY(root->property("pointerStill").toBool());
+        QTest::keyClick(window, Qt::Key_Down);
+        QTRY_COMPARE(root->property("cursor").toInt(), 1);
+        QTest::qWait(100);
+        QVERIFY(root->property("pointerStill").toBool());
+
+        // The pointer moves: hovering lights rows again.
+        QTest::mouseMove(window, QPoint(420, 16 + 32 + 10));
+        QTRY_VERIFY(!root->property("pointerStill").toBool());
+    }
+
+
+    // Fixed, the lines between the columns drag: the first trades width
+    // between the parent and the folder, the second between the folder and
+    // the preview, none narrower than `narrowest`. A double-click shares
+    // the width 1:3:4 again. Each move is announced, for the pane to keep.
+    void columnsFixedLinesDragToResize()
+    {
+        QTemporaryDir home;
+        QDir(home.path()).mkpath("Documents/Racing/2025");
+        Backend backend(home.path());
+        backend.navigate(home.filePath("Documents/Racing"));
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        Translator translator(home.filePath("language"), home.path());
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("plugins", QVariantMap{{"views", QVariantMap{}}});
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine);
+        component.setData(R"(
+            import QtQuick
+            Window {
+                width: 1200; height: 480; visible: true
+                readonly property int parentWidth: folderView.parentWidth
+                readonly property int currentWidth: folderView.currentWidth
+                readonly property int previewWidth: folderView.previewWidth
+                readonly property int narrowest: folderView.narrowest
+                property int resizes: 0
+                FolderColumns { id: folderView; anchors.fill: parent; fixed: true; onResized: resizes++ }
+            }
+        )", QUrl::fromLocalFile(sourceFolder() + "/ColumnsLinesTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        QTRY_COMPARE(backend.folder()->rowCount(), 1);
+        const auto width = [&](const char *name) { return root->property(name).toInt(); };
+        const auto drag = [&](int fromX, int toX) {
+            QTest::mousePress(window, Qt::LeftButton, {}, QPoint(fromX, 200));
+            QTest::mouseMove(window, QPoint((fromX + toX) / 2, 200));
+            QTest::mouseMove(window, QPoint(toX, 200));
+            QTest::mouseRelease(window, Qt::LeftButton, {}, QPoint(toX, 200));
+        };
+
+        // 1:3:4 to start with.
+        QCOMPARE(width("parentWidth"), 149);
+        QCOMPARE(width("currentWidth"), 449);
+        QCOMPARE(width("previewWidth"), 600);
+
+        // The first line, 100 to the right: the folder gives the parent
+        // 100, the preview keeps its width.
+        drag(149, 249);
+        QTRY_COMPARE(width("parentWidth"), 249);
+        QCOMPARE(width("currentWidth"), 349);
+        QCOMPARE(width("previewWidth"), 600);
+        QVERIFY(width("resizes") > 0);
+
+        // The second line, 300 to the right: the preview gives the folder 300.
+        drag(249 + 1 + 349, 899);
+        QTRY_COMPARE(width("currentWidth"), 649);
+        QCOMPARE(width("parentWidth"), 249);
+        QCOMPARE(width("previewWidth"), 300);
+
+        // Dragged past the window's edge, the parent stops at the narrowest.
+        drag(249, -50);
+        QTRY_COMPARE(width("parentWidth"), width("narrowest"));
+        QCOMPARE(width("parentWidth") + width("currentWidth"), 249 + 649);
+
+        // A double-click on a line shares the width 1:3:4 again.
+        QTest::mouseDClick(window, Qt::LeftButton, {}, QPoint(width("parentWidth"), 200));
+        QTRY_COMPARE(width("parentWidth"), 149);
+        QCOMPARE(width("currentWidth"), 449);
+        QCOMPARE(width("previewWidth"), 600);
+    }
+
     // The list's tree: a folder opened in place lists its items under it a
     // level in, read again with the folder when anything changes; closed,
     // they go, with anything opened or selected inside.
