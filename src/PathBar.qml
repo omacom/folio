@@ -13,7 +13,10 @@ Rectangle {
     property bool editing: false
     // The right pane of a split has a close button (Ctrl+W).
     property bool closable: false
+    // Whether the window is split, so the split button can show its state.
+    property bool split: false
     signal closeRequested()
+    signal splitRequested()
     // The window's last bar has a quiet ? before its buttons, for finding the
     // shortcuts without knowing the key that shows them.
     property bool showsHelp: false
@@ -290,6 +293,15 @@ Rectangle {
                     }
                 }
             }
+        }
+        // Splits the window in two; pressed again while split, closes it.
+        // The right pane keeps its own close button instead.
+        IconButton {
+            visible: !chooser && !bar.closable
+            glyph: "split"
+            active: bar.split
+            text: bar.split ? qsTr("Close split") : qsTr("Split window")
+            onClicked: bar.splitRequested()
         }
         // Shows the current view; clicking moves to the next one.
         IconButton {

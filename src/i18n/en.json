@@ -67,6 +67,7 @@
   "Check the server": "Check the server",
   "Choose": "Choose",
   "Close": "Close",
+  "Close split": "Close split",
   "Close the right pane": "Close the right pane",
   "Close the window": "Close the window",
   "Close this pane": "Close this pane",
@@ -387,6 +388,7 @@
   "Sorted by kind": "Sorted by kind",
   "Sorted by name": "Sorted by name",
   "Split into two panes": "Split into two panes",
+  "Split window": "Split window",
   "Stop the work under way": "Stop the work under way",
   "Stopped after %L1 of %Ln items.": {
     "one": "Stopped after %L1 of %Ln item.",

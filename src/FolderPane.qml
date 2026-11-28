@@ -551,7 +551,16 @@ FocusScope {
         onEditDone: pane.focusView()
         viewMode: pane.viewMode
         closable: pane.closable
+        split: !!pane.host && pane.host.split
         onCycleView: pane.cycleView()
+        onSplitRequested: {
+            if (!pane.host)
+                return
+            if (pane.host.split)
+                pane.host.closeSplit()
+            else
+                pane.host.openSplit()
+        }
         onCloseRequested: pane.closeRequested()
         // On the rightmost pane's bar. A file chooser is a dialog, not the
         // place to learn Files' keys.
