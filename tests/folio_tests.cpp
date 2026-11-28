@@ -1665,6 +1665,161 @@ private slots:
         QTRY_COMPARE(cursor(), home.filePath("files/file-10.txt"));
     }
 
+    void folderFindsTheNextNameStartingWith()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkdir("tools");
+        write(dir.filePath("Été.txt"), "x");
+        write(dir.filePath("notes.md"), "x");
+        write(dir.filePath("todo.txt"), "x");
+        write(dir.filePath("Travel.pdf"), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        const auto nameOf = [&](int row) { return model.get(row).value("name").toString(); };
+        // Case and accents don't count, and the search comes round past the end.
+        QCOMPARE(nameOf(model.nextStartingWith("e", 0)), QString("Été.txt"));
+        QCOMPARE(nameOf(model.nextStartingWith("ÉT", 0)), QString("Été.txt"));
+        const int first = model.nextStartingWith("t", 0);
+        QVERIFY(first >= 0);
+        QVERIFY(nameOf(first).startsWith('t', Qt::CaseInsensitive));
+        QStringList ts;
+        for (int row = first, i = 0; i < 3; ++i, row = model.nextStartingWith("t", row + 1))
+            ts << nameOf(row);
+        ts.sort(Qt::CaseInsensitive);
+        QCOMPARE(ts, (QStringList{"todo.txt", "tools", "Travel.pdf"}));
+        QCOMPARE(model.nextStartingWith("t", model.count()), first);
+        QCOMPARE(model.nextStartingWith("to", 0) >= 0, true);
+        QCOMPARE(model.nextStartingWith("x", 0), -1);
+        QCOMPARE(model.nextStartingWith("", 0), -1);
+    }
+
+    // With typeToSelect, letters typed over the files put the cursor on an
+    // item in sight starting with them, never one in a folder below; the
+    // same letter again steps on, and S is a letter too, which the ?
+    // overlay says.
+    void typingSelectsTheItemStartingWithIt()
+    {
+        QTemporaryDir home, plugins;
+        QVERIFY(QDir(home.path()).mkpath("files/tools"));
+        write(home.filePath("files/alpha.txt"), "x");
+        write(home.filePath("files/sort.txt"), "x");
+        write(home.filePath("files/tea.txt"), "x");
+        write(home.filePath("files/toast.txt"), "x");
+        write(home.filePath("files/tools/zeta.txt"), "x");
+        Backend backend(home.path());
+        Theme theme(home.filePath("theme"));
+        Places places(home.path());
+        FileOps fileOps;
+        Plugins bundled("en", {plugins.path()}, home.filePath("folio.conf"));
+        Translator translator(home.filePath("language"), home.path());
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        QQmlEngine engine;
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("chooser", static_cast<QObject *>(nullptr));
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("plugins", &bundled);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("places", &places);
+        QQmlComponent component(&engine);
+        component.setData(R"(
+            import QtQuick
+            import QtQuick.Controls
+            ApplicationWindow {
+                width: 900; height: 620; visible: true
+                property string viewMode: "columns"
+                property real zoom: 1
+                property bool split: false
+                property bool helpVisible: false
+                property bool typeToSelect: true
+                property var activePane: null
+                function raise() {}
+                function requestActivate() {}
+                FolderPane { id: pane; anchors.fill: parent; focus: true }
+                Component.onCompleted: activePane = pane
+                readonly property var paneItem: pane
+            }
+        )", QUrl::fromLocalFile(sourceFolder() + "/TypeToSelectTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowActive(window));
+        auto *pane = root->property("paneItem").value<QObject *>();
+        QVERIFY(pane);
+        QVERIFY(QMetaObject::invokeMethod(pane, "focusView"));
+
+        backend.navigate(home.filePath("files"));
+        QTRY_COMPARE(backend.folder()->count(), 5);
+        const auto cursor = [&] { return QFileInfo(pane->property("current").toMap().value("path").toString()).fileName(); };
+        QTRY_VERIFY(!cursor().isEmpty());
+        const QString sorting = backend.folder()->sortMode();
+
+        QTest::keyClick(window, Qt::Key_A);
+        QTRY_COMPARE(cursor(), QString("alpha.txt"));
+        // S selects, and doesn't sort.
+        QTest::qWait(1100);
+        QTest::keyClick(window, Qt::Key_S);
+        QTRY_COMPARE(cursor(), QString("sort.txt"));
+        QCOMPARE(backend.folder()->sortMode(), sorting);
+        // T, then T again, steps through what starts with t, coming round.
+        QTest::qWait(1100);
+        QTest::keyClick(window, Qt::Key_T);
+        QTRY_COMPARE(cursor(), QString("tea.txt"));
+        QTest::keyClick(window, Qt::Key_T);
+        QTRY_COMPARE(cursor(), QString("toast.txt"));
+        QTest::keyClick(window, Qt::Key_T);
+        QTRY_COMPARE(cursor(), QString("tools"));
+        // Typed quickly, letters make one prefix.
+        QTest::qWait(1100);
+        for (const char letter : {'t', 'o', 'a'})
+            QTest::keyClick(window, letter);
+        QTRY_COMPARE(cursor(), QString("toast.txt"));
+        // Nothing in sight starts with z: zeta.txt, in tools, isn't looked
+        // for, and the cursor stays.
+        QTest::qWait(1100);
+        QTest::keyClick(window, Qt::Key_Z);
+        QTest::qWait(200);
+        QCOMPARE(cursor(), QString("toast.txt"));
+        QCOMPARE(backend.path(), home.filePath("files"));
+
+        // The ? overlay shows the keys that apply: Ctrl+Q closes the window,
+        // and S isn't offered for the sort order.
+        const auto helpKeys = [&](bool on) {
+            QQmlComponent help(&engine, QUrl::fromLocalFile(sourceFolder() + "/HelpOverlay.qml"));
+            std::unique_ptr<QObject> overlay(help.createWithInitialProperties({{"typeToSelect", on}}));
+            QMap<QString, QString> keys;
+            if (!overlay)
+                return keys;
+            QVariant groups = overlay->property("groups");
+            if (groups.metaType() == QMetaType::fromType<QJSValue>())
+                groups = groups.value<QJSValue>().toVariant();
+            for (const QVariant &group : groups.toList())
+                for (const QVariant &shortcut : group.toMap().value("shortcuts").toList()) {
+                    QStringList ways;
+                    for (const QVariant &way : shortcut.toList().value(1).toList())
+                        ways << way.toStringList().join("+");
+                    keys.insert(shortcut.toList().value(0).toString(), ways.join(", "));
+                }
+            return keys;
+        };
+        QCOMPARE(helpKeys(false).value("Close the window"), QString("Q"));
+        QCOMPARE(helpKeys(false).value("Next or previous sort order"), QString("S, Shift+S"));
+        QCOMPARE(helpKeys(true).value("Close the window"), QString("Ctrl+Q"));
+        QVERIFY(!helpKeys(true).contains("Next or previous sort order"));
+
+        // Off, S sorts again.
+        root->setProperty("typeToSelect", false);
+        QTest::qWait(1100);
+        QTest::keyClick(window, Qt::Key_S);
+        QTRY_VERIFY(backend.folder()->sortMode() != sorting);
+    }
+
     void newFolderInAnEarlierColumnAsksItsName()
     {
         // The columns view makes a folder in whichever column was right-

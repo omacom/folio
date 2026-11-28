@@ -66,6 +66,9 @@ ApplicationWindow {
     // Columns on a first launch; after that, whichever view was used last.
     property string viewMode: "columns"
     property real zoom: 1
+    // Letters typed over the files select the item starting with them,
+    // rather than being shortcuts (Q, S). Off unless set in folio.conf.
+    property bool typeToSelect: false
 
     // The pane keys, the sidebar and the details go to.
     property var activePane: leftPane
@@ -85,6 +88,7 @@ ApplicationWindow {
     Settings {
         property alias viewMode: win.viewMode
         property alias zoom: win.zoom
+        property alias typeToSelect: win.typeToSelect
     }
 
     // Ctrl+Alt+N: a second pane on the right, starting where the active
@@ -114,7 +118,8 @@ ApplicationWindow {
 
     Shortcut { sequence: "?"; enabled: !win.typing || win.helpVisible; onActivated: win.helpVisible = !win.helpVisible }
     Shortcut { sequence: "Escape"; enabled: win.helpVisible; onActivated: win.helpVisible = false }
-    Shortcut { sequence: "Q"; enabled: !win.typing; onActivated: win.close() }
+    Shortcut { sequence: "Q"; enabled: !win.typing && !win.typeToSelect; onActivated: win.close() }
+    Shortcut { sequence: "Ctrl+Q"; enabled: !win.typing && win.typeToSelect; onActivated: win.close() }
     Shortcut { sequence: "Ctrl+Alt+N"; enabled: !win.typing; onActivated: win.openSplit() }
     Shortcut { sequence: "Ctrl+W"; enabled: win.split; onActivated: win.closeSplit() }
     // Tab moves the keyboard: sidebar, left pane and its details column
@@ -222,7 +227,10 @@ ApplicationWindow {
             active: win.helpVisible
             visible: active
             source: "HelpOverlay.qml"
-            onLoaded: item.forceActiveFocus()
+            onLoaded: {
+                item.typeToSelect = win.typeToSelect
+                item.forceActiveFocus()
+            }
         }
         Connections {
             target: help.item
