@@ -233,8 +233,36 @@ FocusScope {
     Shortcut { sequence: "Alt+Home"; enabled: pane.active; onActivated: backend.navigate(places.home) }
     Shortcut { sequence: "Ctrl+H"; enabled: pane.active; onActivated: backend.folder.showHidden = !backend.folder.showHidden }
     // S steps through the sort orders, Shift+S back.
-    Shortcut { sequence: "S"; enabled: pane.keys; onActivated: pathBar.stepSort(1) }
-    Shortcut { sequence: "Shift+S"; enabled: pane.keys; onActivated: pathBar.stepSort(-1) }
+    // With type to select, S is a letter like the others.
+    Shortcut { sequence: "S"; enabled: pane.keys && !pane.typeToSelect; onActivated: pathBar.stepSort(1) }
+    Shortcut { sequence: "Shift+S"; enabled: pane.keys && !pane.typeToSelect; onActivated: pathBar.stepSort(-1) }
+
+    // Type to select (typeToSelect in folio.conf): a letter typed over the
+    // files puts the cursor on the next item in sight whose name starts
+    // with it, ignoring case and accents. Letters typed within a second of
+    // each other make one prefix; the same letter again steps on to the
+    // next item starting with it. Unlike /, nothing below is searched.
+    readonly property bool typeToSelect: !!host && !!host.typeToSelect
+    property string typed: ""
+    Timer { id: typedPause; interval: 1000; onTriggered: pane.typed = "" }
+    Keys.onPressed: (event) => {
+        if (!typeToSelect || !keys || !view.item
+                || (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)))
+            return
+        const letter = event.text
+        if (letter.length !== 1 || letter.trim().length === 0 || letter.charCodeAt(0) < 32)
+            return
+        typed = typedPause.running ? typed + letter : letter
+        typedPause.restart()
+        const cursor = view.item.currentIndex
+        const lower = typed.toLowerCase()
+        const row = lower.split("").every(c => c === lower[0])
+            ? backend.folder.nextStartingWith(letter, cursor + 1)
+            : backend.folder.nextStartingWith(typed, Math.max(0, cursor))
+        if (row >= 0)
+            view.item.select(row, false)
+        event.accepted = true
+    }
     Shortcut { sequences: ["F5", "Refresh"]; enabled: pane.active; onActivated: { backend.folder.reload(); places.refresh(); plugins.refresh() } }
 
     // A drive being ejected can't be in use: a pane showing a folder on it

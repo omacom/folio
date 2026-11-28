@@ -36,6 +36,9 @@ Rectangle {
     // names (Shift, Alt, Ctrl) stay as they are in every language.
     // The preview window gives its own, in the same form.
     readonly property bool mirrored: LayoutMirroring.enabled
+    // With type to select (typeToSelect in folio.conf), S and Q are letters:
+    // the sort order goes through the menu, and Ctrl+Q closes the window.
+    property bool typeToSelect: false
     property var groups: [
         { title: qsTr("Moving around"), shortcuts: [
             [qsTr("Move the selection"), [["←", "↑", "→", "↓"]]],
@@ -73,7 +76,7 @@ Rectangle {
         { title: qsTr("View"), shortcuts: [
             [qsTr("Columns, list or grid"), [["Ctrl", "1"], ["Ctrl", "2"], ["Ctrl", "3"]]],
             [qsTr("Bigger, smaller or normal tiles and rows"), [["Ctrl", "="], ["Ctrl", "-"], ["Ctrl", "0"]]],
-            [qsTr("Next or previous sort order"), [["S"], ["Shift", "S"]]],
+            ...(typeToSelect ? [] : [[qsTr("Next or previous sort order"), [["S"], ["Shift", "S"]]]]),
             [qsTr("Show hidden files"), [["Ctrl", "H"]]],
             [qsTr("Reload"), [["F5"]]]
         ]},
@@ -83,7 +86,7 @@ Rectangle {
             [qsTr("Close the right pane"), [["Ctrl", "W"]]],
             [qsTr("Unpin from the sidebar"), [["Delete"]]],
             [qsTr("Show these shortcuts"), [["?"]]],
-            [qsTr("Close the window"), [["Q"]]]
+            [qsTr("Close the window"), [typeToSelect ? ["Ctrl", "Q"] : ["Q"]]]
         ]}
     ]
 

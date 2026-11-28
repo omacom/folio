@@ -1356,6 +1356,31 @@ int FolderModel::indexOf(const QString &name) const {
     return -1;
 }
 
+// A name as typed to find it: without case or accents, so "e" finds "Été".
+static QString folded(const QString &name) {
+    const QString decomposed = name.normalized(QString::NormalizationForm_KD);
+    QString bare;
+    bare.reserve(decomposed.size());
+    for (const QChar c : decomposed)
+        if (c.category() != QChar::Mark_NonSpacing)
+            bare.append(c);
+    return bare.toCaseFolded();
+}
+
+int FolderModel::nextStartingWith(const QString &prefix, int from) const {
+    const QString wanted = folded(prefix);
+    const int count = m_entries.size();
+    if (wanted.isEmpty() || count == 0)
+        return -1;
+    const int start = qBound(0, from, count) % count;
+    for (int i = 0; i < count; ++i) {
+        const int row = (start + i) % count;
+        if (folded(m_entries[row].name).startsWith(wanted))
+            return row;
+    }
+    return -1;
+}
+
 void FolderModel::searchHere(quint64 generation) {
     const QString path = m_path, query = m_query, sort = m_sort;
     const bool showHidden = m_showHidden;

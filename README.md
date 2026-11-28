@@ -32,6 +32,8 @@ Files (`folio`) is Omarchy's file manager. It's one quiet window that follows yo
 | Tab, Shift+Tab | Sidebar, panes and details |
 | ? | Every other shortcut |
 
+Letters can select files too. With `typeToSelect=true` under `[General]` in `~/.config/folio/folio.conf`, a letter puts the cursor on the next item in the folder whose name starts with it, ignoring case and accents, and the same letter again steps on. Letters typed less than a second apart make one prefix. S and Q are then letters like the others: the sort order goes through the menu, and Ctrl+Q closes the window.
+
 ## Open and save dialogs
 
 Files can also be the Open and Save dialog in other apps. `folio chooser` is a file chooser for xdg-desktop-portal, which apps like Firefox, Chromium and every Flatpak ask for their dialogs. To use it, put this in `~/.config/xdg-desktop-portal/hyprland-portals.conf`:

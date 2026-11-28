@@ -109,6 +109,10 @@ public:
     // By path, for Recents, where two files from different folders can
     // share a name.
     Q_INVOKABLE int indexOfPath(const QString &path) const;
+    // The first row from `from` on, coming round past the last, whose name
+    // starts with `prefix`, ignoring case and accents; -1 if none. For
+    // typing a name's first letters to select it.
+    Q_INVOKABLE int nextStartingWith(const QString &prefix, int from) const;
 
     // The selection, kept by path so it survives a re-read or a re-sort.
     // The views keep the cursor (the current item) themselves.
