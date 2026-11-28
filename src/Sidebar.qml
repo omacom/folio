@@ -32,6 +32,8 @@ Rectangle {
         target.navigate(path)
     }
     property int cursor: 0
+    // Tighter spacing, for a sidebar that stays narrow and out of the way.
+    property bool compact: false
     // The pane the sidebar acts on: the one used last.
     property var target: backend
 
@@ -187,9 +189,9 @@ Rectangle {
     }
 
     component SectionLabel: FolioText {
-        Layout.topMargin: 21
-        Layout.leftMargin: 14
-        Layout.bottomMargin: 6
+        Layout.topMargin: compact ? 12 : 21
+        Layout.leftMargin: compact ? 10 : 14
+        Layout.bottomMargin: compact ? 3 : 6
         color: theme.secondaryForeground
         size: 11
         font.letterSpacing: 1.3
@@ -219,10 +221,10 @@ Rectangle {
         readonly property var mark: dropPath.length > 0 ? plugins.marks[dropPath] : undefined
 
         Layout.fillWidth: true
-        implicitHeight: detail.length > 0 ? Math.max(44, Math.round(40 * theme.textScale))
-                                          : Math.max(34, Math.round(28 * theme.textScale))
-        leftPadding: mirrored ? endPadding : 14
-        rightPadding: mirrored ? 14 : endPadding
+        implicitHeight: detail.length > 0 ? Math.max(compact ? 42 : 44, Math.round((compact ? 38 : 40) * theme.textScale))
+                                          : Math.max(compact ? 30 : 34, Math.round((compact ? 25 : 28) * theme.textScale))
+        leftPadding: mirrored ? endPadding : (compact ? 10 : 14)
+        rightPadding: mirrored ? (compact ? 10 : 14) : endPadding
         hoverEnabled: true
         focusPolicy: Qt.NoFocus
         Accessible.name: text

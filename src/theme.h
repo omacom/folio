@@ -43,6 +43,8 @@ class Theme : public QObject {
     // the application's font at its own size.
     Q_PROPERTY(QString fontFamily READ fontFamily NOTIFY fontChanged)
     Q_PROPERTY(qreal textScale READ textScale NOTIFY fontChanged)
+    // Scroll speed multiplier from folio.conf (0.5-4, default 1).
+    Q_PROPERTY(qreal scrollSpeed READ scrollSpeed CONSTANT)
 
 public:
     // `events` is Hyprland's event socket; with neither it nor `hyprctl`
@@ -72,6 +74,7 @@ public:
     QColor folderFill() const { return m_folderFill; }
     QString fontFamily() const { return m_fontFamily; }
     qreal textScale() const { return m_textScale; }
+    qreal scrollSpeed() const { return m_scrollSpeed; }
 
     // Follows the system's fixed-width font from now on, as the application's
     // font and through fontFamily and textScale: when the platform theme says
@@ -133,6 +136,7 @@ private:
     // The fixed font's family as last asked for, and what it resolved to.
     QString m_requestedFamily, m_resolvedFamily;
     qreal m_textScale = 1;
+    qreal m_scrollSpeed = 1;
     qreal m_portalTextScale = 0;
     bool m_followingFont = false;
     bool m_reloadFontconfig = false;

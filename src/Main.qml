@@ -66,6 +66,10 @@ ApplicationWindow {
     // Columns on a first launch; after that, whichever view was used last.
     property string viewMode: "columns"
     property real zoom: 1
+    // Width of the places/pins/drives sidebar, and whether its rows sit closer
+    // together. Both are remembered in folio.conf.
+    property int sidebarWidth: 190
+    property bool sidebarCompact: false
 
     // The pane keys, the sidebar and the details go to.
     property var activePane: leftPane
@@ -85,6 +89,8 @@ ApplicationWindow {
     Settings {
         property alias viewMode: win.viewMode
         property alias zoom: win.zoom
+        property alias sidebarWidth: win.sidebarWidth
+        property alias sidebarCompact: win.sidebarCompact
     }
 
     // Ctrl+Alt+N: a second pane on the right, starting where the active
@@ -176,6 +182,7 @@ ApplicationWindow {
 
             Sidebar {
                 id: sidebar
+                compact: win.sidebarCompact
                 target: win.activePane ? win.activePane.paneBackend : backend
                 onFinished: win.activePane.focusView()
                 onPlaceChosen: (path) => win.activePane.startAt(path)
@@ -184,7 +191,7 @@ ApplicationWindow {
                 onTrashRequested: (path) => win.activePane.paneFileOps.trash([path])
                 onFormatRequested: (disk) => win.activePane.formatDrive(disk)
                 Layout.topMargin: parent.parent.barHeight
-                Layout.preferredWidth: Math.round(190 * theme.textScale)
+                Layout.preferredWidth: Math.round(win.sidebarWidth * theme.textScale)
                 Layout.fillHeight: true
             }
             Rectangle { Layout.topMargin: parent.parent.barHeight; Layout.fillHeight: true; implicitWidth: 1; color: Qt.alpha(theme.foreground, 0.12) }

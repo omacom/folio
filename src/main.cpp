@@ -4,6 +4,7 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QIcon>
+#include <QSettings>
 #include <QQmlApplicationEngine>
 #include <QQmlEngine>
 #include <QQmlContext>
@@ -28,8 +29,15 @@
 // Accepts a path, a file:// URI (how launchers and xdg-open pass folders),
 // or nothing for home. A file opens its folder with the file selected.
 static QString startPath(const QStringList &args, QString *select) {
-    if (args.size() < 2)
+    if (args.size() < 2) {
+        // An explicit folder in folio.conf wins over home; a path given on
+        // the command line still wins over both.
+        QSettings settings;
+        const QString configured = settings.value(QStringLiteral("startAt"), QString()).toString();
+        if (!configured.isEmpty() && QFileInfo(configured).isDir())
+            return QFileInfo(configured).absoluteFilePath();
         return QDir::homePath();
+    }
     const QString arg = args.at(1);
     const QUrl url(arg);
     const QString path = url.isLocalFile() ? url.toLocalFile() : QFileInfo(arg).absoluteFilePath();

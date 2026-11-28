@@ -32,6 +32,25 @@ Files (`folio`) is Omarchy's file manager. It's one quiet window that follows yo
 | Tab, Shift+Tab | Sidebar, panes and details |
 | ? | Every other shortcut |
 
+## Settings
+
+Files remembers its choices in `~/.config/folio/folio.conf`:
+
+| Key | Does |
+| --- | --- |
+| `viewMode` | `columns`, `list` or `grid`, remembered from the last launch |
+| `zoom` | Tile size in the grid and list |
+| `showHidden` | List dotfiles; Ctrl+H updates this setting |
+| `startAt` | Folder to open when no path is given (default: home) |
+| `font` | Font family to use instead of the system's fixed-width font |
+| `fontSize` | Font size in points; follows the system when unset |
+| `sidebarWidth` | Width of the places sidebar in pixels (default 190) |
+| `sidebarCompact` | Tighter sidebar spacing and rows when `true` |
+| `scrollSpeed` | Wheel and touchpad scroll multiplier, 0.5–4 (default 1) |
+
+Per-folder sort orders are stored in a `sorts` array in the same file. Changes
+to these values are picked up at the next launch.
+
 ## Open and save dialogs
 
 Files can also be the Open and Save dialog in other apps. `folio chooser` is a file chooser for xdg-desktop-portal, which apps like Firefox, Chromium and every Flatpak ask for their dialogs. To use it, put this in `~/.config/xdg-desktop-portal/hyprland-portals.conf`:

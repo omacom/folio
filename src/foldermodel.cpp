@@ -12,6 +12,7 @@
 #include <QXmlStreamReader>
 #include <QUrl>
 #include <QStandardPaths>
+#include <QSettings>
 #include <QFile>
 #include <QFileInfo>
 #include <QFutureWatcher>
@@ -30,6 +31,10 @@
 #include <sys/stat.h>
 
 FolderModel::FolderModel(QObject *parent) : QAbstractListModel(parent) {
+    // Whether hidden files are listed is remembered in ~/.config/folio/folio.conf,
+    // so the choice survives new windows and reboots.
+    QSettings settings;
+    m_showHidden = settings.value(QStringLiteral("showHidden"), false).toBool();
     // Copies, saves and downloads change a folder in bursts; wait for the
     // burst to settle instead of relisting on every event.
     m_debounce.setSingleShot(true);
@@ -175,6 +180,10 @@ void FolderModel::setShowHidden(bool show) {
     if (show == m_showHidden)
         return;
     m_showHidden = show;
+    // Remember the choice, so it also applies to the next window and launch.
+    QSettings settings;
+    settings.setValue(QStringLiteral("showHidden"), show);
+    settings.sync();
     emit showHiddenChanged();
     reload();
 }

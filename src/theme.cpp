@@ -14,6 +14,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
+#include <QSettings>
 #include <QStandardPaths>
 #include <algorithm>
 #include <cmath>
@@ -127,6 +128,8 @@ Theme::Theme(const QString &directory, QObject *parent, const QString &hyprctl, 
       m_directory(directory.isEmpty() ? QDir::homePath() + "/.local/state/omarchy/current" : directory),
       m_liveDesktop(directory.isEmpty()) {
     m_fontFamily = QGuiApplication::font().family();
+    QSettings settings;
+    m_scrollSpeed = qBound(0.5, settings.value(QStringLiteral("scrollSpeed"), 1.0).toDouble(), 4.0);
     m_debounce.setSingleShot(true);
     m_debounce.setInterval(80);
     connect(&m_watcher, &QFileSystemWatcher::directoryChanged, this, [this] { m_debounce.start(); });
@@ -488,18 +491,28 @@ qreal Theme::effectiveTextScale(qreal fixedPoints) const {
 
 void Theme::readSystemFont(bool reloadConfig) {
     const QFont fixed = QFontDatabase::systemFont(QFontDatabase::FixedFont);
-    // A size-only update keeps the family last resolved: the configuration
-    // Qt started with may predate a fonts.conf change resolved since.
-    QString family = !reloadConfig && fixed.family() == m_requestedFamily ? m_resolvedFamily : QString();
-    if (family.isEmpty() && !reloadConfig) {
-        if (FcConfig *current = FcConfigGetCurrent())
-            family = matchFamily(current, fixed.family());
+    // A font family chosen in folio.conf wins over the system's; otherwise
+    // keep following Omarchy's font as it changes.
+    QSettings settings;
+    const QString configuredFamily = settings.value(QStringLiteral("font"), QString()).toString();
+    const int configuredSize = settings.value(QStringLiteral("fontSize"), 0).toInt();
+    QString family = configuredFamily;
+    if (family.isEmpty()) {
+        // A size-only update keeps the family last resolved: the configuration
+        // Qt started with may predate a fonts.conf change resolved since.
+        family = !reloadConfig && fixed.family() == m_requestedFamily ? m_resolvedFamily : QString();
+        if (family.isEmpty() && !reloadConfig) {
+            if (FcConfig *current = FcConfigGetCurrent())
+                family = matchFamily(current, fixed.family());
+        }
+        if (family.isEmpty())
+            family = resolveFamily(fixed.family());
     }
-    if (family.isEmpty())
-        family = resolveFamily(fixed.family());
     m_requestedFamily = fixed.family();
     m_resolvedFamily = family;
-    const qreal scale = effectiveTextScale(fixed.pointSizeF());
+    qreal scale = effectiveTextScale(fixed.pointSizeF());
+    if (configuredSize > 0)
+        scale = std::clamp(qreal(configuredSize) / designPoints, 0.75, 1.5);
     QFont font(family);
     font.setStyleHint(QFont::Monospace);
     font.setPixelSize(qRound(designPixels * scale));
