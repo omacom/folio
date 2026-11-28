@@ -66,6 +66,13 @@ ApplicationWindow {
     // Columns on a first launch; after that, whichever view was used last.
     property string viewMode: "columns"
     property real zoom: 1
+    // How the three fixed columns share the width: the parent's and the
+    // folder's parts, the preview taking the rest.
+    property real parentShare: 1 / 8
+    property real currentShare: 3 / 8
+    // The column view as three fixed columns (parent, folder, preview)
+    // rather than the Finder's trail. Off unless set in folio.conf.
+    property bool threeColumns: false
 
     // The pane keys, the sidebar and the details go to.
     property var activePane: leftPane
@@ -85,6 +92,9 @@ ApplicationWindow {
     Settings {
         property alias viewMode: win.viewMode
         property alias zoom: win.zoom
+        property alias parentShare: win.parentShare
+        property alias currentShare: win.currentShare
+        property alias threeColumns: win.threeColumns
     }
 
     // Ctrl+Alt+N: a second pane on the right, starting where the active
