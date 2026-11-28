@@ -10,8 +10,8 @@ ListView {
     clip: true
     acceptedButtons: Qt.NoButton
     boundsBehavior: Flickable.StopAtBounds
-    flickDeceleration: 1800
-    maximumFlickVelocity: 5000
+    flickDeceleration: 1800 / theme.scrollSpeed
+    maximumFlickVelocity: 5000 * theme.scrollSpeed
     // No cache buffer, here or in the grid: Qt's 16 ms pause before filling
     // one can leave an idle window drawing every refresh.
     cacheBuffer: 0

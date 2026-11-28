@@ -50,6 +50,7 @@ private:
     QVector<Sample> m_samples;
     QElapsedTimer m_clock;
     QVariantAnimation m_wheelAnim;
+    qreal m_stepPixels = 96;
     qreal m_wheelTarget = 0;
     qreal m_lastAnimatedValue = 0;
     bool m_animatingHorizontal = false;

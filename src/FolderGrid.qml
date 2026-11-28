@@ -71,8 +71,8 @@ GridView {
     // still scroll, which turning the view's interactive off would stop too.
     acceptedButtons: Qt.NoButton
     boundsBehavior: Flickable.StopAtBounds
-    flickDeceleration: 1800
-    maximumFlickVelocity: 5000
+    flickDeceleration: 1800 / theme.scrollSpeed
+    maximumFlickVelocity: 5000 * theme.scrollSpeed
     KineticScroll { target: grid }
     // No cache buffer, as in FileListView.
     cacheBuffer: 0

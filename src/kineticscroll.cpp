@@ -1,6 +1,7 @@
 #include "kineticscroll.h"
 
 #include <QMetaObject>
+#include <QSettings>
 #include <QWheelEvent>
 #include <QtMath>
 
@@ -18,8 +19,13 @@ qreal propReal(const QObject *obj, const char *name) {
 } // namespace
 
 KineticScroll::KineticScroll(QObject *parent) : QObject(parent) {
+    // scrollSpeed in folio.conf scales both the wheel step and the animation
+    // time, so a folder of many files can be traversed without many notches.
+    QSettings settings;
+    const qreal speed = qBound(0.5, settings.value(QStringLiteral("scrollSpeed"), 1.0).toDouble(), 4.0);
+    m_stepPixels = kWheelStepPixels * speed;
     m_clock.start();
-    m_wheelAnim.setDuration(kWheelDurationMs);
+    m_wheelAnim.setDuration(qMax(40, int(kWheelDurationMs / speed)));
     m_wheelAnim.setEasingCurve(QEasingCurve::OutCubic);
     connect(&m_wheelAnim, &QVariantAnimation::valueChanged, this, [this](const QVariant &value) {
         if (!m_target) {
@@ -128,7 +134,7 @@ bool KineticScroll::handleDiscreteWheel(const QPoint &angleDelta) {
         return false;
 
     const qreal current = propReal(m_target, posProp);
-    const qreal step = -(qreal(delta) / 120.0) * kWheelStepPixels;
+    const qreal step = -(qreal(delta) / 120.0) * m_stepPixels;
     const qreal remaining = m_wheelTarget - current;
     const bool sameDirection = (remaining > 0 && step > 0) || (remaining < 0 && step < 0);
     const bool continuing = m_wheelAnim.state() == QAbstractAnimation::Running
